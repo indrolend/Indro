@@ -336,3 +336,50 @@ test('Windows repository launcher works from outside its checkout', {
   assert.match(result.stdout, /Repository: commandhud-launcher-/);
   assert.match(result.stdout, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
 });
+
+test('TUI readline output constrains clear-screen-down to the command row', async () => {
+  const { createTuiReadlineOutput } = await import('./shell.mjs');
+
+  const writes = [];
+  const output = {
+    columns: 80,
+    rows: 24,
+    write(value) {
+      writes.push(Buffer.isBuffer(value) ? value.toString('utf8') : String(value));
+      return true;
+    },
+  };
+
+  const readlineOutput = createTuiReadlineOutput(output, true);
+
+  readlineOutput.write('\x1b[1G');
+  readlineOutput.write('\x1b[0J');
+  readlineOutput.write('> ');
+  readlineOutput.write('\x1b[3G');
+
+  assert.deepEqual(writes, [
+    '\x1b[1G',
+    '\x1b[2K',
+    '> ',
+    '\x1b[3G',
+  ]);
+  assert.equal(writes.some((value) => value.includes('\x1b[0J')), false);
+});
+
+test('non-TUI readline output remains unchanged', async () => {
+  const { createTuiReadlineOutput } = await import('./shell.mjs');
+
+  const writes = [];
+  const output = {
+    write(value) {
+      writes.push(String(value));
+      return true;
+    },
+  };
+
+  const readlineOutput = createTuiReadlineOutput(output, false);
+  assert.equal(readlineOutput, output);
+
+  readlineOutput.write('\x1b[0J');
+  assert.deepEqual(writes, ['\x1b[0J']);
+});

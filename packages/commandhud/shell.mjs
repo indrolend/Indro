@@ -9,6 +9,24 @@ import {
 import { createShellVisualStatus, IDLE_FACE, visualMotionEnabled } from './shell-visual.mjs';
 import { createShellLayout, splitMouseInput } from './shell-layout.mjs';
 
+export function createTuiReadlineOutput(output, enabled = true) {
+  if (!enabled) return output;
+  return new Proxy(output, {
+    get(target, property) {
+      if (property === 'write') {
+        return (chunk, ...args) => {
+          const isBuffer = Buffer.isBuffer(chunk);
+          const text = isBuffer ? chunk.toString('utf8') : String(chunk);
+          const safe = text.replace(/\x1b\[0J/g, '\x1b[2K');
+          return target.write(isBuffer ? Buffer.from(safe, 'utf8') : safe, ...args);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 function createActionChannel() {
   const queue = [];
   let waiter = null;
@@ -281,7 +299,8 @@ export async function startHudShell(project, {
     filteredInput.isTTY = true;
     filteredInput.setRawMode = (mode) => input.setRawMode?.(mode);
   }
-  const terminal = createInterface({ input: filteredInput, output, terminal: interactive });
+  const readlineOutput = createTuiReadlineOutput(output, interactive && tui);
+  const terminal = createInterface({ input: filteredInput, output: readlineOutput, terminal: interactive });
   const commandLines = terminal[Symbol.asyncIterator]();
   const actions = createActionChannel();
   let pendingLine = null;
