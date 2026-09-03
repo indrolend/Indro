@@ -188,7 +188,7 @@
   async function refreshConversation() {
     if (!liveState || !runtime?.capabilities?.terminal) return;
     try {
-      const response = await fetch('/conversation?limit=50', { cache: 'no-store' });
+      const response = await fetch('/conversation?limit=20', { cache: 'no-store' });
       if (response.ok) renderConversation((await response.json()).items || []);
     } catch {}
   }

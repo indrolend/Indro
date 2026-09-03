@@ -40,7 +40,7 @@ test('Repository Map client exposes a native terminal-chat composer over authori
   assert.match(html, /id="conversationItems" aria-live="polite"/);
   assert.match(html, /<textarea id="commandInput"[^>]+aria-label="Executable command"[^>]+placeholder="Run a command…"/);
   assert.match(html, /id="chatButton"[^>]+>Shell</);
-  assert.match(app, /fetch\('\/conversation\?limit=50'/);
+  assert.match(app, /fetch\('\/conversation\?limit=20'/);
   assert.match(app, /content\.command/);
   assert.match(app, /capabilities\?\.canViewRaw/);
   assert.match(app, /capabilities\?\.canCancel/);
