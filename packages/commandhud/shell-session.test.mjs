@@ -101,3 +101,25 @@ test('session execution preserves the canonical immutable evidence record', asyn
   assert.equal(runById(project, record.id)?.id, record.id);
   assert.equal(listRuns(project, 10)[0]?.id, record.id);
 });
+
+test('session publishes a minimal sent, running, completed lifecycle without owning history', async () => {
+  const project = fixture();
+  const events = [];
+  const provider = {
+    id: 'powershell', label: 'PowerShell', isInputComplete: () => true,
+    async execute(request) {
+      request.options.onStart({ runId: 'run-1', startedAt: '2026-09-03T10:00:00.000Z', stdoutPath: 'stdout.log', stderrPath: 'stderr.log' });
+      return { id: 'run-1', status: 'pass', operation: { cwdAfter: project.root } };
+    },
+  };
+  const session = await createShellSession(project, { shell: 'powershell', providers: [provider] });
+  const unsubscribe = session.subscribe((event) => events.push(event));
+  await session.execute('git status');
+  unsubscribe();
+  assert.deepEqual(events.map((event) => event.type), ['execution-start', 'execution-update', 'execution-end']);
+  assert.equal(events[0].execution.runId, null);
+  assert.equal(events[1].execution.runId, 'run-1');
+  assert.equal(events[2].record.id, 'run-1');
+  assert.equal(session.activeExecution, null);
+  assert.equal('history' in session, false);
+});
