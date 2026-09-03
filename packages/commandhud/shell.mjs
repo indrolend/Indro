@@ -3,9 +3,10 @@ import { basename, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { PassThrough } from 'node:stream';
 import {
-  buildCurrentOperationContext, buildOperationContext, diffRunEvidence, formatRepositoryCommandProof, lastRun, listRuns, projectRunEvidence, repositoryCommandProof, runById,
-  undoOperation, undoPlan,
+  buildCurrentOperationContext, buildOperationContext,
 } from './core.mjs';
+export { parseShellEvidenceCommand, renderShellEvidenceProjection } from './shell-builtins.mjs';
+export { shellInputIncomplete } from './execution-provider.mjs';
 import { createShellSession } from './shell-session.mjs';
 import { createShellVisualStatus, IDLE_FACE, visualMotionEnabled } from './shell-visual.mjs';
 import { createShellLayout, splitMouseInput } from './shell-layout.mjs';
@@ -93,92 +94,6 @@ function displayCwd(project, cwd) {
   return relative(project.root, cwd).replaceAll('\\', '/') || '.';
 }
 
-export function shellInputIncomplete(shell, value) {
-  if (shell !== 'powershell') return false;
-  const text = String(value || '').replace(/\r\n?/g, '\n');
-  const stack = [];
-  let quote = null;
-  let blockComment = false;
-  let hereString = null;
-  const pairs = { '(': ')', '[': ']', '{': '}' };
-  const closing = new Set(Object.values(pairs));
-  const lines = text.split('\n');
-  for (const line of lines) {
-    if (hereString) {
-      if (line.trim() === `${hereString}@`) hereString = null;
-      continue;
-    }
-    for (let index = 0; index < line.length; index++) {
-      const character = line[index];
-      const next = line[index + 1];
-      if (blockComment) {
-        if (character === '#' && next === '>') { blockComment = false; index++; }
-        continue;
-      }
-      if (quote) {
-        if (quote === "'" && character === "'" && next === "'") { index++; continue; }
-        if (quote === '"' && character === '`') { index++; continue; }
-        if (character === quote) quote = null;
-        continue;
-      }
-      if (character === '<' && next === '#') { blockComment = true; index++; continue; }
-      if (character === '#') break;
-      if (character === '@' && (next === '"' || next === "'") && !line.slice(index + 2).trim()) {
-        hereString = next;
-        break;
-      }
-      if (character === '"' || character === "'") { quote = character; continue; }
-      if (character === '`') { index++; continue; }
-      if (pairs[character]) stack.push(pairs[character]);
-      else if (closing.has(character) && stack.at(-1) === character) stack.pop();
-    }
-  }
-  const tail = lines.at(-1).trimEnd();
-  return Boolean(hereString || blockComment || quote || stack.length || /(?:`|\||,)\s*$/.test(tail));
-}
-
-export function parseShellEvidenceCommand(command, fallbackRunId) {
-  const match = String(command || '').match(/^\/(raw|head|tail|find|around)(?:\s+(.*))?$/);
-  if (!match) return null;
-  const mode = match[1];
-  const parts = match[2]?.trim().split(/\s+/).filter(Boolean) || [];
-  const isRunId = (value) => /^\d{14}-[0-9a-f]{4}$/i.test(value || '');
-  let runId = isRunId(parts[0]) ? parts.shift() : fallbackRunId;
-  if ((mode === 'head' || mode === 'tail') && /^\d+$/.test(parts[0] || '') && isRunId(parts[1])) {
-    const count = parts.shift();
-    runId = parts.shift();
-    if (parts.length) throw new Error(`Syntax: /${mode} <run> [count]`);
-    return { runId, mode, count };
-  }
-  if (!runId) throw new Error('No command has been recorded yet.');
-  if (mode === 'raw') {
-    if (parts.length) throw new Error('Syntax: /raw <run>');
-    return { runId, mode };
-  }
-  if (mode === 'head' || mode === 'tail') {
-    if (parts.length > 1 || (parts[0] && !/^\d+$/.test(parts[0]))) throw new Error(`Syntax: /${mode} <run> [count]`);
-    return { runId, mode, count: parts[0] };
-  }
-  if (mode === 'find') {
-    if (!parts.length) throw new Error('Syntax: /find <run> <pattern>');
-    return { runId, mode, pattern: parts.join(' ') };
-  }
-  const context = /^\d+$/.test(parts.at(-1) || '') ? parts.pop() : undefined;
-  if (!parts.length) throw new Error('Syntax: /around <run> <pattern> [lines]');
-  return { runId, mode, pattern: parts.join(' '), context };
-}
-
-export function renderShellEvidenceProjection(value) {
-  const lines = [`SOURCE_EVIDENCE run:${value.runId} · ${value.mode.toUpperCase()}`];
-  for (const stream of value.streams) {
-    lines.push('', `${stream.stream.toUpperCase()}${stream.matchCount === undefined ? '' : ` · ${stream.matchCount} matches`}`);
-    if (value.mode === 'raw') lines.push(stream.content || '(empty)');
-    else lines.push(...(stream.lines.length ? stream.lines.map((line) => `${line.number}: ${line.text}`) : ['(no matching lines)']));
-    if (stream.truncated) lines.push('… additional matching context retained in raw evidence');
-  }
-  return lines.join('\n').trimEnd();
-}
-
 export function deliverShellProjection(value, show, clipboardWriter = clipboard, source = 'evidence') {
   show(`${value}\n\n`);
   try {
@@ -217,28 +132,6 @@ export async function deliverShellResult(project, record, output, clipboardWrite
     output.write(`\nNOT COPIED · ${error.message}\nUse /copy to try again.\n\n`);
     return { context, copied: false };
   }
-}
-
-function help() {
-  return [
-    '/copy [run]    copy compact context for the latest or selected run',
-    '/context [run] print compact context for the latest or selected run',
-    '/raw           print complete stdout and stderr',
-    '/head [n]      show the first recorded lines without rerunning',
-    '/tail [n]      show the last recorded lines without rerunning',
-    '/find <text>   find literal text in recorded evidence',
-    '/around <text> [n]  show recorded lines around matches',
-    '/diff <run> <run>  compare two retained stdout/stderr records',
-    'Add a run ID after the command to inspect an older run.',
-    '/history [n]   list a bounded number of recorded operations',
-    '/proof <name>  reuse current repository-command evidence without executing',
-    '/undo          inspect the latest command for safe Undo',
-    '/undo <run>    apply a previously inspected safe Undo',
-    '/shell <id>    switch to powershell, bash, or cmd',
-    '/cwd           show the persistent repository directory',
-    '/help          show these controls',
-    '/exit          leave CommandHUD',
-  ].join('\n');
 }
 
 export async function startHudShell(project, {
@@ -290,45 +183,16 @@ export async function startHudShell(project, {
 
   const show = (value) => layout.active ? layout.renderOutput(String(value).trimEnd()) : output.write(value);
 
-  const dispatchShellAction = async (action, requested = null) => {
-    const previous = lastRun(project);
-    if (action === 'exit') return { exit: true };
-    if (action === 'help') { show(`${help()}\n\n`); return { exit: false }; }
-    if (action === 'copy') {
-      const selected = requested ? runById(project, requested) : previous;
-      if (!selected?.operation) show(`${requested ? `No structured run found for ${requested}.` : 'No structured command has been recorded yet.'}\n\n`);
-      else {
-        const value = (await buildCurrentOperationContext(project, selected)).handoff;
-        try { clipboardWriter(value); show(`COPIED run:${selected.id}\n\n${value}`); }
-        catch (error) { show(`NOT COPIED · ${error.message}\nContext remains available with /context ${selected.id}.\n\n`); }
-      }
-      return { exit: false };
+  const presentBuiltin = (result) => {
+    if (result.provider) layout.updateShell(result.provider.label);
+    if (result.record) show(`${renderShellResult(project, result.record)}\n\n`);
+    else if (result.name === 'copy') {
+      try { clipboardWriter(result.clipboard); show(`COPIED ${result.clipboardSource}\n\n${result.text}`); }
+      catch (error) { show(`NOT COPIED · ${error.message}\nContext remains available with /context ${result.clipboardSource.slice(4)}.\n\n`); }
     }
-    if (action === 'raw') {
-      const selected = requested ? runById(project, requested) : previous;
-      if (!selected) show(`${requested ? `No recorded run found for ${requested}.` : 'No command has been recorded yet.'}\n\n`);
-      else {
-        try {
-          const value = projectRunEvidence(project, selected.id, { runId: selected.id, mode: 'raw' });
-          deliverShellProjection(renderShellEvidenceProjection(value), show, clipboardWriter, `run:${selected.id}`);
-        } catch (error) { show(`${error.message}\n\n`); }
-      }
-      return { exit: false };
-    }
-    if (action === 'undo') {
-      const target = requested ? listRuns(project, 100).find((run) => run.id === requested) : previous;
-      if (!target) { show('No recorded command is available for Undo.\n\n'); return { exit: false }; }
-      const plan = await undoPlan(project, target.id);
-      const planLines = [`UNDO ${plan.state} · run:${target.id}`, plan.reason, ...plan.paths];
-      if (!requested && plan.state === 'SAFE') planLines.push(`Apply explicitly with /undo ${target.id}`);
-      if (!requested && plan.state === 'SAFE') show(`${planLines.join('\n')}\n\n`);
-      else if (requested && plan.state === 'SAFE') {
-        const record = await undoOperation(project, target.id, { origin: 'terminal-ui' });
-        show(`${renderShellResult(project, record)}\n\n`);
-      } else show(`${planLines.join('\n')}\n\n`);
-      return { exit: false };
-    }
-    throw new Error(`Unknown shell action: ${action}`);
+    else if (result.clipboard) deliverShellProjection(result.text, show, clipboardWriter, result.clipboardSource);
+    else if (result.text) show(`${result.text}\n\n`);
+    return result;
   };
 
   const routeInput = createTuiInputRouter({
@@ -365,8 +229,10 @@ export async function startHudShell(project, {
           ? await Promise.race([pendingLine, actions.next().then((action) => ({ kind: 'action', action }))])
           : await pendingLine;
         if (interaction.kind === 'action') {
-          const result = await dispatchShellAction(interaction.action);
-          if (result.exit) break;
+          try {
+            const result = presentBuiltin(await session.execute(`/${interaction.action}`));
+            if (result.exit) break;
+          } catch (error) { show(`${error.message}\n\n`); }
           continue;
         }
         const next = interaction.value;
@@ -377,7 +243,7 @@ export async function startHudShell(project, {
         if (!interactive) output.write(`${session.shell.id} ${displayCwd(project, session.cwd)}> ${command}\n`);
       }
       catch { break; }
-      while (shellInputIncomplete(session.shell.id, command)) {
+      while (!session.isInputComplete(command)) {
         let continuation = null;
         try {
           if (interactive && layout.active) {
@@ -410,92 +276,11 @@ export async function startHudShell(project, {
       command = command.trim();
       if (!command) continue;
       layout.setFocus(null);
-      const semantic = command.match(/^\/(copy|raw|undo|help|exit|quit)(?:\s+(\S+))?$/);
-      if (semantic) {
-        const result = await dispatchShellAction(semantic[1] === 'quit' ? 'exit' : semantic[1], semantic[2] || null);
-        if (result.exit) break;
-        continue;
-      }
-      if (command === '/cwd') { show(`${session.cwd}\n\n`); continue; }
-      if (command.startsWith('/shell')) {
-        const id = command.split(/\s+/, 2)[1];
+      if (session.isBuiltin(command)) {
         try {
-          const selected = session.setShell(id);
-          layout.updateShell(selected.label);
-          show(`SHELL ${selected.label}\n\n`);
-        } catch { show(`Unavailable shell: ${id || '(missing)'}\n\n`); }
-        continue;
-      }
-      if (/^\/proof(?:\s|$)/.test(command)) {
-        const parts = command.split(/\s+/).filter(Boolean);
-        if (parts.length !== 2) show('/proof requires exactly one repository command name.\n\n');
-        else {
-          try {
-            const proof = await repositoryCommandProof(project, parts[1]);
-            deliverShellProjection(formatRepositoryCommandProof(proof), show, clipboardWriter, `proof:${parts[1]}`);
-          } catch (error) { show(`${error.message}\n\n`); }
-        }
-        continue;
-      }
-      const previous = lastRun(project);
-      if (/^\/(?:copy|context)(?:\s|$)/.test(command)) {
-        const [action, requested] = command.split(/\s+/, 2);
-        const selected = requested ? runById(project, requested) : previous;
-        if (!selected?.operation) show(`${requested ? `No structured run found for ${requested}.` : 'No structured command has been recorded yet.'}\n\n`);
-        else {
-          const value = (await buildCurrentOperationContext(project, selected)).handoff;
-          if (action === '/copy') {
-            try { clipboardWriter(value); show(`COPIED run:${selected.id}\n\n${value}`); }
-            catch (error) { show(`NOT COPIED · ${error.message}\nContext remains available with /context ${selected.id}.\n\n`); }
-          }
-          else show(`${value}\n\n`);
-        }
-        continue;
-      }
-      if (/^\/(?:raw|head|tail|find|around)(?:\s|$)/.test(command)) {
-        try {
-          const request = parseShellEvidenceCommand(command, previous?.id);
-          const value = projectRunEvidence(project, request.runId, request);
-          deliverShellProjection(renderShellEvidenceProjection(value), show, clipboardWriter, `run:${request.runId}`);
+          const result = presentBuiltin(await session.execute(command, { source: 'terminal-ui' }));
+          if (result.exit) break;
         } catch (error) { show(`${error.message}\n\n`); }
-        continue;
-      }
-      if (/^\/diff(?:\s|$)/.test(command)) {
-        const [, left, right] = command.split(/\s+/, 3);
-        if (!left || !right) show('/diff requires two recorded run IDs.\n\n');
-        else {
-          try {
-            const value = await diffRunEvidence(project, left, right);
-            const lines = [`SOURCE_EVIDENCE runs:${left},${right} · DIFF`, `DIFFERENT ${value.different}`];
-            for (const stream of value.streams) {
-              lines.push('', `${stream.stream.toUpperCase()} ${stream.different ? 'CHANGED' : 'UNCHANGED'}`);
-              if (stream.text) lines.push(stream.text);
-              if (stream.truncated) lines.push('… complete evidence remains in both runs');
-            }
-            deliverShellProjection(lines.join('\n'), show, clipboardWriter, `runs:${left},${right}`);
-          } catch (error) { show(`${error.message}\n\n`); }
-        }
-        continue;
-      }
-      if (/^\/history(?:\s|$)/.test(command)) {
-        const requested = command.split(/\s+/, 2)[1];
-        const count = requested === undefined ? 10 : Number(requested);
-        if (!Number.isInteger(count) || count < 1 || count > 100) show('/history requires a count from 1 to 100.\n\n');
-        else show(`${listRuns(project, count).map((run) => `${run.id} ${run.status.toUpperCase()} ${run.operation?.displayCommand || run.command}`).join('\n') || '(no recorded runs)'}\n\n`);
-        continue;
-      }
-      if (command.startsWith('/undo')) {
-        const requested = command.split(/\s+/, 2)[1];
-        const target = requested ? listRuns(project, 100).find((run) => run.id === requested) : previous;
-        if (!target) { show('No recorded command is available for Undo.\n\n'); continue; }
-        const plan = await undoPlan(project, target.id);
-        const planLines = [`UNDO ${plan.state} · run:${target.id}`, plan.reason, ...plan.paths];
-        if (!requested && plan.state === 'SAFE') planLines.push(`Apply explicitly with /undo ${target.id}`);
-        if (!requested && plan.state === 'SAFE') show(`${planLines.join('\n')}\n\n`);
-        else if (requested && plan.state === 'SAFE') {
-          const record = await undoOperation(project, target.id, { origin: 'terminal-ui' });
-          show(`${renderShellResult(project, record)}\n\n`);
-        } else show(`${planLines.join('\n')}\n\n`);
         continue;
       }
       const visualStatus = createShellVisualStatus(output, {
