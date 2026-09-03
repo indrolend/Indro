@@ -3,9 +3,10 @@ import { basename, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { PassThrough } from 'node:stream';
 import {
-  buildCurrentOperationContext, buildOperationContext, diffRunEvidence, discoverShells, formatRepositoryCommandProof, lastRun, listRuns, projectRunEvidence, repositoryCommandProof, runById,
-  runTerminalCommand, undoOperation, undoPlan,
+  buildCurrentOperationContext, buildOperationContext, diffRunEvidence, formatRepositoryCommandProof, lastRun, listRuns, projectRunEvidence, repositoryCommandProof, runById,
+  undoOperation, undoPlan,
 } from './core.mjs';
+import { createShellSession } from './shell-session.mjs';
 import { createShellVisualStatus, IDLE_FACE, visualMotionEnabled } from './shell-visual.mjs';
 import { createShellLayout, splitMouseInput } from './shell-layout.mjs';
 
@@ -268,11 +269,7 @@ export async function startHudShell(project, {
     restoreOutputTrace = () => { output.write = originalOutputWrite; };
   }
 
-  const available = await discoverShells(project.root);
-  let shell = available.find((entry) => entry.id === requestedShell && entry.available);
-  if (!shell) throw new Error(`Terminal shell is unavailable: ${requestedShell}`);
-  let cwd = project.root;
-  let activeController = null;
+  const session = await createShellSession(project, { shell: requestedShell });
   const interactive = Boolean(input.isTTY && output.isTTY);
   const motion = visualMotionEnabled({ interactive, requested: visual && tui });
   const layout = createShellLayout(output, { enabled: interactive && tui });
@@ -288,7 +285,7 @@ export async function startHudShell(project, {
   if (layout.active === false && interactive && tui) layout.start();
   if (!layout.active) {
     output.write(`${IDLE_FACE} hate.this.meaningless.life · context condenser\n`);
-    output.write(`Repository: ${basename(project.root)} · Shell: ${shell.label} · /help for controls\n\n`);
+    output.write(`Repository: ${basename(project.root)} · Shell: ${session.shell.label} · /help for controls\n\n`);
   }
 
   const show = (value) => layout.active ? layout.renderOutput(String(value).trimEnd()) : output.write(value);
@@ -351,8 +348,8 @@ export async function startHudShell(project, {
   if (layout.active) input.on('data', inputHandler);
 
   terminal.on('SIGINT', () => {
-    if (activeController) activeController.abort();
-    else terminal.close();
+    if (session.cancelActiveExecution()) return;
+    terminal.close();
   });
   try {
     while (true) {
@@ -377,10 +374,10 @@ export async function startHudShell(project, {
         if (layout.active) layout.clearPrompt();
         if (next.done) break;
         command = next.value;
-        if (!interactive) output.write(`${shell.id} ${displayCwd(project, cwd)}> ${command}\n`);
+        if (!interactive) output.write(`${session.shell.id} ${displayCwd(project, session.cwd)}> ${command}\n`);
       }
       catch { break; }
-      while (shellInputIncomplete(shell.id, command)) {
+      while (shellInputIncomplete(session.shell.id, command)) {
         let continuation = null;
         try {
           if (interactive && layout.active) {
@@ -419,12 +416,14 @@ export async function startHudShell(project, {
         if (result.exit) break;
         continue;
       }
-      if (command === '/cwd') { show(`${cwd}\n\n`); continue; }
+      if (command === '/cwd') { show(`${session.cwd}\n\n`); continue; }
       if (command.startsWith('/shell')) {
         const id = command.split(/\s+/, 2)[1];
-        const selected = available.find((entry) => entry.id === id && entry.available);
-        if (!selected) show(`Unavailable shell: ${id || '(missing)'}\n\n`);
-        else { shell = selected; layout.updateShell(shell.label); show(`SHELL ${shell.label}\n\n`); }
+        try {
+          const selected = session.setShell(id);
+          layout.updateShell(selected.label);
+          show(`SHELL ${selected.label}\n\n`);
+        } catch { show(`Unavailable shell: ${id || '(missing)'}\n\n`); }
         continue;
       }
       if (/^\/proof(?:\s|$)/.test(command)) {
@@ -499,17 +498,13 @@ export async function startHudShell(project, {
         } else show(`${planLines.join('\n')}\n\n`);
         continue;
       }
-      activeController = new AbortController();
       const visualStatus = createShellVisualStatus(output, {
         enabled: layout.active || motion, animated: motion, row: layout.active ? 2 : null, showFace: !layout.active,
       });
       try {
         visualStatus.start(command);
-        const record = await runTerminalCommand(project, command, {
-          shell: shell.id, cwd, stream: false, signal: activeController.signal, origin: 'terminal-ui',
-        });
+        const record = await session.execute(command, { stream: false, source: 'terminal-ui' });
         await visualStatus.finish(record.status);
-        cwd = record.operation.cwdAfter;
         if (layout.active) {
           const context = (await buildCurrentOperationContext(project, record)).handoff;
           let copyState;
@@ -522,7 +517,6 @@ export async function startHudShell(project, {
         show(`ERROR · ${error.message}\n\n`);
       } finally {
         visualStatus.clear();
-        activeController = null;
       }
     }
   } finally {
