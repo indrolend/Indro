@@ -26,6 +26,9 @@
   const treeList = $('#treeList');
   const focus = $('#focusPanel');
   const input = $('#commandInput');
+  const conversation = $('#conversation');
+  const conversationItems = $('#conversationItems');
+  const chatButton = $('#chatButton');
   const picker = $('#picker');
   const toolkit = $('#toolkitButton');
   const output = $('#output');
@@ -46,6 +49,7 @@
   let renderedCommands = [];
   const clientId = globalThis.crypto?.randomUUID?.() || `hud-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let lastNavigationRevision = 0;
+  let conversationState = [];
 
   const commands = {
     HUD: [
@@ -119,6 +123,7 @@
     label.textContent = value?.busy ? `busy · ${value.busy.type}` : liveState ? 'ready' : 'static';
     label.className = value?.busy ? 'warn' : 'good';
     const terminalEnabled = Boolean(value?.capabilities?.terminal);
+    chatButton.classList.toggle('ready', terminalEnabled);
     $('#terminal').classList.toggle('desktop-terminal', terminalEnabled);
     if (terminalEnabled) {
       const shellSelect = $('#terminalShell');
@@ -139,11 +144,76 @@
     }
   }
 
+  function duration(value) {
+    if (!Number.isFinite(value)) return '';
+    return value < 1000 ? `${value}ms` : `${(value / 1000).toFixed(1)}s`;
+  }
+
+  function renderConversation(items = conversationState) {
+    conversationState = items;
+    conversationItems.replaceChildren(...items.map((item) => {
+      const card = document.createElement('article');
+      card.className = `conversation-item ${item.kind}`;
+      card.dataset.itemId = item.id;
+      if (item.kind === 'command') {
+        card.textContent = item.content.command;
+        return card;
+      }
+      const status = document.createElement('div');
+      status.className = `conversation-status ${item.content.status || ''}`;
+      status.textContent = item.content.status || item.content.operation?.replace('builtin:', '') || 'Result';
+      const summary = document.createElement('div');
+      summary.className = 'conversation-summary';
+      summary.textContent = (item.content.summary || []).join('\n') || (item.content.exitCode === null || item.content.exitCode === undefined ? '' : `exit ${item.content.exitCode}`);
+      const meta = document.createElement('div');
+      meta.className = 'conversation-meta';
+      meta.textContent = [duration(item.content.durationMs), item.runId ? `run:${item.runId}` : '', item.content.cwdAfter || ''].filter(Boolean).join(' · ');
+      card.append(status, summary, meta);
+      if (item.runId && (item.capabilities?.canViewRaw || item.capabilities?.canCancel)) {
+        const actions = document.createElement('div');
+        actions.className = 'conversation-actions';
+        if (item.capabilities.canCancel) actions.append(outputAction('Stop', 'confirm', () => cancelActiveRun(item.runId)));
+        if (item.capabilities.canViewRaw) actions.append(
+          outputAction('Raw', '', () => showEvidence(item.runId, 'stdout')),
+          outputAction('Evidence', '', () => showHistoryDetail(item.runId)),
+        );
+        card.appendChild(actions);
+      }
+      return card;
+    }));
+    conversationItems.scrollTop = conversationItems.scrollHeight;
+    $('#conversationContext').textContent = runtime?.terminal ? `${runtime.terminal.displayCwd} · ${runtime.terminal.provider}` : state?.git?.branch || 'repository';
+  }
+
+  async function refreshConversation() {
+    if (!liveState || !runtime?.capabilities?.terminal) return;
+    try {
+      const response = await fetch('/conversation?limit=50', { cache: 'no-store' });
+      if (response.ok) renderConversation((await response.json()).items || []);
+    } catch {}
+  }
+
+  function toggleConversation(force) {
+    const open = force === undefined ? !conversation.classList.contains('open') : Boolean(force);
+    if (open && window.innerWidth <= 640) {
+      app.classList.add('tree-closed');
+      $('#treeToggle').setAttribute('aria-expanded', 'false');
+    }
+    conversation.classList.toggle('open', open);
+    chatButton.setAttribute('aria-expanded', String(open));
+    if (open) refreshConversation();
+  }
+
+  function resizeComposer() {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
+  }
+
   async function refreshRuntime() {
     if (!liveState) return showRuntime(null);
     try {
       const response = await fetch('/runtime', { cache: 'no-store' });
-      if (response.ok) showRuntime(await response.json());
+      if (response.ok) { showRuntime(await response.json()); renderConversation(); }
     } catch {}
   }
 
@@ -1111,7 +1181,16 @@
 
   async function executeTerminalCommand(command) {
     const shell = $('#terminalShell').value;
-    output.classList.add('open');
+    const sentAt = new Date().toISOString();
+    const optimisticId = `active:${Date.now()}`;
+    toggleConversation(true);
+    renderConversation([...conversationState,
+      { id: `command:${optimisticId}`, kind: 'command', runId: null, timestamp: sentAt, content: { command, cwd: runtime?.terminal?.cwd || null, provider: shell }, ephemeral: true },
+      { id: `result:${optimisticId}`, kind: 'result', runId: null, timestamp: sentAt, content: { status: 'running', exitCode: null, durationMs: null, summary: [] }, capabilities: { canCancel: true }, ephemeral: true },
+    ]);
+    input.value = '';
+    resizeComposer();
+    input.blur();
     $('#outputTitle').textContent = `${shell} running`;
     $('#outputText').textContent = `${command}\n\nWaiting for the local runtime…`;
     $('#outputResults').replaceChildren();
@@ -1120,13 +1199,21 @@
     const monitor = { done: false };
     monitorRepositoryCommand(monitor, 'terminal-command');
     try {
-      const response = await fetch('/operations/terminal', {
+      const request = fetch('/operations/terminal', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, shell }),
       });
+      setTimeout(refreshConversation, 0);
+      const response = await request;
       monitor.done = true;
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || `Terminal command failed with HTTP ${response.status}.`);
+      if (result.kind === 'builtin') {
+        state = result.state;
+        output.classList.remove('open');
+        await Promise.all([refreshRuntime(), refreshConversation()]);
+        return;
+      }
       state = result.state;
       $('#outputTitle').textContent = `${result.operation.shellLabel} · ${result.status}`;
       $('#outputText').textContent = `${result.operation.displayCommand}\n\n${result.operation.summary.join('; ') || `exit ${result.operation.exitCode}`}\n${(result.operation.durationMs / 1000).toFixed(1)}s\nWorking directory: ${result.operation.cwdAfter}\nRaw evidence: run:${result.runId}`;
@@ -1134,13 +1221,13 @@
       actions.replaceChildren(outputAction('Copy handoff', 'confirm', copyHandoff));
       appendEvidenceActions(actions, result.runId);
       actions.classList.add('open');
-      input.value = '';
-      await refreshRuntime();
+      await Promise.all([refreshRuntime(), refreshConversation()]);
     } catch (error) {
       monitor.done = true;
+      output.classList.add('open');
       $('#outputTitle').textContent = 'Terminal command refused';
       $('#outputText').textContent = `${command}\n\n${error.message}`;
-      await refreshRuntime();
+      await Promise.all([refreshRuntime(), refreshConversation()]);
     }
   }
 
@@ -1349,7 +1436,16 @@
     previewInput();
     if (input.value.includes('""')) input.setSelectionRange(8, 8);
   };
-  input.addEventListener('input', previewInput);
+  input.addEventListener('input', () => { resizeComposer(); previewInput(); });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      $('#terminal').requestSubmit();
+    }
+  });
+  chatButton.onclick = () => toggleConversation();
+  conversation.addEventListener('pointerdown', (event) => event.stopPropagation());
+  conversation.addEventListener('wheel', (event) => event.stopPropagation());
   $('#searchScope').addEventListener('change', previewInput);
   $('#inputMode').addEventListener('click', exitSearchMode);
   $('#terminal').onsubmit = async (event) => {
@@ -1395,11 +1491,13 @@
       try {
         const value = JSON.parse(event.data);
         showRuntime({ ...runtime, busy: value.operation });
+        refreshConversation();
       } catch {}
     });
     events.addEventListener('state', async () => {
-      await Promise.all([synchronizeState(), refreshRuntime()]);
+      await Promise.all([synchronizeState(), refreshRuntime(), refreshConversation()]);
     });
+    events.addEventListener('conversation', refreshConversation);
     events.addEventListener('navigation', (event) => {
       try { applySharedNavigation(JSON.parse(event.data).navigation); } catch {}
     });
@@ -1410,9 +1508,11 @@
   renderMap();
   resetCamera();
   renderPicker();
+  resizeComposer();
   if (window.innerWidth <= 640) {
     app.classList.add('tree-closed');
     $('#treeToggle').setAttribute('aria-expanded', 'false');
+    if (runtime?.capabilities?.terminal) toggleConversation(true);
   }
   window.commandHudDemo = {
     enterDirectory,

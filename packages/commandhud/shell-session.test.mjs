@@ -114,12 +114,18 @@ test('session publishes a minimal sent, running, completed lifecycle without own
   };
   const session = await createShellSession(project, { shell: 'powershell', providers: [provider] });
   const unsubscribe = session.subscribe((event) => events.push(event));
+  let activeAtEnd;
+  const unsubscribeEndState = session.subscribe((event) => {
+    if (event.type === 'execution-end') activeAtEnd = session.activeExecution;
+  });
   await session.execute('git status');
   unsubscribe();
+  unsubscribeEndState();
   assert.deepEqual(events.map((event) => event.type), ['execution-start', 'execution-update', 'execution-end']);
   assert.equal(events[0].execution.runId, null);
   assert.equal(events[1].execution.runId, 'run-1');
   assert.equal(events[2].record.id, 'run-1');
+  assert.equal(activeAtEnd, null);
   assert.equal(session.activeExecution, null);
   assert.equal('history' in session, false);
 });

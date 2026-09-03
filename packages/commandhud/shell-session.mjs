@@ -45,9 +45,11 @@ export class ShellSession {
         },
       });
       this.cwd = record.operation.cwdAfter;
+      if (this.activeExecution === execution) this.activeExecution = null;
       this.publish({ type: 'execution-end', execution: this.executionView(execution), record });
       return record;
     } catch (error) {
+      if (this.activeExecution === execution) this.activeExecution = null;
       this.publish({ type: 'execution-end', execution: this.executionView(execution), error });
       throw error;
     } finally {

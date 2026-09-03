@@ -32,3 +32,22 @@ test('Repository Map client exposes one main menu over one command directory', (
   assert.match(app, /hud desktop/);
   assert.match(app, /hud serve/);
 });
+
+test('Repository Map client exposes a native terminal-chat composer over authoritative conversation state', () => {
+  const html = readFileSync(join(directory, 'index.html'), 'utf8');
+  const app = readFileSync(join(directory, 'app.js'), 'utf8');
+  assert.match(html, /id="conversation"/);
+  assert.match(html, /id="conversationItems" aria-live="polite"/);
+  assert.match(html, /<textarea id="commandInput"[^>]+aria-label="Executable command"[^>]+placeholder="Run a command…"/);
+  assert.match(html, /id="chatButton"[^>]+>Shell</);
+  assert.match(app, /fetch\('\/conversation\?limit=50'/);
+  assert.match(app, /content\.command/);
+  assert.match(app, /capabilities\?\.canViewRaw/);
+  assert.match(app, /capabilities\?\.canCancel/);
+  assert.match(app, /outputAction\('Stop'/);
+  assert.match(app, /showEvidence\(item\.runId, 'stdout'\)/);
+  assert.match(app, /window\.innerWidth <= 640/);
+  assert.match(app, /input\.blur\(\)/);
+  assert.match(app, /requestSubmit\(\)/);
+  assert.doesNotMatch(app, /xterm/i);
+});
