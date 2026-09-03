@@ -114,6 +114,7 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   t.after(() => running.server.close());
   const base = `http://127.0.0.1:${running.port}`;
   const runtime = await (await fetch(`${base}/runtime`)).json();
+  assert.ok(running.shellSession);
   assert.equal(runtime.capabilities.terminal, true);
   const shell = runtime.capabilities.shells.find((entry) => entry.available && entry.id === (process.platform === 'win32' ? 'powershell' : 'bash'));
   assert.ok(shell);
@@ -124,6 +125,7 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   });
   assert.equal(first.status, 200);
   assert.equal((await first.json()).operation.cwdPersistence, 'updated');
+  assert.equal(running.shellSession.cwd, join(project.root, 'tools'));
   const after = await (await fetch(`${base}/runtime`)).json();
   assert.equal(after.terminal.displayCwd, 'tools');
   const exact = 'echo HUD_TERMINAL_OK';
@@ -135,6 +137,22 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   assert.equal(second.status, 200);
   assert.equal(result.operation.displayCommand, exact);
   assert.equal(result.operation.cwdBefore, join(project.root, 'tools'));
+  const conversation = await (await fetch(`${base}/conversation?limit=10`)).json();
+  const exchange = conversation.items.filter((item) => item.runId === result.runId);
+  assert.deepEqual(exchange.map((item) => item.kind), ['command', 'result']);
+  assert.equal(exchange[0].content.command, exact);
+  assert.equal(exchange[1].content.status, 'pass');
+  assert.equal(exchange[1].evidence.stdout.path, result.evidence.stdout);
+  assert.equal('content' in exchange[1].evidence.stdout, false);
+  const cwdBuiltin = await fetch(`${base}/operations/terminal`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ shell: shell.id, command: '/cwd' }),
+  });
+  assert.equal(cwdBuiltin.status, 200);
+  const cwdResult = await cwdBuiltin.json();
+  assert.equal(cwdResult.kind, 'builtin');
+  assert.equal(cwdResult.result.name, 'cwd');
+  assert.equal(cwdResult.result.text, join(project.root, 'tools'));
   assert.equal((await fetch(`${base}/operations/terminal`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ shell: shell.id, command: exact, cwd: '..' }),
