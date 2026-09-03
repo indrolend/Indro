@@ -10,23 +10,46 @@ export class ShellSession {
     this.providers = providers;
     this.provider = provider;
     this.activeExecution = null;
+    this.listeners = new Set();
+    this.executionSequence = 0;
   }
 
   get shell() { return this.provider; }
   get shells() { return this.providers; }
 
   async execute(input, { source = 'terminal-ui', ...options } = {}) {
-    if (this.isBuiltin(input)) return executeShellBuiltin(this, input);
+    if (this.isBuiltin(input)) {
+      const startedAt = new Date().toISOString();
+      const result = await executeShellBuiltin(this, input);
+      this.publish({ type: 'builtin', command: String(input), startedAt, completedAt: new Date().toISOString(), result });
+      return result;
+    }
     if (this.activeExecution) throw new Error('A shell operation is already active.');
     const controller = new AbortController();
-    const execution = { controller, input: String(input), source, startedAt: new Date().toISOString() };
+    const execution = {
+      id: `active:${++this.executionSequence}`, controller, input: String(input), source,
+      cwd: this.cwd, provider: this.provider.id, startedAt: new Date().toISOString(), runId: null,
+    };
     this.activeExecution = execution;
+    this.publish({ type: 'execution-start', execution: this.executionView(execution) });
     try {
       const record = await this.provider.execute({
-        input: String(input), cwd: this.cwd, signal: controller.signal, source, options,
+        input: String(input), cwd: this.cwd, signal: controller.signal, source,
+        options: {
+          ...options,
+          onStart: (value) => {
+            Object.assign(execution, { runId: value.runId, startedAt: value.startedAt, stdoutPath: value.stdoutPath, stderrPath: value.stderrPath });
+            this.publish({ type: 'execution-update', execution: this.executionView(execution) });
+            options.onStart?.(value);
+          },
+        },
       });
       this.cwd = record.operation.cwdAfter;
+      this.publish({ type: 'execution-end', execution: this.executionView(execution), record });
       return record;
+    } catch (error) {
+      this.publish({ type: 'execution-end', execution: this.executionView(execution), error });
+      throw error;
     } finally {
       if (this.activeExecution === execution) this.activeExecution = null;
     }
@@ -61,6 +84,24 @@ export class ShellSession {
 
   isBuiltin(text) {
     return matchesShellBuiltin(text);
+  }
+
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('Shell session listener must be a function.');
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  publish(event) {
+    for (const listener of this.listeners) {
+      try { listener(event); } catch {}
+    }
+  }
+
+  executionView(execution = this.activeExecution) {
+    if (!execution) return null;
+    const { controller: _controller, ...view } = execution;
+    return { ...view, canCancel: true };
   }
 }
 
