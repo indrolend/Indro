@@ -1625,7 +1625,7 @@ export async function discoverShells(root = process.cwd()) {
   return shells;
 }
 
-function repositoryDirectory(root, requested) {
+export function repositoryDirectory(root, requested) {
   const target = resolve(requested || root);
   const inside = relative(root, target);
   if (isAbsolute(inside) || inside === '..' || inside.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`)) {
