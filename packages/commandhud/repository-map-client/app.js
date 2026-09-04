@@ -118,12 +118,14 @@
   }
 
   function showRuntime(value = null) {
+    const terminalWasReady = chatButton.classList.contains('ready');
     runtime = value;
     const label = $('#runtimeState');
     label.textContent = value?.busy ? `busy · ${value.busy.type}` : liveState ? 'ready' : 'static';
     label.className = value?.busy ? 'warn' : 'good';
     const terminalEnabled = Boolean(value?.capabilities?.terminal);
     chatButton.classList.toggle('ready', terminalEnabled);
+    if (terminalEnabled && !terminalWasReady) queueMicrotask(() => toggleConversation(true));
     $('#terminal').classList.toggle('desktop-terminal', terminalEnabled);
     if (terminalEnabled) {
       const shellSelect = $('#terminalShell');
@@ -167,7 +169,7 @@
       summary.textContent = (item.content.summary || []).join('\n') || (item.content.exitCode === null || item.content.exitCode === undefined ? '' : `exit ${item.content.exitCode}`);
       const meta = document.createElement('div');
       meta.className = 'conversation-meta';
-      meta.textContent = [duration(item.content.durationMs), item.runId ? `run:${item.runId}` : '', item.content.cwdAfter || ''].filter(Boolean).join(' · ');
+      meta.textContent = duration(item.content.durationMs);
       card.append(status, summary, meta);
       if (item.runId && (item.capabilities?.canViewRaw || item.capabilities?.canCancel)) {
         const actions = document.createElement('div');
@@ -175,7 +177,7 @@
         if (item.capabilities.canCancel) actions.append(outputAction('Stop', 'confirm', () => cancelActiveRun(item.runId)));
         if (item.capabilities.canViewRaw) actions.append(
           outputAction('Raw', '', () => showEvidence(item.runId, 'stdout')),
-          outputAction('Evidence', '', () => showHistoryDetail(item.runId)),
+          outputAction('Details', '', () => showHistoryDetail(item.runId)),
         );
         card.appendChild(actions);
       }
@@ -195,12 +197,15 @@
 
   function toggleConversation(force) {
     const open = force === undefined ? !conversation.classList.contains('open') : Boolean(force);
-    if (open && window.innerWidth <= 640) {
+    if (open) {
       app.classList.add('tree-closed');
       $('#treeToggle').setAttribute('aria-expanded', 'false');
     }
+    app.classList.toggle('chat-open', open);
     conversation.classList.toggle('open', open);
     chatButton.setAttribute('aria-expanded', String(open));
+    chatButton.textContent = open ? 'Files' : 'Shell';
+    chatButton.setAttribute('aria-label', open ? 'Open repository files' : 'Open computational conversation');
     if (open) refreshConversation();
   }
 
@@ -1294,8 +1299,8 @@
     currentDirectory = search.scope;
     openDirectories.add(search.scope);
   }
-  $('.brand').textContent = state.project.name;
-  $('.branch').textContent = state.git.branch;
+  $('.brand').textContent = 'CommandHUD';
+  $('.branch').textContent = `${state.project.name} · ${state.git.branch}`;
   $('#branchValue').textContent = state.git.branch;
   $('#fileCount').textContent = String(repository.fileCount);
   $('#changeCount').textContent = String(countChanged());

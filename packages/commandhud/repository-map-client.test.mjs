@@ -40,11 +40,16 @@ test('Repository Map client exposes a native terminal-chat composer over authori
   assert.match(html, /id="conversationItems" aria-live="polite"/);
   assert.match(html, /<textarea id="commandInput"[^>]+aria-label="Executable command"[^>]+placeholder="Run a command…"/);
   assert.match(html, /id="chatButton"[^>]+>Shell</);
+  assert.match(html, /\.app\.chat-open/);
   assert.match(app, /fetch\('\/conversation\?limit=20'/);
   assert.match(app, /content\.command/);
   assert.match(app, /capabilities\?\.canViewRaw/);
   assert.match(app, /capabilities\?\.canCancel/);
   assert.match(app, /outputAction\('Stop'/);
+  assert.match(app, /outputAction\('Details'/);
+  assert.match(app, /chatButton\.textContent = open \? 'Files' : 'Shell'/);
+  assert.match(app, /terminalEnabled && !terminalWasReady/);
+  assert.match(app, /textContent = 'CommandHUD'/);
   assert.match(app, /showEvidence\(item\.runId, 'stdout'\)/);
   assert.match(app, /window\.innerWidth <= 640/);
   assert.match(app, /input\.blur\(\)/);
