@@ -708,6 +708,9 @@ test('reducers retain concise evidence and cause classification', () => {
   assert.deepEqual(modernNodePass.summary, ['28/28 node tests']);
   const fail = reduceOutput('npm test', '', 'Error: assertion failed', 1);
   assert.equal(fail.classification, 'test');
+  const nodeFailure = reduceOutput('npm test', '✔ failed operation preserves status and exit code\n✖ search records real scoped matches\nℹ tests 2\nℹ pass 1\nℹ fail 1', '', 1);
+  assert.match(nodeFailure.cause, /^✖ search records real scoped matches/);
+  assert.equal(nodeFailure.classification, 'test');
 });
 
 

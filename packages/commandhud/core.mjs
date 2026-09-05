@@ -921,15 +921,19 @@ export function reduceOutput(command, stdout, stderr, exitCode, { root = '', kin
   if (exitCode === 0) {
     for (const marker of successMarkers) if (analysisText.includes(marker.contains) && !summary.includes(marker.summary)) summary.push(marker.summary);
   }
-  const matchedCause = exitCode === 0 ? null : firstMatch(analysisText, [
+  const structuredTestCause = exitCode === 0 || !testCommand ? null : firstMatch(analysisText, [
+    /^[^\r\n]*(?:\u2716|not ok\b)[^\r\n]*$/im,
+  ]);
+  const matchedCause = structuredTestCause || (exitCode === 0 ? null : firstMatch(analysisText, [
     /[^\r\n]*(?:fatal|error|failed|exception|not found|is not recognized|cannot find)[^\r\n]*/i,
     /[^\r\n]*(?:FAIL|FAILED)[^\r\n]*/i,
-  ]);
+  ]));
   const cause = matchedCause ? boundedPresentationLine(matchedCause) : null;
   const classification = exitCode === 0 ? null
-    : /not found|not recognized|cannot find|ENOENT/i.test(cause || analysisText) ? 'environment'
-      : /test|assert|expect/i.test(cause || analysisText) ? 'test'
-        : /compile|link|cmake|msbuild/i.test(cause || analysisText) ? 'build' : 'command';
+    : structuredTestCause ? 'test'
+      : /not found|not recognized|cannot find|ENOENT/i.test(cause || analysisText) ? 'environment'
+        : /test|assert|expect/i.test(cause || analysisText) ? 'test'
+          : /compile|link|cmake|msbuild/i.test(cause || analysisText) ? 'build' : 'command';
   const tail = text.split(/\r?\n/).filter(Boolean).slice(-8).map((line) => boundedPresentationLine(line));
   const markers = resultMarkers ? (observedMarkers || parseResultMarkers(stdout, stderr)) : [];
   return { reducer: /npm/.test(command) ? 'npm' : /ctest/.test(command) ? 'ctest' : 'generic', summary, cause, classification, tail, markers };
