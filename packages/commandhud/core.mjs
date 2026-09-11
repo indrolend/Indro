@@ -659,19 +659,31 @@ export function discoverCommands(root) {
   return repositoryCommandDefinitions(root).map(({ name, command }) => ({ name, command }));
 }
 
-async function versionOf(command, args = ['--version']) {
+export async function discoverCapability(name, command = name, { args = ['--version'], cwd = process.cwd(), supported = true } = {}) {
+  if (!supported) return { name, command, state: 'unsupported', available: false, version: null };
   const result = platform() === 'win32' && command === 'npm'
-    ? await exec(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `npm ${args.join(' ')}`], process.cwd())
-    : await exec(command, args, process.cwd());
-  return result.ok ? (result.stdout || result.stderr).split(/\r?\n/)[0] : 'missing';
+    ? await exec(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `npm ${args.join(' ')}`], cwd)
+    : await exec(command, args, cwd);
+  const version = result.ok ? (result.stdout || result.stderr).split(/\r?\n/)[0] : null;
+  return { name, command, state: result.ok ? 'available' : 'missing', available: result.ok, version };
+}
+
+export async function discoverCapabilities() {
+  const declarations = [
+    ['git', 'git'], ['node', 'node'], ['npm', 'npm'], ['rg', 'rg'], ['cmake', 'cmake'], ['python', 'python'],
+    ['msbuild', 'msbuild', platform() === 'win32'],
+  ];
+  const entries = await Promise.all(declarations.map(async ([name, command, supported = true]) => [
+    name, await discoverCapability(name, command, { supported }),
+  ]));
+  return Object.fromEntries(entries);
 }
 
 export async function discoverTools() {
-  const entries = await Promise.all([
-    ['git', 'git'], ['node', 'node'], ['npm', 'npm'], ['cmake', 'cmake'], ['python', 'python'],
-  ].map(async ([name, command]) => [name, await versionOf(command)]));
-  if (platform() === 'win32') entries.push(['msbuild', await versionOf('msbuild')]);
-  return Object.fromEntries(entries);
+  const capabilities = await discoverCapabilities();
+  return Object.fromEntries(Object.entries(capabilities).map(([name, capability]) => [
+    name, capability.version || capability.state,
+  ]));
 }
 
 function firstMatch(text, patterns) {
@@ -984,7 +996,9 @@ function createRunId(date = new Date()) {
 export function buildPacket(record) {
   const status = record.status.toUpperCase();
   const change = record.gitAfter.changedFiles.length ? record.gitAfter.changedFiles.join(' | ') : 'none';
-  const verify = record.status === 'interrupted' ? 'completion was not observed'
+  const unavailableCapability = record.operation?.executionAttempted === false ? record.operation.requiredCapability : null;
+  const verify = unavailableCapability ? `execution not attempted; required capability ${unavailableCapability} is ${record.operation.capability?.state || 'unavailable'}`
+    : record.status === 'interrupted' ? 'completion was not observed'
     : record.reduction.summary.length ? record.reduction.summary.join('; ') : `exit ${record.exitCode}`;
   const packet = {
     STATUS: status,
@@ -992,18 +1006,69 @@ export function buildPacket(record) {
     AUTHORITY: `${record.gitAfter.head} branch=${record.gitAfter.branch} dirty=${record.gitAfter.dirty}`,
     CHANGE: change,
     VERIFY: verify,
-    RESULT: record.status === 'interrupted' ? 'operation interrupted; inspect retained evidence and worktree changes'
+    RESULT: unavailableCapability ? `operation blocked before execution; provide ${unavailableCapability}`
+      : record.status === 'interrupted' ? 'operation interrupted; inspect retained evidence and worktree changes'
       : record.operation?.type === 'search' && record.status === 'pass'
       ? `${record.operation.matchCount} matches / ${record.operation.fileCount} files`
       : record.exitCode === 0 ? 'requested command completed' : `command exited ${record.exitCode}`,
   };
   if (record.reduction.cause) packet.CAUSE = `${record.reduction.classification}: ${record.reduction.cause}`;
-  packet.FRONTIER = record.status === 'pass' ? 'select the next bounded objective' : `inspect ${record.stdoutPath} and ${record.stderrPath}`;
+  packet.FRONTIER = unavailableCapability ? `install ${unavailableCapability}, ensure it is on PATH, then retry`
+    : record.status === 'pass' ? 'select the next bounded objective' : `inspect ${record.stdoutPath} and ${record.stderrPath}`;
   return packet;
 }
 
 export function formatPacket(packet) {
   return Object.entries(packet).map(([key, value]) => `${key}=${value}`).join('\n');
+}
+
+async function recordBlockedOperation(project, {
+  request, objective, command, argv, origin, reason, operation,
+}) {
+  const started = new Date();
+  const [before, currencyBefore] = await Promise.all([
+    gitSnapshot(project.root), repositoryCurrency(project.root, project.identity.id),
+  ]);
+  const id = createRunId();
+  const runDirectory = join(project.store, 'runs', project.key, id);
+  mkdirSync(dirname(runDirectory), { recursive: true });
+  mkdirSync(runDirectory, { recursive: false });
+  const stdoutPath = join(runDirectory, 'stdout.log');
+  const stderrPath = join(runDirectory, 'stderr.log');
+  const stderr = `${reason}\n`;
+  writeFileSync(stdoutPath, '', { flag: 'wx' });
+  writeFileSync(stderrPath, stderr, { flag: 'wx' });
+  const ended = new Date();
+  const provenance = { origin, finalizedBy: 'capability-preflight' };
+  const reduction = reduceOutput(command, '', stderr, null, { root: project.root });
+  const record = {
+    schemaVersion: SCHEMA_VERSION, id, project: project.identity.id, root: project.root,
+    operationId: id, inputText: command,
+    branch: before.branch, headBefore: before.head, headAfter: before.head, upstream: before.upstream,
+    request, command, transportCommand: command, argv, cwd: project.root, objective,
+    workflow: null, startedAt: started.toISOString(), endedAt: ended.toISOString(), durationMs: ended - started,
+    exitCode: null, processExitCode: null, status: 'blocked', resultClassification: 'BLOCKED', resultReason: 'CAPABILITY_UNAVAILABLE', capturedFailure: null,
+    dirtyBefore: before.dirty, dirtyAfter: before.dirty, changedFiles: before.changedFiles,
+    gitBefore: before, gitAfter: before, currencyBefore, currencyAfter: currencyBefore,
+    stdoutPath, stderrPath, reducer: reduction.reducer, reduction,
+    evidence: {
+      stdout: { bytes: 0, sha256: `sha256:${createHash('sha256').digest('hex')}` },
+      stderr: { bytes: Buffer.byteLength(stderr), sha256: `sha256:${createHash('sha256').update(stderr).digest('hex')}` },
+    },
+    capture: {
+      mode: 'bounded', limitCharacters: 1024 * 1024, stdoutBytes: 0, stderrBytes: Buffer.byteLength(stderr),
+      stdoutCharacters: 0, stderrCharacters: stderr.length, stdoutTruncated: false, stderrTruncated: false,
+    },
+    provenance,
+    operation: { ...operation, provenance },
+  };
+  record.presentation = buildPresentation(record);
+  record.packet = buildPacket(record);
+  atomicWriteJson(join(runDirectory, 'run.json'), record, { exclusive: true });
+  const state = readProjectState(project);
+  state.lastRunId = id;
+  writeProjectState(project, state);
+  return record;
 }
 
 export async function runCommand(project, tokens, {
@@ -1084,6 +1149,7 @@ export async function runCommand(project, tokens, {
   try {
     atomicWriteJson(inflightPath, {
       schemaVersion: SCHEMA_VERSION, id, project: project.identity.id, root: project.root,
+      operationId: id, inputText: command,
       request: request || null, command, transportCommand, argv: tokens, cwd, objective: objective || null,
       startedAt: started.toISOString(), pid: child.pid, captureDelta, treeBefore,
       gitBefore: before, currencyBefore, stdoutPath, stderrPath, operationIdentity, resultMarkers,
@@ -1170,6 +1236,7 @@ export async function runCommand(project, tokens, {
   const accepted = acceptedExitCodes.includes(exitCode);
   const record = {
     schemaVersion: SCHEMA_VERSION, id, project: project.identity.id, root: project.root,
+    operationId: id, inputText: command,
     branch: before.branch, headBefore: before.head, headAfter: after.head, upstream: before.upstream,
     request: request || null, command, transportCommand, argv: tokens, cwd, objective: objective || null,
     workflow: workflow ? {
@@ -1180,7 +1247,10 @@ export async function runCommand(project, tokens, {
       count: Number.isInteger(workflow.count) ? workflow.count : null,
     } : null,
     startedAt: started.toISOString(), endedAt: ended.toISOString(), durationMs: ended - started,
-    exitCode, status: cancellationRequested ? 'cancelled' : capturedFailure ? 'fail' : accepted ? 'pass' : missingCommand ? 'blocked' : 'fail',
+    exitCode, processExitCode: exitCode,
+    status: cancellationRequested ? 'cancelled' : capturedFailure ? 'fail' : accepted ? 'pass' : missingCommand ? 'blocked' : 'fail',
+    resultClassification: cancellationRequested ? 'CANCELLED' : capturedFailure ? 'FAIL' : accepted ? 'PASS' : missingCommand ? 'BLOCKED' : 'FAIL',
+    resultReason: cancellationRequested ? 'USER_CANCELLED' : capturedFailure ? 'POWERSHELL_ERROR_RECORD' : accepted ? 'ACCEPTED_EXIT_CODE' : missingCommand ? 'COMMAND_UNAVAILABLE' : 'NONZERO_EXIT',
     capturedFailure,
     dirtyBefore: before.dirty, dirtyAfter: after.dirty,
     changedFiles: after.changedFiles, gitBefore: before, gitAfter: after,
@@ -1299,11 +1369,13 @@ export async function recoverInterruptedRuns(project) {
     });
     const record = {
       schemaVersion: SCHEMA_VERSION, id, project: project.identity.id, root: project.root,
+      operationId: id, inputText: inflight.inputText || inflight.command,
       branch: inflight.gitBefore.branch, headBefore: inflight.gitBefore.head, headAfter: after.head, upstream: inflight.gitBefore.upstream,
       request: inflight.request, command: inflight.command, transportCommand: inflight.transportCommand || inflight.command,
       argv: inflight.argv, cwd: inflight.cwd || project.root, objective: inflight.objective,
       workflow: null, startedAt: inflight.startedAt, endedAt: ended.toISOString(),
-      durationMs: Math.max(0, ended - new Date(inflight.startedAt)), exitCode: null, status: 'interrupted',
+      durationMs: Math.max(0, ended - new Date(inflight.startedAt)), exitCode: null, processExitCode: null,
+      status: 'interrupted', resultClassification: 'INTERRUPTED', resultReason: 'PROCESS_GONE_DURING_RECOVERY',
       dirtyBefore: inflight.gitBefore.dirty, dirtyAfter: after.dirty, changedFiles: after.changedFiles,
       gitBefore: inflight.gitBefore, gitAfter: after, currencyBefore: inflight.currencyBefore, currencyAfter,
       stdoutPath: inflight.stdoutPath, stderrPath: inflight.stderrPath, reducer: reduction.reducer, reduction,
@@ -1423,11 +1495,27 @@ function repositoryScope(root, requested = '.') {
   return scope;
 }
 
-export async function searchRepository(project, query, scope = '.', { stream = false, tool = 'rg', origin = 'core-api' } = {}) {
+export async function searchRepository(project, query, scope = '.', { stream = false, tool = 'rg', toolArgs = [], origin = 'core-api' } = {}) {
   if (!String(query || '')) throw new Error('hud search requires a query.');
   const selectedScope = repositoryScope(project.root, scope);
-  const availability = await exec(tool, ['--version'], project.root);
-  const tokens = [tool, '-n', '--no-heading', '--with-filename', '--color', 'never', '--fixed-strings', '--', String(query), selectedScope];
+  if (!Array.isArray(toolArgs) || toolArgs.some((argument) => typeof argument !== 'string')) throw new Error('Search tool arguments must be strings.');
+  const capability = await discoverCapability('rg', tool, { args: [...toolArgs, '--version'], cwd: project.root });
+  const tokens = [tool, ...toolArgs, '-n', '--no-heading', '--with-filename', '--color', 'never', '--fixed-strings', '--', String(query), selectedScope];
+  const command = tokens.map((token) => /[\s"']/.test(token) ? JSON.stringify(token) : token).join(' ');
+  if (!capability.available) {
+    return recordBlockedOperation(project, {
+      request: `search ${query} in ${selectedScope}`,
+      objective: `Find ${query} in ${selectedScope}`,
+      command, argv: tokens, origin,
+      reason: `Search was not executed because required capability rg is ${capability.state}. Install ripgrep and ensure rg is available on PATH.`,
+      operation: {
+        type: 'search', query: String(query), scope: selectedScope, tool,
+        toolAvailable: false, requiredCapability: 'rg', capability,
+        executionAttempted: false, command, exitCode: null,
+        matchCount: 0, fileCount: 0, files: [], detailsTruncated: false,
+      },
+    });
+  }
   const searchCollector = createSearchOutputCollector();
   return runCommand(project, tokens, {
     request: `search ${query} in ${selectedScope}`,
@@ -1441,7 +1529,8 @@ export async function searchRepository(project, query, scope = '.', { stream = f
       const result = exitCode <= 1 ? observedOutput : { matches: 0, fileCount: 0, files: [], detailsTruncated: false };
       return {
         type: 'search', query: String(query), scope: selectedScope,
-        tool, toolAvailable: availability.ok, command, exitCode,
+        tool, toolAvailable: true, requiredCapability: 'rg', capability,
+        executionAttempted: true, command, exitCode,
         matchCount: result.matches, fileCount: result.fileCount,
         files: result.files.map(({ linesTruncated, ...file }) => linesTruncated ? { ...file, linesTruncated: true } : file),
         detailsTruncated: result.detailsTruncated,

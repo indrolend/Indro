@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCommands, discoverTools, lintRepository, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `hate.this.meaningless.life · context condenser
 
@@ -180,7 +180,8 @@ function printStorage(value) {
 }
 
 async function context(project, json) {
-  const [git, tools] = await Promise.all([gitSnapshot(project.root), discoverTools()]);
+  const [git, capabilities] = await Promise.all([gitSnapshot(project.root), discoverCapabilities()]);
+  const tools = Object.fromEntries(Object.entries(capabilities).map(([name, capability]) => [name, capability.version || capability.state]));
   let update;
   try { update = await fetchUpdate(project); } catch (error) { update = { status: 'unknown', error: error.message }; }
   const previous = lastRun(project);
@@ -188,7 +189,7 @@ async function context(project, json) {
     project: project.identity.id, root: project.root, branch: git.branch, head: git.head,
     upstream: git.upstream || 'none', dirty: git.dirty, ahead: git.ahead ?? 'unknown', behind: git.behind ?? 'unknown',
     platform: process.platform === 'win32' ? 'windows-x64' : `${process.platform}-${process.arch}`,
-    tools, commands: discoverCommands(project.root), distribution: update,
+    tools, capabilities, commands: discoverCommands(project.root), distribution: update,
     lastRun: previous ? { id: previous.id, objective: previous.objective || previous.command, status: previous.status } : null,
     frontier: previous?.packet?.FRONTIER || 'select the first bounded objective',
   };
@@ -503,7 +504,9 @@ async function main() {
     return options.json ? console.log(JSON.stringify(value, null, 2)) : console.log(`${command.toUpperCase()}=${value?.value || 'none'}`);
   }
   if (command === 'tools') {
-    const value = { tools: await discoverTools(), commands: discoverCommands(project.root) };
+    const capabilities = await discoverCapabilities();
+    const tools = Object.fromEntries(Object.entries(capabilities).map(([name, capability]) => [name, capability.version || capability.state]));
+    const value = { tools, capabilities, commands: discoverCommands(project.root) };
     return options.json ? console.log(JSON.stringify(value, null, 2)) : (console.log('TOOLS'), printObject(value.tools), console.log('PROJECT_COMMANDS'), value.commands.forEach((item) => console.log(`${item.name}=${item.command}`)));
   }
   if (command === 'run') {

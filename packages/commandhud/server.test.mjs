@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { resolveProject, searchRepository } from './core.mjs';
 import { startHudServer } from './server.mjs';
+
+const searchFixture = fileURLToPath(new URL('./search-tool.fixture.mjs', import.meta.url));
 
 function fixtureProject() {
   const root = mkdtempSync(join(tmpdir(), 'hud-server-'));
@@ -182,8 +185,11 @@ test('live session streams operation state and validated shared navigation', asy
 
 test('HUD server serializes typed operations and exposes bounded evidence, live reads, and media', async (t) => {
   const project = await fixtureProject();
-  await searchRepository(project, 'RIFF', 'media');
-  const running = await startHudServer(project, { port: 0 });
+  await searchRepository(project, 'RIFF', 'media', { tool: process.execPath, toolArgs: [searchFixture] });
+  const running = await startHudServer(project, {
+    port: 0,
+    searchOptions: { tool: process.execPath, toolArgs: [searchFixture] },
+  });
   t.after(() => new Promise((resolveClose) => running.server.close(resolveClose)));
   const base = `http://127.0.0.1:${running.port}`;
 
@@ -261,7 +267,11 @@ test('HUD server serializes typed operations and exposes bounded evidence, live 
   assert.equal(searchResponse.status, 200);
   const search = await searchResponse.json();
   assert.equal(search.status, 'pass');
-  assert.equal(search.operation.command, 'rg -n --no-heading --with-filename --color never --fixed-strings -- RIFF media');
+  assert.equal(search.operation.tool, process.execPath);
+  assert.equal(search.operation.capability.state, 'available');
+  assert.equal(search.operation.executionAttempted, true);
+  assert.match(search.operation.command, /search-tool\.fixture\.mjs/);
+  assert.match(search.operation.command, /-- RIFF media$/);
   assert.deepEqual(search.operation.files, [{ path: 'media/tone.wav', count: 1, lines: [1] }]);
   assert.equal(search.state.last.runId, search.runId);
   assert.deepEqual(search.state.lastOperation, search.operation);

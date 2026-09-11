@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { createTuiInputRouter, deliverShellProjection, deliverShellResult, encodeClipboardInput, parseShellEvidenceCommand, renderShellEvidenceProjection, renderShellResult, routeTuiInput, shellInputIncomplete, startHudShell } from './shell.mjs';
+import { createTuiInputRouter, decodeComposerText, deliverShellProjection, deliverShellResult, encodeClipboardInput, parseShellEvidenceCommand, renderShellEvidenceProjection, renderShellResult, routeTuiInput, shellInputIncomplete, startHudShell } from './shell.mjs';
 import { listRuns, resolveProject, runRepositoryCommand } from './core.mjs';
 
 async function shellProject() {
@@ -70,6 +70,26 @@ test('TUI input buffers fragmented SGR mouse packets instead of leaking partial 
   route('24m');
   assert.equal(typed.join(''), 'echo ok');
   assert.deepEqual(dispatched, ['copy']);
+});
+
+test('TUI bracketed paste keeps 100 lines in one composer buffer and never submits them', () => {
+  const typed = [];
+  const dispatched = [];
+  const layout = {
+    actionAt() { return null; }, setHover() {}, setFocus() {}, moveFocus() {},
+    get focusedAction() { return null; },
+  };
+  const route = createTuiInputRouter({
+    layout, dispatch: (action) => dispatched.push(action), writeText: (text) => typed.push(text),
+  });
+  const wall = Array.from({ length: 100 }, (_, index) => `Write-Output ${index + 1}`).join('\r\n');
+  route(`\x1b[20`);
+  route(`0~${wall.slice(0, 317)}`);
+  route(`${wall.slice(317)}\x1b[20`);
+  route('1~');
+  assert.equal(decodeComposerText(typed.join('')), wall);
+  assert.equal(dispatched.length, 0);
+  assert.doesNotMatch(typed.join(''), /[\r\n]/);
 });
 
 test('terminal evidence commands target the latest or an explicit immutable run', () => {

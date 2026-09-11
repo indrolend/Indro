@@ -16,9 +16,11 @@ test('fixed terminal layout uses alternate screen and stable top and bottom regi
   const output = { columns: 60, rows: 20, write: (text) => { value += text; }, on() {}, off() {} };
   const layout = createShellLayout(output);
   layout.start();
+  assert.match(value, /\x1b\[\?2004h/);
   layout.renderOutput('PASS\nSHORTENED OUTPUT\nOK');
   layout.placePrompt();
   layout.finish();
+  assert.match(value, /\x1b\[\?2004l/);
   assert.match(value, /\x1b\[\?1049h/);
   assert.match(value, /\x1b\[1;1H.*hate\.this\.meaningless\.life/);
   assert.match(value, /\x1b7\x1b\[6;1H.*PASS/);

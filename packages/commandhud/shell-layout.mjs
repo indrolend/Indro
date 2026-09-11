@@ -132,7 +132,7 @@ export function createShellLayout(output, { enabled = true } = {}) {
     if (!enabled || active) return;
     active = true;
     output.on?.('resize', frame);
-    output.write(`${CSI}?1049h${CSI}?1003h${CSI}?1006h${CSI}?25h${CSI}2J`);
+    output.write(`${CSI}?1049h${CSI}?1003h${CSI}?1006h${CSI}?2004h${CSI}?25h${CSI}2J`);
     frame();
   }
 
@@ -142,7 +142,7 @@ export function createShellLayout(output, { enabled = true } = {}) {
     if (!active) return;
     output.off?.('resize', frame);
     active = false;
-    output.write(`${CSI}?1003l${CSI}?1006l${CSI}?1049l${CSI}?25h`);
+    output.write(`${CSI}?2004l${CSI}?1003l${CSI}?1006l${CSI}?1049l${CSI}?25h`);
   }
 
   function actionAt(column, row) {
