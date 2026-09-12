@@ -136,6 +136,12 @@ Each `run.json` is created immutably and records repository currency before and 
 
 `hud continue` compares durable evidence with the current HEAD and a content fingerprint of tracked and non-ignored untracked files. Evidence is `CURRENT`, `STALE`, or `UNKNOWN`; legacy records without currency remain readable and are classified `UNKNOWN`.
 
+## Bounded operations and doctor
+
+The execution core classifies operations as `finite`, `probe`, `interactive`, `watch`, `detached`, or `training`. Probe operations require a deadline. Recorded finite/probe evidence includes the mode, configured timeout, observed timeout state, immediate native exit code, duration, stdout/stderr byte counts and hashes, and declared output validity. A declared output is invalid when it is empty, whitespace-only, or BOM-only; file existence alone is not proof of content.
+
+`hud doctor` runs independent bounded probes for Node.js, Git, the selected repository, and ripgrep. One failure does not prevent later probes. Normal output is a compact summary plus immutable evidence IDs; `hud doctor --json` returns the structured result. Individual retained runs distinguish deadline expiry, unavailable commands, nonzero exits, and invalid output.
+
 ## Current architecture
 
 The core follows one directional data flow:

@@ -74,6 +74,26 @@
     ],
   };
   const discovered = state?.commands || [];
+  const renderActionDock = () => {
+    const container = $('#actionButtons');
+    const actions = discovered.filter((entry) => entry.action).slice(0, 5).map((entry) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'action-button';
+      button.textContent = entry.action;
+      button.title = entry.command;
+      button.onclick = () => confirmRepositoryCommand([entry.action, 'Repository-declared action.', entry.command, 'repository', entry.name]);
+      return button;
+    });
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'action-button';
+    undo.textContent = 'Undo';
+    undo.title = 'Inspect and undo the latest reversible operation.';
+    undo.onclick = showLatestUndo;
+    container.replaceChildren(...actions, undo);
+    $('#actionDock').hidden = false;
+  };
   const packageNames = discovered.filter((entry) => entry.name.startsWith('npm:')).map((entry) => entry.name.slice(4));
   const namespaces = new Set(packageNames.filter((name) => name.includes(':')).map((name) => name.split(':')[0]));
   const libraryGroups = new Map();
@@ -1410,6 +1430,7 @@
   renderMap();
   resetCamera();
   renderPicker();
+  renderActionDock();
   if (window.innerWidth <= 640) {
     app.classList.add('tree-closed');
     $('#treeToggle').setAttribute('aria-expanded', 'false');

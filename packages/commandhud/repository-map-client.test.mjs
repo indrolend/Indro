@@ -12,6 +12,7 @@ test('Repository Map client exposes one main menu over one command directory', (
   assert.equal((html.match(/id="toolkitButton"/g) || []).length, 1);
   assert.match(html, /aria-label="Open main HUD menu"/);
   assert.match(html, /aria-label="Main HUD menu"/);
+  assert.match(html, /aria-label="Repository actions"/);
   assert.doesNotMatch(html, /id="(?:categories|undoButton|historyButton|refreshState)"/);
   assert.match(app, /HUD: \[/);
   assert.match(app, /'undo'\]/);
@@ -21,6 +22,10 @@ test('Repository Map client exposes one main menu over one command directory', (
   assert.match(app, /fetch\('\/operations\/lint'/);
   assert.match(app, /stageCommand\('hud lint'\)/);
   assert.match(app, /Commands ·/);
+  assert.match(app, /renderActionDock/);
+  assert.match(app, /filter\(\(entry\) => entry\.action\)\.slice\(0, 5\)/);
+  assert.match(app, /button\.textContent = entry\.action/);
+  assert.match(app, /undo\.onclick = showLatestUndo/);
   assert.doesNotMatch(app, /Library ·/);
   assert.match(app, /openMenuSections = new Set\(\['HUD'\]\)/);
   assert.match(app, /dataset\.section/);

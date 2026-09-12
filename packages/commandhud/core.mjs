@@ -5,6 +5,7 @@ import { homedir, platform, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { promisify } from 'node:util';
+import { operationPolicy, validateOperationEvidence } from './operation-kernel.mjs';
 
 const execFileAsync = promisify(execFile);
 export const SCHEMA_VERSION = 1;
@@ -608,6 +609,7 @@ function repositoryCommandDefinitions(root) {
     const successMarkers = entry?.successMarkers || [];
     const resultMarkers = entry?.resultMarkers ?? false;
     const kind = entry?.kind || null;
+    const action = entry?.action === undefined ? null : (typeof entry.action === 'string' ? entry.action.trim() : entry.action);
     const stageMarker = entry?.stageMarker ?? null;
     const stages = entry?.stages ?? [];
     if (!/^[a-z0-9][a-z0-9:._-]*$/i.test(name) || !command || !Array.isArray(argv) || !argv.length || argv.some((value) => typeof value !== 'string' || !value)) {
@@ -620,6 +622,9 @@ function repositoryCommandDefinitions(root) {
     }
     if (typeof resultMarkers !== 'boolean') throw new Error(`Invalid CommandHUD result marker declaration: ${name}`);
     if (kind !== null && !['test', 'audit', 'smoke', 'lint'].includes(kind)) throw new Error(`Invalid CommandHUD command kind: ${name}`);
+    if (action !== null && (typeof action !== 'string' || !/^[A-Za-z][A-Za-z0-9 ]{0,15}$/.test(action))) {
+      throw new Error(`Invalid CommandHUD action declaration: ${name}`);
+    }
     if (stageMarker !== null && (typeof stageMarker !== 'string' || !/^[A-Z][A-Z0-9_]{1,63}$/.test(stageMarker))) {
       throw new Error(`Invalid CommandHUD stage marker declaration: ${name}`);
     }
@@ -644,7 +649,7 @@ function repositoryCommandDefinitions(root) {
     }
     if (commands.some((item) => item.name === name)) throw new Error(`Duplicate repository command identity: ${name}`);
     commands.push({
-      name, command, argv: [...argv], kind, resultMarkers, stageMarker,
+      name, command, argv: [...argv], kind, action, resultMarkers, stageMarker,
       stages: stages.map((stage) => ({
         name: stage.name.trim(),
         paths: stage.paths.map((path) => path.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '') || '.'),
@@ -652,11 +657,14 @@ function repositoryCommandDefinitions(root) {
       successMarkers: successMarkers.map((marker) => ({ contains: marker.contains, summary: marker.summary })),
     });
   }
+  const actions = commands.filter(({ action }) => action != null);
+  if (actions.length > 5) throw new Error('CommandHUD supports at most five repository actions.');
+  if (new Set(actions.map(({ action }) => action.toLowerCase())).size !== actions.length) throw new Error('CommandHUD repository action labels must be unique.');
   return commands;
 }
 
 export function discoverCommands(root) {
-  return repositoryCommandDefinitions(root).map(({ name, command }) => ({ name, command }));
+  return repositoryCommandDefinitions(root).map(({ name, command, action }) => ({ name, command, ...(action ? { action } : {}) }));
 }
 
 export async function discoverCapability(name, command = name, { args = ['--version'], cwd = process.cwd(), supported = true } = {}) {
@@ -1079,6 +1087,7 @@ export async function runCommand(project, tokens, {
   origin = 'core-api', classifyCapturedFailure = null,
   captureOutput = 'bounded', captureLimitCharacters = 1024 * 1024,
   outputObserver = null,
+  mode = 'finite', timeoutMs = null, requiredOutput = 'none',
 } = {}) {
   if (!tokens.length) throw new Error('hud run requires a command.');
   const origins = new Set(['core-api', 'cli-argv', 'terminal-ui', 'local-server']);
@@ -1087,6 +1096,7 @@ export async function runCommand(project, tokens, {
   if (!Number.isSafeInteger(captureLimitCharacters) || captureLimitCharacters < 1024) {
     throw new Error('Output capture limit must be an integer of at least 1024 characters.');
   }
+  const policy = operationPolicy({ mode, timeoutMs, requiredOutput });
   const transportCommand = tokens.map((token) => /[\s"']/.test(token) ? JSON.stringify(token) : token).join(' ');
   const command = displayCommand || transportCommand;
   const [before, currencyBefore, treeBefore] = await Promise.all([
@@ -1127,7 +1137,9 @@ export async function runCommand(project, tokens, {
   const started = new Date();
   let child;
   let cancellationRequested = false;
+  let timeoutRequested = false;
   let forceTimer = null;
+  let deadlineTimer = null;
   try {
     child = shell
       ? spawn(transportCommand, { cwd, shell: true, windowsHide: true, env: process.env })
@@ -1154,6 +1166,7 @@ export async function runCommand(project, tokens, {
       startedAt: started.toISOString(), pid: child.pid, captureDelta, treeBefore,
       gitBefore: before, currencyBefore, stdoutPath, stderrPath, operationIdentity, resultMarkers,
       captureOutput, captureLimitCharacters,
+      operationPolicy: policy,
       provenance: { origin },
     }, { exclusive: true });
   } catch (error) {
@@ -1171,6 +1184,13 @@ export async function runCommand(project, tokens, {
   if (signal) {
     if (signal.aborted) cancel();
     else signal.addEventListener('abort', cancel, { once: true });
+  }
+  if (policy.timeoutMs !== null) {
+    deadlineTimer = setTimeout(() => {
+      timeoutRequested = true;
+      cancel();
+    }, policy.timeoutMs);
+    deadlineTimer.unref?.();
   }
   onStart?.({ runId: id, command, startedAt: started.toISOString(), stdoutPath, stderrPath, pid: child.pid });
   child.stdout.on('data', (chunk) => {
@@ -1214,6 +1234,7 @@ export async function runCommand(project, tokens, {
     child.once('close', (code) => resolveCode(code ?? 1));
   });
   if (forceTimer) clearTimeout(forceTimer);
+  if (deadlineTimer) clearTimeout(deadlineTimer);
   signal?.removeEventListener?.('abort', cancel);
   await Promise.all([new Promise((r) => stdoutFile.end(r)), new Promise((r) => stderrFile.end(r))]);
   const stdout = stdoutCapture.chunks.join('');
@@ -1233,6 +1254,7 @@ export async function runCommand(project, tokens, {
     reduction.classification ||= capturedFailure.classification || 'command';
   }
   const missingCommand = exitCode !== 0 && /(?:command not found|is not recognized as (?:a name of |the name of )?a? ?(?:cmdlet|function|script file|executable program)|ENOENT)/i.test(normalizeTerminalText(`${stdout}\n${stderr}`));
+  const evidenceValidity = validateOperationEvidence({ stdout, stderr }, policy.requiredOutput);
   const accepted = acceptedExitCodes.includes(exitCode);
   const record = {
     schemaVersion: SCHEMA_VERSION, id, project: project.identity.id, root: project.root,
@@ -1248,9 +1270,10 @@ export async function runCommand(project, tokens, {
     } : null,
     startedAt: started.toISOString(), endedAt: ended.toISOString(), durationMs: ended - started,
     exitCode, processExitCode: exitCode,
-    status: cancellationRequested ? 'cancelled' : capturedFailure ? 'fail' : accepted ? 'pass' : missingCommand ? 'blocked' : 'fail',
-    resultClassification: cancellationRequested ? 'CANCELLED' : capturedFailure ? 'FAIL' : accepted ? 'PASS' : missingCommand ? 'BLOCKED' : 'FAIL',
-    resultReason: cancellationRequested ? 'USER_CANCELLED' : capturedFailure ? 'POWERSHELL_ERROR_RECORD' : accepted ? 'ACCEPTED_EXIT_CODE' : missingCommand ? 'COMMAND_UNAVAILABLE' : 'NONZERO_EXIT',
+    status: timeoutRequested ? 'timeout' : cancellationRequested ? 'cancelled' : capturedFailure ? 'fail' : missingCommand ? 'blocked' : !accepted || !evidenceValidity.valid ? 'fail' : 'pass',
+    resultClassification: timeoutRequested ? 'TIMEOUT' : cancellationRequested ? 'CANCELLED' : capturedFailure ? 'FAIL' : missingCommand ? 'BLOCKED' : !accepted || !evidenceValidity.valid ? 'FAIL' : 'PASS',
+    resultReason: timeoutRequested ? 'DEADLINE_EXCEEDED' : cancellationRequested ? 'USER_CANCELLED' : capturedFailure ? 'POWERSHELL_ERROR_RECORD' : missingCommand ? 'COMMAND_UNAVAILABLE' : !accepted ? 'NONZERO_EXIT' : !evidenceValidity.valid ? 'INVALID_OUTPUT' : 'ACCEPTED_EXIT_CODE',
+    mode: policy.mode, timeoutMs: policy.timeoutMs, timedOut: timeoutRequested,
     capturedFailure,
     dirtyBefore: before.dirty, dirtyAfter: after.dirty,
     changedFiles: after.changedFiles, gitBefore: before, gitAfter: after,
@@ -1259,6 +1282,7 @@ export async function runCommand(project, tokens, {
     evidence: {
       stdout: { bytes: stdoutBytes, sha256: `sha256:${stdoutHash.digest('hex')}` },
       stderr: { bytes: stderrBytes, sha256: `sha256:${stderrHash.digest('hex')}` },
+      validity: evidenceValidity,
     },
     capture: {
       mode: captureOutput, limitCharacters: captureOutput === 'bounded' ? captureLimitCharacters : null,
@@ -1292,6 +1316,35 @@ export async function runCommand(project, tokens, {
   state.lastRunId = id;
   writeProjectState(project, state);
   return record;
+}
+
+export async function doctor(project, { origin = 'core-api', probes = null } = {}) {
+  const definitions = probes || [
+    { name: 'node', argv: [process.execPath, '--version'], requiredOutput: 'stdout', timeoutMs: 2000 },
+    { name: 'git', argv: ['git', '--version'], requiredOutput: 'stdout', timeoutMs: 2000 },
+    { name: 'repository', argv: ['git', 'rev-parse', '--show-toplevel'], requiredOutput: 'stdout', timeoutMs: 2000 },
+    { name: 'search', argv: ['rg', '--version'], requiredOutput: 'stdout', timeoutMs: 2000 },
+  ];
+  const results = [];
+  for (const probe of definitions) {
+    const record = await runCommand(project, probe.argv, {
+      stream: false, shell: false, origin, mode: 'probe', timeoutMs: probe.timeoutMs,
+      requiredOutput: probe.requiredOutput || 'any', displayCommand: probe.argv.join(' '),
+      operationIdentity: { type: 'probe', name: probe.name },
+      operationReducer: ({ record: value }) => ({
+        type: 'probe', name: probe.name, mode: 'probe', status: value.status,
+        durationMs: value.durationMs, exitCode: value.exitCode, timedOut: value.timedOut,
+        evidenceValid: value.evidence.validity.valid,
+      }),
+    });
+    results.push({
+      name: probe.name, status: record.status, durationMs: record.durationMs,
+      exitCode: record.exitCode, timedOut: record.timedOut,
+      evidenceValid: record.evidence.validity.valid, runId: record.id,
+    });
+  }
+  const failed = results.filter((item) => item.status !== 'pass');
+  return { status: failed.length ? 'fail' : 'pass', passed: results.length - failed.length, failed: failed.length, probes: results };
 }
 
 function processAppearsAlive(pid) {

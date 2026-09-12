@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `hate.this.meaningless.life · context condenser
 
@@ -11,6 +11,7 @@ Run from any Git repository:
   hud tui                           fixed terminal UI + compact clipboard result
   hud run -- <command>              record one command and print a compact packet
   hud state [--json]                current repository and last-operation state
+  hud doctor [--json]               bounded environment and repository probes
   hud search <query> [scope]        recorded ripgrep search
   hud lint                          run the repository-declared lint authority
   hud tools                         discovered tools and repository commands
@@ -83,7 +84,7 @@ function parse(argv) {
 function validateCommandOptions(command, args, options, usedOptions) {
   const rootJson = new Set(['root', 'json']);
   const routes = {
-    runtime: rootJson, storage: rootJson, context: rootJson, status: rootJson, state: rootJson,
+    runtime: rootJson, storage: rootJson, context: rootJson, status: rootJson, state: rootJson, doctor: rootJson,
     tree: rootJson, 'file-identity': rootJson, 'compare-files': rootJson, service: rootJson,
     'service-reset-plan': rootJson, search: rootJson, proof: rootJson, impact: rootJson,
     'undo-plan': rootJson, continue: rootJson, objective: rootJson, frontier: rootJson,
@@ -109,7 +110,7 @@ function validateCommandOptions(command, args, options, usedOptions) {
   if (unsupported.length) throw new Error(`hud ${command} does not support --${unsupported[0]}.`);
 
   const argumentLimits = {
-    runtime: [0, 0], storage: [0, 0], context: [0, 0], status: [0, 0], state: [0, 0],
+    runtime: [0, 0], storage: [0, 0], context: [0, 0], status: [0, 0], state: [0, 0], doctor: [0, 0],
     tree: [0, 0], 'file-identity': [1, 1], 'compare-files': [2, 2], service: [1, 1],
     'service-reset-plan': [1, 1], desktop: [0, 0], serve: [0, 0], shell: [0, 0], tui: [0, 0],
     search: [1, 2], 'repository-command': [1, 1], proof: [1, 1], impact: [1, 1], lint: [0, 0],
@@ -262,6 +263,17 @@ async function main() {
     return options.json ? console.log(JSON.stringify(value, null, 2)) : printStorage(value);
   }
   if (command === 'context' || command === 'status') return context(project, options.json);
+  if (command === 'doctor') {
+    const value = await doctor(project, { origin: 'cli-argv' });
+    if (options.json) console.log(JSON.stringify(value, null, 2));
+    else {
+      console.log(`DOCTOR ${value.status.toUpperCase()} ${value.passed}/${value.probes.length}`);
+      for (const probe of value.probes.filter((item) => item.status !== 'pass')) console.log(`${probe.name} ${probe.status.toUpperCase()} run:${probe.runId}`);
+      console.log(`EVIDENCE ${value.probes.map((item) => item.runId).join(',')}`);
+    }
+    process.exitCode = value.status === 'pass' ? 0 : 1;
+    return;
+  }
   if (command === 'state') {
     const value = await currentState(project);
     if (options.json) return console.log(JSON.stringify(value, null, 2));
@@ -520,7 +532,7 @@ async function main() {
       index: Number.isInteger(options.stageIndex) ? options.stageIndex : null,
       count: Number.isInteger(options.stageCount) ? options.stageCount : null,
     } : null;
-    const record = await runCommand(project, args, { objective: options.objective, request, workflow, stream: !options.quiet && !options.json, origin: 'cli-argv' });
+    const record = await runCommand(project, args, { objective: options.objective, request, workflow, stream: !options.quiet && !options.json, origin: 'cli-argv', shell: false });
     if (options.json) {
       console.log(JSON.stringify({
         runId: record.id, status: record.status, operation: record.operation,

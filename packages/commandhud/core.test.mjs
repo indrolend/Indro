@@ -5,7 +5,42 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverCommands, discoverShells, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveProject, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveProject, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+
+test('probe execution times out and records the deadline as evidence', async () => {
+  const project = await fixtureProject();
+  const record = await runCommand(project, [process.execPath, '-e', 'setTimeout(() => {}, 10000)'], {
+    stream: false, shell: false, mode: 'probe', timeoutMs: 50,
+  });
+  assert.equal(record.status, 'timeout');
+  assert.equal(record.resultReason, 'DEADLINE_EXCEEDED');
+  assert.equal(record.timedOut, true);
+  assert.ok(record.durationMs < 5000);
+});
+
+test('declared evidence rejects empty and BOM-only output', async () => {
+  const project = await fixtureProject();
+  for (const script of ['', 'process.stdout.write("\\ufeff")']) {
+    const record = await runCommand(project, [process.execPath, '-e', script], {
+      stream: false, shell: false, mode: 'probe', timeoutMs: 1000, requiredOutput: 'stdout',
+    });
+    assert.equal(record.status, 'fail');
+    assert.equal(record.resultReason, 'INVALID_OUTPUT');
+    assert.equal(record.evidence.validity.valid, false);
+  }
+});
+
+test('doctor continues after a failed probe and retains structured evidence', async () => {
+  const project = await fixtureProject();
+  const value = await doctor(project, { probes: [
+    { name: 'bad', argv: [process.execPath, '-e', 'process.exit(7)'], timeoutMs: 1000 },
+    { name: 'good', argv: [process.execPath, '-e', 'console.log("ok")'], timeoutMs: 1000, requiredOutput: 'stdout' },
+  ] });
+  assert.equal(value.status, 'fail');
+  assert.deepEqual(value.probes.map((item) => item.status), ['fail', 'pass']);
+  assert.equal(runById(project, value.probes[0].runId).resultReason, 'NONZERO_EXIT');
+  assert.ok(value.probes.every((item) => runById(project, item.runId)));
+});
 
 const searchFixture = fileURLToPath(new URL('./search-tool.fixture.mjs', import.meta.url));
 const fixtureSearchOptions = { tool: process.execPath, toolArgs: [searchFixture] };
@@ -301,12 +336,12 @@ test('repository command discovery derives a deterministic inspectable library',
   mkdirSync(join(root, 'tools'));
   writeFileSync(join(root, 'tools', 'run-native-tests.mjs'), '');
   writeFileSync(join(root, 'commandhud.project.json'), JSON.stringify({ id: 'fixture/commands', commandHud: { commands: [
-    { name: 'native-tests', command: 'node tools/run-native-tests.mjs', argv: ['node', 'tools/run-native-tests.mjs'], owner: 'tools/run-native-tests.mjs', kind: 'test' },
+    { name: 'native-tests', action: 'Check', command: 'node tools/run-native-tests.mjs', argv: ['node', 'tools/run-native-tests.mjs'], owner: 'tools/run-native-tests.mjs', kind: 'test' },
   ] } }));
   assert.deepEqual(discoverCommands(root), [
     { name: 'npm:build', command: 'npm run build' },
     { name: 'npm:test', command: 'npm run test' },
-    { name: 'native-tests', command: 'node tools/run-native-tests.mjs' },
+    { name: 'native-tests', command: 'node tools/run-native-tests.mjs', action: 'Check' },
   ]);
 });
 
@@ -327,6 +362,18 @@ test('repository command declarations fail closed when malformed, duplicate, or 
 
   writeCommands([{ name: 'markers', command: 'node markers.mjs', argv: ['node', 'markers.mjs'], resultMarkers: 'yes' }]);
   assert.throws(() => discoverCommands(root), /Invalid CommandHUD result marker declaration/);
+
+  writeCommands([{ name: 'action', action: 'Too many words here', command: 'node action.mjs', argv: ['node', 'action.mjs'] }]);
+  assert.throws(() => discoverCommands(root), /Invalid CommandHUD action declaration/);
+
+  writeCommands(Array.from({ length: 6 }, (_, index) => ({ name: `action-${index}`, action: `Go ${index}`, command: `node ${index}.mjs`, argv: ['node', `${index}.mjs`] })));
+  assert.throws(() => discoverCommands(root), /at most five repository actions/);
+
+  writeCommands([
+    { name: 'first', action: 'Play', command: 'node first.mjs', argv: ['node', 'first.mjs'] },
+    { name: 'second', action: 'play', command: 'node second.mjs', argv: ['node', 'second.mjs'] },
+  ]);
+  assert.throws(() => discoverCommands(root), /action labels must be unique/);
 
   writeCommands([{ name: 'stages', command: 'node stages.mjs', argv: ['node', 'stages.mjs'], stages: [{ name: 'a', paths: ['src'] }] }]);
   assert.throws(() => discoverCommands(root), /Invalid CommandHUD stage declaration/);
