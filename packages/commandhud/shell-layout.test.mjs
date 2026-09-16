@@ -20,7 +20,7 @@ test('fixed terminal layout uses alternate screen and stable top and bottom regi
   layout.placePrompt();
   layout.finish();
   assert.match(value, /\x1b\[\?1049h/);
-  assert.match(value, /\x1b\[1;1H.*hate\.this\.meaningless\.life/);
+  assert.match(value, /\x1b\[1;1H.*Indro/);
   assert.match(value, /\x1b7\x1b\[6;1H.*PASS/);
   assert.match(value, /\x1b\[4;1H\x1b\[2K/);
   assert.match(value, /\x1b\[\?1049l/);

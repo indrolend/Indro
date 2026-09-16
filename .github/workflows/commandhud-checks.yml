@@ -1,9 +1,12 @@
-name: CommandHUD checks
+name: Indro checks
 
 on:
   pull_request:
     paths:
       - "packages/commandhud/**"
+      - "packages/indro/**"
+      - "Indro.cmd"
+      - "i.cmd"
       - "CommandHUD*.cmd"
       - "hud.cmd"
       - "package.json"
@@ -12,6 +15,9 @@ on:
     branches: [main]
     paths:
       - "packages/commandhud/**"
+      - "packages/indro/**"
+      - "Indro.cmd"
+      - "i.cmd"
       - "CommandHUD*.cmd"
       - "hud.cmd"
       - "package.json"
@@ -43,5 +49,5 @@ jobs:
         with:
           node-version: 24
 
-      - name: Verify CommandHUD
+      - name: Verify Indro
         run: npm test

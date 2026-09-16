@@ -1,0 +1,653 @@
+{
+  "root": "/mnt/data/hud_bench/hud",
+  "runs": 863,
+  "semanticSessions": 96,
+  "trainSessions": 76,
+  "holdoutSessions": 20,
+  "representation": {
+    "trainRawActions": 465,
+    "trainPhaseActions": 246,
+    "trainPhaseReduction": 0.47096774193548385,
+    "holdoutRawActions": 98,
+    "holdoutPhaseActions": 43,
+    "holdoutPhaseReduction": 0.5612244897959183
+  },
+  "stability": {
+    "gaps": [
+      300,
+      600,
+      1200,
+      1800
+    ],
+    "pairwise": [
+      {
+        "leftGap": 300,
+        "rightGap": 600,
+        "jaccard": 0.8181818181818182
+      },
+      {
+        "leftGap": 300,
+        "rightGap": 1200,
+        "jaccard": 0.8181818181818182
+      },
+      {
+        "leftGap": 300,
+        "rightGap": 1800,
+        "jaccard": 0.6666666666666666
+      },
+      {
+        "leftGap": 600,
+        "rightGap": 1200,
+        "jaccard": 1.0
+      },
+      {
+        "leftGap": 600,
+        "rightGap": 1800,
+        "jaccard": 0.8181818181818182
+      },
+      {
+        "leftGap": 1200,
+        "rightGap": 1800,
+        "jaccard": 0.8181818181818182
+      }
+    ],
+    "minJaccard": 0.6666666666666666
+  },
+  "exact": {
+    "motifs": [
+      {
+        "sequence": [
+          "inspect",
+          "inspect",
+          "search",
+          "search"
+        ],
+        "count": 5,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 15
+      },
+      {
+        "sequence": [
+          "inspect",
+          "inspect",
+          "search"
+        ],
+        "count": 7,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 14
+      },
+      {
+        "sequence": [
+          "inspect",
+          "search",
+          "search"
+        ],
+        "count": 5,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 10
+      },
+      {
+        "sequence": [
+          "inspect",
+          "search"
+        ],
+        "count": 10,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 10
+      },
+      {
+        "sequence": [
+          "search",
+          "inspect",
+          "inspect",
+          "inspect"
+        ],
+        "count": 3,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 9
+      },
+      {
+        "sequence": [
+          "git:status",
+          "search",
+          "search",
+          "search"
+        ],
+        "count": 3,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data"
+        ],
+        "grossSavings": 9
+      },
+      {
+        "sequence": [
+          "search",
+          "inspect",
+          "inspect"
+        ],
+        "count": 4,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 8
+      },
+      {
+        "sequence": [
+          "search",
+          "search",
+          "inspect"
+        ],
+        "count": 4,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data"
+        ],
+        "grossSavings": 8
+      },
+      {
+        "sequence": [
+          "git:status",
+          "search",
+          "search"
+        ],
+        "count": 4,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data"
+        ],
+        "grossSavings": 8
+      },
+      {
+        "sequence": [
+          "search",
+          "inspect"
+        ],
+        "count": 7,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 7
+      },
+      {
+        "sequence": [
+          "node",
+          "git:rev-parse",
+          "search"
+        ],
+        "count": 3,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 6
+      },
+      {
+        "sequence": [
+          "git:rev-parse",
+          "search"
+        ],
+        "count": 4,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 4
+      }
+    ],
+    "train": {
+      "before": 465,
+      "after": 416,
+      "hits": 23,
+      "saved": 49,
+      "reduction": 0.1053763440860215,
+      "hitCounts": [
+        [
+          [
+            "inspect",
+            "inspect",
+            "search",
+            "search"
+          ],
+          5
+        ],
+        [
+          [
+            "inspect",
+            "search"
+          ],
+          3
+        ],
+        [
+          [
+            "git:status",
+            "search",
+            "search",
+            "search"
+          ],
+          3
+        ],
+        [
+          [
+            "node",
+            "git:rev-parse",
+            "search"
+          ],
+          3
+        ],
+        [
+          [
+            "search",
+            "inspect"
+          ],
+          2
+        ],
+        [
+          [
+            "inspect",
+            "inspect",
+            "search"
+          ],
+          2
+        ],
+        [
+          [
+            "git:rev-parse",
+            "search"
+          ],
+          1
+        ],
+        [
+          [
+            "search",
+            "search",
+            "inspect"
+          ],
+          1
+        ],
+        [
+          [
+            "search",
+            "inspect",
+            "inspect",
+            "inspect"
+          ],
+          1
+        ],
+        [
+          [
+            "git:status",
+            "search",
+            "search"
+          ],
+          1
+        ],
+        [
+          [
+            "search",
+            "inspect",
+            "inspect"
+          ],
+          1
+        ]
+      ]
+    },
+    "holdout": {
+      "before": 98,
+      "after": 92,
+      "hits": 3,
+      "saved": 6,
+      "reduction": 0.061224489795918366,
+      "hitCounts": [
+        [
+          [
+            "node",
+            "git:rev-parse",
+            "search"
+          ],
+          3
+        ]
+      ]
+    }
+  },
+  "semantic": {
+    "motifs": [
+      {
+        "sequence": [
+          "orient",
+          "inspect"
+        ],
+        "count": 15,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 15
+      },
+      {
+        "sequence": [
+          "inspect",
+          "test",
+          "inspect"
+        ],
+        "count": 5,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 10
+      },
+      {
+        "sequence": [
+          "inspect",
+          "test"
+        ],
+        "count": 7,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 7
+      },
+      {
+        "sequence": [
+          "tool",
+          "orient",
+          "inspect"
+        ],
+        "count": 3,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 6
+      },
+      {
+        "sequence": [
+          "inspect",
+          "tool"
+        ],
+        "count": 5,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 5
+      },
+      {
+        "sequence": [
+          "test",
+          "inspect"
+        ],
+        "count": 5,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 5
+      },
+      {
+        "sequence": [
+          "test",
+          "compare"
+        ],
+        "count": 4,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 4
+      },
+      {
+        "sequence": [
+          "tool",
+          "inspect"
+        ],
+        "count": 4,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data"
+        ],
+        "grossSavings": 4
+      },
+      {
+        "sequence": [
+          "tool",
+          "orient"
+        ],
+        "count": 4,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 4
+      },
+      {
+        "sequence": [
+          "inspect",
+          "modify"
+        ],
+        "count": 4,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 4
+      },
+      {
+        "sequence": [
+          "inspect",
+          "vcs"
+        ],
+        "count": 4,
+        "projects": 2,
+        "projectNames": [
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 4
+      },
+      {
+        "sequence": [
+          "inspect",
+          "compare"
+        ],
+        "count": 3,
+        "projects": 3,
+        "projectNames": [
+          "indrolend/basic-browser-spa",
+          "indrolend/data",
+          "indrolend/hate.this.meaningless.life"
+        ],
+        "grossSavings": 3
+      }
+    ],
+    "train": {
+      "before": 246,
+      "after": 202,
+      "hits": 38,
+      "saved": 44,
+      "reduction": 0.17886178861788618,
+      "hitCounts": [
+        [
+          [
+            "orient",
+            "inspect"
+          ],
+          12
+        ],
+        [
+          [
+            "test",
+            "compare"
+          ],
+          4
+        ],
+        [
+          [
+            "tool",
+            "inspect"
+          ],
+          3
+        ],
+        [
+          [
+            "inspect",
+            "tool"
+          ],
+          3
+        ],
+        [
+          [
+            "inspect",
+            "modify"
+          ],
+          3
+        ],
+        [
+          [
+            "inspect",
+            "test",
+            "inspect"
+          ],
+          3
+        ],
+        [
+          [
+            "tool",
+            "orient",
+            "inspect"
+          ],
+          3
+        ],
+        [
+          [
+            "inspect",
+            "compare"
+          ],
+          2
+        ],
+        [
+          [
+            "test",
+            "inspect"
+          ],
+          2
+        ],
+        [
+          [
+            "tool",
+            "orient"
+          ],
+          1
+        ],
+        [
+          [
+            "inspect",
+            "test"
+          ],
+          1
+        ],
+        [
+          [
+            "inspect",
+            "vcs"
+          ],
+          1
+        ]
+      ]
+    },
+    "holdout": {
+      "before": 43,
+      "after": 34,
+      "hits": 6,
+      "saved": 9,
+      "reduction": 0.20930232558139536,
+      "hitCounts": [
+        [
+          [
+            "tool",
+            "orient",
+            "inspect"
+          ],
+          3
+        ],
+        [
+          [
+            "tool",
+            "inspect"
+          ],
+          2
+        ],
+        [
+          [
+            "inspect",
+            "tool"
+          ],
+          1
+        ]
+      ]
+    }
+  },
+  "checks": {
+    "corpus_nonempty": true,
+    "sessions_split": true,
+    "semantic_motifs_found": true,
+    "all_semantic_motifs_cross_project": true,
+    "holdout_accounting": true,
+    "session_gap_motif_stability": true,
+    "known_semantic_holdout_reduction_ge_10pct": true,
+    "known_semantics_outgeneralize_exact": true,
+    "known_phase_abstraction_reduction_ge_40pct": true
+  },
+  "ok": true
+}

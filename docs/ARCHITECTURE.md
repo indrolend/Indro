@@ -1,12 +1,16 @@
-# CommandHUD architecture
+# Indro architecture
 
 ## Authority flow
 
 ```text
-Git repository + filesystem + shell + repository scripts
+Indro source + typed parameters + effect authority + proof state
                          |
                          v
-              packages/commandhud core
+             packages/indro compiler/planner
+          semantic IR / minimal proof plan / plan ID
+                         |
+                         v
+        packages/commandhud execution/evidence core
         execution / evidence / reduction / state
                          |
              +-----------+-----------+
@@ -14,7 +18,7 @@ Git repository + filesystem + shell + repository scripts
             CLI       terminal UI   desktop UI
 ```
 
-There is one runtime state and evidence model. Frontends may request typed operations or present recorded evidence; they do not own independent execution histories.
+Indro owns language meaning and planning. CommandHUD owns execution and evidence. There is one runtime state and evidence model; frontends do not own independent execution histories.
 
 ## Repository boundary
 
@@ -38,6 +42,7 @@ Each record carries project identity, root, branch, commit, command, exit status
 
 | Path | Classification |
 | --- | --- |
+| `packages/indro/` | language, compiler, semantic IR, proof planning, benchmarks |
 | `packages/commandhud/` | current product authority |
 | `packages/commandhud/repository-map-client/` | current browser renderer; client only, not semantic authority |
 | root `hud.cmd` | argument-preserving CLI front door |

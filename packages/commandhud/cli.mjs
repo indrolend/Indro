@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCommands, discoverTools, lintRepository, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
-const HELP = `hate.this.meaningless.life · context condenser
+const HELP = `Indro · CommandHUD execution and evidence
 
 Run from any Git repository:
   hud shell                         plain terminal + compact clipboard result

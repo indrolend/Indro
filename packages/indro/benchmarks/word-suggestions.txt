@@ -1,0 +1,19 @@
+INDRO_SUGGEST runs=863 sessions=96 core=17 dialect=6
+CORE support=18 projects=3 savings=18 orient -> inspect
+CORE support=6 projects=2 savings=12 tool -> orient -> inspect
+CORE support=5 projects=2 savings=10 inspect -> test -> inspect
+CORE support=7 projects=2 savings=7 tool -> orient
+CORE support=7 projects=2 savings=7 inspect -> test
+CORE support=6 projects=3 savings=6 inspect -> tool
+CORE support=6 projects=2 savings=6 tool -> inspect
+CORE support=5 projects=2 savings=5 test -> inspect
+CORE support=4 projects=3 savings=4 test -> compare
+CORE support=4 projects=2 savings=4 inspect -> modify
+CORE support=4 projects=2 savings=4 inspect -> vcs
+CORE support=3 projects=3 savings=3 inspect -> compare
+DIALECT support=5 project=indrolend/data savings=10 build -> test -> build
+DIALECT support=8 project=indrolend/data savings=8 build -> test
+DIALECT support=5 project=indrolend/data savings=5 inspect -> build
+DIALECT support=5 project=indrolend/data savings=5 test -> build
+DIALECT support=4 project=indrolend/data savings=4 build -> inspect
+DIALECT support=4 project=indrolend/data savings=4 inspect -> orient

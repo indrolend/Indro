@@ -1,0 +1,22 @@
+{
+  "default": "db",
+  "evidenceRoot": "D:\\hud",
+  "workspaces": {
+    "db": {
+      "name": "db",
+      "root": "C:\\Users\\indro\\Projects\\db-enemy-motor-runtime",
+      "dbdev": "tools\\dbdev.ps1",
+      "agent": "qwen2.5:7b",
+      "policy": {
+        "preserveDirty": true,
+        "implicitCommit": false,
+        "implicitPush": false,
+        "implicitMerge": false,
+        "implicitRebase": false,
+        "implicitReset": false,
+        "implicitClean": false,
+        "implicitRelease": false
+      }
+    }
+  }
+}

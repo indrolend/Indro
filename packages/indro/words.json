@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 4,
+  "derivedFrom": {
+    "corpus": "hud.zip",
+    "runs": 863,
+    "projects": 17,
+    "pass": 663,
+    "fail": 153,
+    "cancelled": 34,
+    "blocked": 13,
+    "method": "sessionized CommandHUD mining + cross-project semantic motif holdout benchmark"
+  },
+  "words": {
+    "resume": {
+      "meaning": "reconstruct repository authority and immediate health",
+      "steps": [
+        "orient"
+      ]
+    },
+    "prove": {
+      "meaning": "attempt to falsify the current change with cheap checks before runtime checks",
+      "steps": [
+        "diffcheck",
+        "test",
+        "smoke"
+      ]
+    },
+    "harden": {
+      "meaning": "preserve state, then establish full project verification",
+      "steps": [
+        "checkpoint",
+        "verify"
+      ]
+    },
+    "recover": {
+      "meaning": "capture authority and a non-destructive recovery checkpoint",
+      "steps": [
+        "audit",
+        "checkpoint"
+      ]
+    },
+    "probe": {
+      "meaning": "run a bounded runtime health probe",
+      "steps": [
+        "status",
+        "smoke"
+      ]
+    },
+    "mature": {
+      "meaning": "preserve, verify, then bounded local-agent play",
+      "steps": [
+        "checkpoint",
+        "verify",
+        "agent"
+      ]
+    },
+    "handoff": {
+      "meaning": "establish auditable state before creating a handoff",
+      "steps": [
+        "audit",
+        "checkpoint"
+      ]
+    },
+    "learn": {
+      "meaning": "mine historical work, suggest vocabulary, benchmark generalization, and self-test Indro",
+      "steps": [
+        "dogfood",
+        "suggest",
+        "measure",
+        "selftest"
+      ]
+    },
+    "orient": {
+      "meaning": "establish repository authority before deeper work",
+      "steps": [
+        "status",
+        "audit"
+      ]
+    },
+    "measure": {
+      "meaning": "benchmark both evidence mining and language-level generalization",
+      "steps": [
+        "bench",
+        "languagebench",
+        "crosscheck"
+      ]
+    }
+  }
+}

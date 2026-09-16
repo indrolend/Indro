@@ -339,7 +339,7 @@ export function compareFilesystemFiles(leftPath, rightPath, { base = process.cwd
 
 export function inspectRuntimeAuthority({ executingPath, project = null, env = process.env } = {}) {
   const executing = filesystemIdentity(executingPath);
-  const productId = 'indrolend/hate.this.meaningless.life';
+  const productId = 'indrolend/Indro';
   const registeredDirectory = join(stateRoot(env), 'projects');
   const registered = existsSync(registeredDirectory)
     ? readdirSync(registeredDirectory, { withFileTypes: true })

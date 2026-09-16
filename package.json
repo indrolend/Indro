@@ -1,14 +1,16 @@
 {
-  "name": "@indrolend/hate-this-meaningless-life",
-  "version": "0.0.0-convergence",
+  "name": "@indrolend/indro",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "bin": {
+    "indro": "./packages/indro/cli.mjs",
+    "i": "./packages/indro/cli.mjs",
     "hud": "./packages/commandhud/cli.mjs",
     "commandhud": "./packages/commandhud/cli.mjs"
   },
   "scripts": {
-    "test": "npm --prefix packages/commandhud test"
+    "test": "npm --prefix packages/commandhud test && npm --prefix packages/indro test"
   },
   "engines": {
     "node": ">=20"

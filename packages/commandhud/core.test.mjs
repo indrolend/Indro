@@ -181,7 +181,7 @@ test('runtime authority distinguishes current, stale, and project-local duplicat
   mkdirSync(join(state, 'projects'), { recursive: true });
   writeFileSync(join(source, 'packages', 'commandhud', 'cli.mjs'), 'same');
   writeFileSync(installed, 'same');
-  writeFileSync(join(state, 'projects', 'product.json'), JSON.stringify({ id: 'indrolend/hate.this.meaningless.life', root: source }));
+  writeFileSync(join(state, 'projects', 'product.json'), JSON.stringify({ id: 'indrolend/Indro', root: source }));
   const env = { ...process.env, HUD_STATE_ROOT: state };
   assert.equal(inspectRuntimeAuthority({ executingPath: installed, env }).status, 'CURRENT');
   writeFileSync(installed, 'older');

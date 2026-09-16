@@ -332,7 +332,7 @@ test('Windows repository launcher works from outside its checkout', {
     windowsHide: true,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /hate\.this\.meaningless\.life · context condenser/);
+  assert.match(result.stdout, /Indro · semantic development system/);
   assert.match(result.stdout, /Repository: commandhud-launcher-/);
   assert.match(result.stdout, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
 });

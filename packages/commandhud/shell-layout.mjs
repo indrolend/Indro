@@ -109,7 +109,7 @@ export function createShellLayout(output, { enabled = true } = {}) {
     if (!active) return;
     const { columns, rows } = terminalSize(output);
     const rule = '─'.repeat(columns);
-    writeAt(1, clip('(._.)  hate.this.meaningless.life  ·  context condenser', columns), true);
+    writeAt(1, clip('(._.)  Indro  ·  semantic development system', columns), true);
     writeAt(2, focusedAction ? `CONTROLS · ${focusedAction.toUpperCase()} · Enter activates · Esc returns to command` : 'COMMAND INPUT', true);
     writeAt(3, rule, true);
     writeAt(5, rule, true);

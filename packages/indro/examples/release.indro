@@ -1,0 +1,11 @@
+# Publish authority is explicit in source and must also be allowed by the caller.
+program release_candidate
+intent "verify and publish release ${version}"
+param version: string
+permit read write exec network publish
+
+flow main:
+  do harden
+  ensure "release ${version} is reproducible"
+  do ship ${version}
+  emit "released ${version}"

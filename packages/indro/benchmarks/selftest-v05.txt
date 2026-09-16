@@ -1,0 +1,13 @@
+INDRO_TEST PASS miner classification/session/failure recovery
+INDRO_TEST PASS semantic phase/motif compression
+INDRO_TEST PASS runtime resolver safety
+INDRO_TEST PASS package safety/module/manifest invariants
+INDRO_TEST PASS word graph composites=10
+INDRO_TEST PASS portable plan runner
+INDRO_TEST_RUN test-miner.py
+INDRO_TEST_RUN test-language.py
+INDRO_TEST_RUN test-safety.py
+INDRO_TEST_RUN test-package.py
+INDRO_TEST_RUN test-wordgraph.py
+INDRO_TEST_RUN test-cli.py
+INDRO_SELFTEST PASS tests=6

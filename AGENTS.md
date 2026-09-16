@@ -1,6 +1,6 @@
-# Product authority
+# Indro product authority
 
-`hate.this.meaningless.life` is a simple local-first utility for repository work, command execution, copy/paste LLM workflows, and durable human-owned development history.
+`Indro` is a local-first semantic language and execution system for repository work. It combines compact, effect-checked development programs and proof-aware planning with CommandHUD's command execution, context reduction, and durable human-owned history.
 
 ## Invariants
 
@@ -17,7 +17,8 @@
 
 ## Implementation authority
 
-- Treat `packages/commandhud/` as the current product runtime and test authority.
+- Treat `packages/indro/` as the language/compiler/proof authority.
+- Treat `packages/commandhud/` as Indro's execution/evidence runtime authority.
 - Earlier Windows Forms, DataFactory/VS Code, and portable bootstrap implementations were retired after behavioral accounting. Use `docs/PROTOTYPE-RETIREMENT-AUDIT.md` and Git history when that lineage matters; do not recreate parallel runtime or frontend authority.
 - Keep repository-specific scripts and typed command declarations in their repository; do not copy the generic HUD runtime into projects it operates on.
 
@@ -33,4 +34,4 @@
 
 ## Current scope
 
-Maintain one generic CommandHUD authority and thin project integrations. DATA is an integration fixture whose game code, scripts, adapters, and build policy remain DATA-owned. New frontends must consume the existing runtime state and immutable evidence rather than create parallel execution or history models.
+Maintain one Indro language authority, one generic CommandHUD execution/evidence authority, and thin project integrations. DATA is an integration fixture whose game code, scripts, adapters, and build policy remain DATA-owned. New frontends must consume the existing runtime state and immutable evidence rather than create parallel execution or history models.

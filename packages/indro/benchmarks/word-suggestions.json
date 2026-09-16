@@ -1,0 +1,246 @@
+{
+  "root": "/mnt/data/hud_bench/hud",
+  "runs": 863,
+  "sessions": 96,
+  "semanticTraces": 96,
+  "malformed": 0,
+  "coreMotifs": [
+    {
+      "sequence": [
+        "orient",
+        "inspect"
+      ],
+      "count": 18,
+      "projects": 3,
+      "projectNames": [
+        "indrolend/basic-browser-spa",
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 18
+    },
+    {
+      "sequence": [
+        "tool",
+        "orient",
+        "inspect"
+      ],
+      "count": 6,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 12
+    },
+    {
+      "sequence": [
+        "inspect",
+        "test",
+        "inspect"
+      ],
+      "count": 5,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 10
+    },
+    {
+      "sequence": [
+        "tool",
+        "orient"
+      ],
+      "count": 7,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 7
+    },
+    {
+      "sequence": [
+        "inspect",
+        "test"
+      ],
+      "count": 7,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 7
+    },
+    {
+      "sequence": [
+        "inspect",
+        "tool"
+      ],
+      "count": 6,
+      "projects": 3,
+      "projectNames": [
+        "indrolend/basic-browser-spa",
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 6
+    },
+    {
+      "sequence": [
+        "tool",
+        "inspect"
+      ],
+      "count": 6,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/basic-browser-spa",
+        "indrolend/data"
+      ],
+      "grossSavings": 6
+    },
+    {
+      "sequence": [
+        "test",
+        "inspect"
+      ],
+      "count": 5,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 5
+    },
+    {
+      "sequence": [
+        "test",
+        "compare"
+      ],
+      "count": 4,
+      "projects": 3,
+      "projectNames": [
+        "indrolend/basic-browser-spa",
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 4
+    },
+    {
+      "sequence": [
+        "inspect",
+        "modify"
+      ],
+      "count": 4,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/basic-browser-spa",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 4
+    },
+    {
+      "sequence": [
+        "inspect",
+        "vcs"
+      ],
+      "count": 4,
+      "projects": 2,
+      "projectNames": [
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 4
+    },
+    {
+      "sequence": [
+        "inspect",
+        "compare"
+      ],
+      "count": 3,
+      "projects": 3,
+      "projectNames": [
+        "indrolend/basic-browser-spa",
+        "indrolend/data",
+        "indrolend/hate.this.meaningless.life"
+      ],
+      "grossSavings": 3
+    }
+  ],
+  "dialectMotifs": [
+    {
+      "sequence": [
+        "build",
+        "test",
+        "build"
+      ],
+      "count": 5,
+      "projects": 1,
+      "projectNames": [
+        "indrolend/data"
+      ],
+      "grossSavings": 10
+    },
+    {
+      "sequence": [
+        "build",
+        "test"
+      ],
+      "count": 8,
+      "projects": 1,
+      "projectNames": [
+        "indrolend/data"
+      ],
+      "grossSavings": 8
+    },
+    {
+      "sequence": [
+        "inspect",
+        "build"
+      ],
+      "count": 5,
+      "projects": 1,
+      "projectNames": [
+        "indrolend/data"
+      ],
+      "grossSavings": 5
+    },
+    {
+      "sequence": [
+        "test",
+        "build"
+      ],
+      "count": 5,
+      "projects": 1,
+      "projectNames": [
+        "indrolend/data"
+      ],
+      "grossSavings": 5
+    },
+    {
+      "sequence": [
+        "build",
+        "inspect"
+      ],
+      "count": 4,
+      "projects": 1,
+      "projectNames": [
+        "indrolend/data"
+      ],
+      "grossSavings": 4
+    },
+    {
+      "sequence": [
+        "inspect",
+        "orient"
+      ],
+      "count": 4,
+      "projects": 1,
+      "projectNames": [
+        "indrolend/data"
+      ],
+      "grossSavings": 4
+    }
+  ]
+}

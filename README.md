@@ -1,12 +1,36 @@
-# hate.this.meaningless.life
+# Indro
 
-A local-first command HUD and context condenser for human-directed, LLM-assisted repository work.
+An evidence-native, semantically compressed programming language for human-directed and agent-assisted software development.
 
-CommandHUD runs real commands inside a verified Git repository, preserves complete evidence, and produces a compact result suitable for pasting back into ChatGPT. Git, the filesystem, the selected shell, and repository-owned scripts remain authoritative.
+Indro compiles typed development intent into deterministic, effect-checked plans. Its integrated CommandHUD runtime runs real commands inside verified Git repositories, preserves complete evidence, and produces compact context for humans and language models. Git, the filesystem, the selected shell, and repository-owned scripts remain authoritative.
+
+## The language
+
+Readable and compact source compile to the same semantic plan ID:
+
+```indro
+@repair
+!"repair ${target}, prove the change, and retain evidence"
+$target:path
++rwx
+
+:main
+  >o
+  >ck
+  >p ${target}
+  ?"tests pass for ${target}"
+```
+
+```powershell
+indro compile packages/indro/examples/repair.i --set target=src/audio.cpp --allow-effect write
+indro proof-plan verified --state packages/indro/examples/proof-state.json
+```
+
+Indro provides typed parameters, intent declarations, nested semantic words, parallel and recovery plans, assertions, evidence events, deterministic compact IR, static effect inference, two-layer authority checks, and content-addressed proof planning. Consequential actions cannot be hidden inside abstractions.
 
 ## Current authority
 
-`packages/commandhud/` is the product runtime. It owns:
+`packages/indro/` owns the language compiler, semantic IR, proof planner, compact syntax, and language benchmarks. `packages/commandhud/` is Indro's execution and evidence substrate. It owns:
 
 - PowerShell, Bash, Zsh, and Cmd command execution;
 - persistent repository-contained working directories;
@@ -29,7 +53,7 @@ Earlier Windows Forms, DataFactory/VS Code, and portable distribution prototypes
 From the Git repository you want to operate on, launch the fixed terminal UI:
 
 ```powershell
-& 'C:\path\to\hate.this.meaningless.life\CommandHUD-TUI.cmd'
+& 'C:\path\to\Indro\CommandHUD-TUI.cmd'
 ```
 
 The launcher attaches to the current Git repository. Paste an ordinary command at the prompt; the full output is retained and the condensed result is shown and copied automatically.
@@ -37,15 +61,15 @@ The launcher attaches to the current Git repository. Paste an ordinary command a
 Open the Repository Map desktop client from the current repository:
 
 ```powershell
-& 'C:\path\to\hate.this.meaningless.life\CommandHUD-Desktop.cmd'
+& 'C:\path\to\Indro\CommandHUD-Desktop.cmd'
 ```
 
 `CommandHUD.cmd` is the Windows compatibility launcher for the complete CLI. Select clients explicitly:
 
 ```powershell
-& 'C:\path\to\hate.this.meaningless.life\CommandHUD.cmd' tui
-& 'C:\path\to\hate.this.meaningless.life\CommandHUD.cmd' shell
-& 'C:\path\to\hate.this.meaningless.life\CommandHUD.cmd' desktop
+& 'C:\path\to\Indro\CommandHUD.cmd' tui
+& 'C:\path\to\Indro\CommandHUD.cmd' shell
+& 'C:\path\to\Indro\CommandHUD.cmd' desktop
 ```
 
 All launchers use the current directory as the default Git root and preserve `--root <path>` and other client arguments. With no command, `CommandHUD.cmd` has the same context behavior as `hud` and `commandhud`. The historical `CommandHUD Shell.cmd` filename remains a compatibility alias for the plain shell; quote its path when invoking it from PowerShell.
@@ -53,27 +77,27 @@ All launchers use the current directory as the default Git root and preserve `--
 Use the product CLI directly:
 
 ```powershell
-node C:\path\to\hate.this.meaningless.life\packages\commandhud\cli.mjs state --json
-node C:\path\to\hate.this.meaningless.life\packages\commandhud\cli.mjs search currentState tools
+node C:\path\to\Indro\packages\indro\cli.mjs state --json
+node C:\path\to\Indro\packages\indro\cli.mjs search currentState tools
 ```
 
 To make `hud` available globally, run this once from the product clone:
 
 ```powershell
-npm install --global C:\path\to\hate.this.meaningless.life
+npm install --global C:\path\to\Indro
 ```
 
-Then every Git checkout has the same access point:
+Then every Git checkout has the same canonical access point:
 
 ```powershell
-hud shell
-hud tui
-hud desktop
-hud state --json
-hud search currentState tools
+indro shell
+indro tui
+indro desktop
+indro state --json
+indro search currentState tools
 ```
 
-`hud` is the canonical installed name. `commandhud` remains an equivalent compatibility alias; both are generated from the repository-root package and execute the same `packages/commandhud/cli.mjs` authority.
+`indro` is canonical and `i` is its short form. `hud` and `commandhud` remain compatibility aliases for the integrated execution/evidence subsystem.
 
 ## Project identity
 

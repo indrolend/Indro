@@ -1,0 +1,79 @@
+INDRO_DOGFOOD root=/mnt/data/hud_bench/hud runs=863 projects=17 sessions=103 malformed=0
+STATUS blocked=13 cancelled=34 fail=153 pass=663
+INTENT meaningful=197 generic=477 missing=189 meaningful_fraction=0.228
+FAMILIES search=109 node=101 invalid-command=77 shell-output=65 shell-script=55 inspect=49 shell=43 build=43 test=36 git:status=33 git:grep=28 marker=27 npm=22 shell-fragment=20 git:log=19
+FAILURES environment=89 command=54 test=7 build=3
+AFTER_FAIL invalid-command=62 shell-fragment=17 shell=12 build=10 inspect=6 test=6 marker=5 shell-script=5 node=4 search=3
+RECOVERY build=20 test=14 inspect=11 node=8 edit=5 search=3 npm=3 compare=3 git:status=2 gh=1
+WORKFLOWS inspect>inspect>search=7 node>git:rev-parse>search=6 inspect>search>search=5 build>build>test=5 build>test>build=5 search>search>inspect=4 search>inspect>inspect=4 git:status>search>search=4
+SEMANTIC_MOTIFS orient>inspect=18@3p tool>orient>inspect=6@2p inspect>test>inspect=5@2p tool>orient=7@2p inspect>test=7@2p inspect>tool=6@3p tool>inspect=6@2p test>inspect=5@2p
+INDRO_SUGGEST runs=863 sessions=96 core=17 dialect=6
+CORE support=18 projects=3 savings=18 orient -> inspect
+CORE support=6 projects=2 savings=12 tool -> orient -> inspect
+CORE support=5 projects=2 savings=10 inspect -> test -> inspect
+CORE support=7 projects=2 savings=7 tool -> orient
+CORE support=7 projects=2 savings=7 inspect -> test
+CORE support=6 projects=3 savings=6 inspect -> tool
+CORE support=6 projects=2 savings=6 tool -> inspect
+CORE support=5 projects=2 savings=5 test -> inspect
+CORE support=4 projects=3 savings=4 test -> compare
+CORE support=4 projects=2 savings=4 inspect -> modify
+CORE support=4 projects=2 savings=4 inspect -> vcs
+CORE support=3 projects=3 savings=3 inspect -> compare
+DIALECT support=5 project=indrolend/data savings=10 build -> test -> build
+DIALECT support=8 project=indrolend/data savings=8 build -> test
+DIALECT support=5 project=indrolend/data savings=5 inspect -> build
+DIALECT support=5 project=indrolend/data savings=5 test -> build
+DIALECT support=4 project=indrolend/data savings=4 build -> inspect
+DIALECT support=4 project=indrolend/data savings=4 inspect -> orient
+INDRO_BENCH PASS runs=863 projects=17 sessions=103 malformed=0
+PERF seconds=0.895 runs_per_second=964.6 peak_python_mib=1.6 payload_mib=727.9
+PASS corpus_nonempty
+PASS no_malformed_records
+PASS status_accounting
+PASS projects_nonempty
+PASS sessions_nonempty
+PASS tool_coverage
+PASS transition_coverage
+PASS failure_recovery_signal
+PASS intent_accounting
+PASS known_corpus_floor
+PASS known_project_floor
+PASS known_pass_floor
+PASS peak_python_under_256mb
+INTENT meaningful=197 generic=477 missing=189 meaningful_fraction=0.228
+TOP_AFTER_FAIL invalid-command=62 shell-fragment=17 shell=12 build=10 inspect=6 test=6 marker=5 shell-script=5
+TOP_RECOVERY build=20 test=14 inspect=11 node=8 edit=5 search=3 npm=3 compare=3
+TOP_WORKFLOWS inspect>inspect>search=7 node>git:rev-parse>search=6 inspect>search>search=5 build>build>test=5 build>test>build=5 search>search>inspect=4
+TOP_SEMANTIC orient>inspect=18@3p tool>orient>inspect=6@2p inspect>test>inspect=5@2p tool>orient=7@2p inspect>test=7@2p inspect>tool=6@3p
+INDRO_LANGUAGE_BENCH PASS runs=863 train=76 holdout=20
+EXACT train_reduction=10.538% holdout_reduction=6.122% holdout_saved=6/98
+SEMANTIC train_reduction=17.886% holdout_reduction=20.930% holdout_saved=9/43
+ABSTRACTION holdout_raw=98 holdout_phases=43 phase_reduction=56.122% overall_to_words=65.306%
+STABILITY min_top10_jaccard=0.667 gaps=300,600,1200,1800
+PASS corpus_nonempty
+PASS sessions_split
+PASS semantic_motifs_found
+PASS all_semantic_motifs_cross_project
+PASS holdout_accounting
+PASS session_gap_motif_stability
+PASS known_semantic_holdout_reduction_ge_10pct
+PASS known_semantics_outgeneralize_exact
+PASS known_phase_abstraction_reduction_ge_40pct
+TOP_SEMANTIC orient>inspect x15 p3 | inspect>test>inspect x5 p2 | inspect>test x7 p2 | tool>orient>inspect x3 p2 | inspect>tool x5 p3 | test>inspect x5 p2 | test>compare x4 p3 | tool>inspect x4 p2
+INDRO_CROSSCHECK PASS checked=860 skipped_large=3 mismatches=0
+INDRO_TEST PASS miner classification/session/failure recovery
+INDRO_TEST PASS semantic phase/motif compression
+INDRO_TEST PASS runtime resolver safety
+INDRO_TEST PASS package safety/module/manifest invariants
+INDRO_TEST PASS word graph composites=10
+INDRO_TEST PASS portable plan runner
+INDRO_TEST_RUN test-miner.py
+INDRO_TEST_RUN test-language.py
+INDRO_TEST_RUN test-safety.py
+INDRO_TEST_RUN test-package.py
+INDRO_TEST_RUN test-wordgraph.py
+INDRO_TEST_RUN test-cli.py
+INDRO_SELFTEST PASS tests=6
+INDRO_START word=learn plan=dogfood -> suggest -> bench -> languagebench -> crosscheck -> selftest
+INDRO_OK word=learn

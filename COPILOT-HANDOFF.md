@@ -42,7 +42,7 @@ hud search currentState .
 Install directly from the current published branch when testing a clean machine:
 
 ```powershell
-npm install --global "git+https://github.com/indrolend/hate.this.meaningless.life.git#main"
+npm install --global "git+https://github.com/indrolend/Indro.git#main"
 ```
 
 ## Current boundaries

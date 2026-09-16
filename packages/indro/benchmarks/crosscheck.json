@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "root": "/mnt/data/hud_bench/hud",
+  "checked": 860,
+  "skippedLarge": 3,
+  "maxFullBytes": 5242880,
+  "mismatches": []
+}

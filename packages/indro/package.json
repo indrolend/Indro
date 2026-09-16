@@ -1,0 +1,12 @@
+{
+  "name": "@indrolend/indro-language",
+  "version": "0.7.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test ./cli.test.mjs && python tools/test-all.py"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

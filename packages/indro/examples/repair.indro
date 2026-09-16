@@ -1,0 +1,20 @@
+# A typed, effect-checked software repair program.
+program repair
+intent "repair ${target}, prove the change, and retain evidence"
+param target: path
+param depth: choice(focused|full) = focused
+permit read write exec
+
+flow main:
+  emit "repair-start target=${target} depth=${depth}"
+  do orient
+  parallel:
+    do audit ${target}
+    do doctor
+  do checkpoint
+  do prove ${target}
+  ensure "tests pass for ${target}"
+  recover:
+    do audit ${target}
+    do checkpoint
+  emit "repair-complete target=${target}"

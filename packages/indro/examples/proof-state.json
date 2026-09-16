@@ -1,0 +1,7 @@
+{
+  "source": "sha256:source-tree",
+  "tests": "sha256:test-tree",
+  "config": "sha256:build-config",
+  "toolchain": "pwsh-7.6.6+python-3",
+  "runtime": "windows-local"
+}

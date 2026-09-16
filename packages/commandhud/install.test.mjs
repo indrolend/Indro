@@ -10,6 +10,8 @@ test('repository root is the only package installation authority', () => {
   const product = JSON.parse(readFileSync(join(productRoot, 'package.json'), 'utf8'));
   const runtime = JSON.parse(readFileSync(join(import.meta.dirname, 'package.json'), 'utf8'));
   assert.deepEqual(product.bin, {
+    indro: './packages/indro/cli.mjs',
+    i: './packages/indro/cli.mjs',
     hud: './packages/commandhud/cli.mjs',
     commandhud: './packages/commandhud/cli.mjs',
   });

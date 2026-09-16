@@ -1,0 +1,15 @@
+INDRO_LANGUAGE_BENCH PASS runs=863 train=76 holdout=20
+EXACT train_reduction=10.538% holdout_reduction=6.122% holdout_saved=6/98
+SEMANTIC train_reduction=17.886% holdout_reduction=20.930% holdout_saved=9/43
+ABSTRACTION holdout_raw=98 holdout_phases=43 phase_reduction=56.122% overall_to_words=65.306%
+STABILITY min_top10_jaccard=0.667 gaps=300,600,1200,1800
+PASS corpus_nonempty
+PASS sessions_split
+PASS semantic_motifs_found
+PASS all_semantic_motifs_cross_project
+PASS holdout_accounting
+PASS session_gap_motif_stability
+PASS known_semantic_holdout_reduction_ge_10pct
+PASS known_semantics_outgeneralize_exact
+PASS known_phase_abstraction_reduction_ge_40pct
+TOP_SEMANTIC orient>inspect x15 p3 | inspect>test>inspect x5 p2 | inspect>test x7 p2 | tool>orient>inspect x3 p2 | inspect>tool x5 p3 | test>inspect x5 p2 | test>compare x4 p3 | tool>inspect x4 p2

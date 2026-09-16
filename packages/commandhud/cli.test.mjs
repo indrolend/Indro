@@ -15,7 +15,7 @@ for (const command of ['help', '--help', '-h']) {
         cwd: outside, encoding: 'utf8', timeout: 10_000,
       });
       assert.equal(result.status, 0, result.stderr || result.stdout);
-      assert.match(result.stdout, /hate\.this\.meaningless\.life · context condenser/);
+      assert.match(result.stdout, /Indro · CommandHUD execution and evidence/);
       assert.match(result.stdout, /hud shell/);
       assert.match(result.stdout, /Retained evidence \(never reruns the command\)/);
       assert.match(result.stdout, /hud undo-plan <run>/);
@@ -125,7 +125,7 @@ test('hud runtime uses scriptable exit status for current and stale source autho
   mkdirSync(join(source, 'packages', 'commandhud'), { recursive: true });
   copyFileSync(cli, sourceCli);
   writeFileSync(join(state, 'projects', 'product.json'), JSON.stringify({
-    id: 'indrolend/hate.this.meaningless.life', root: source,
+    id: 'indrolend/Indro', root: source,
   }));
   const run = () => spawnSync(process.execPath, [cli, 'runtime', '--json'], {
     cwd: temporary, encoding: 'utf8', timeout: 10_000,

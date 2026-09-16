@@ -177,7 +177,7 @@ export async function startHudShell(project, {
   let pendingLine = null;
   if (layout.active === false && interactive && tui) layout.start();
   if (!layout.active) {
-    output.write(`${IDLE_FACE} hate.this.meaningless.life · context condenser\n`);
+    output.write(`${IDLE_FACE} Indro · semantic development system\n`);
     output.write(`Repository: ${basename(project.root)} · Shell: ${session.shell.label} · /help for controls\n\n`);
   }
 
