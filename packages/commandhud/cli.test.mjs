@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const cli = join(import.meta.dirname, 'cli.mjs');
 
@@ -88,6 +88,26 @@ test('client routes reject unknown, missing, irrelevant, and positional argument
   }
 });
 
+test('hud doctor returns a tiny bounded summary and retained evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-doctor-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const state = mkdtempSync(join(tmpdir(), 'commandhud-doctor-state-'));
+    const result = spawnSync(process.execPath, [cli, 'doctor', '--root', root], {
+      cwd: root, encoding: 'utf8', timeout: 15_000, env: { ...process.env, HUD_STATE_ROOT: state },
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /^DOCTOR PASS 4\/4/m);
+    assert.match(result.stdout, /^EVIDENCE /m);
+    assert.ok(result.stdout.trimEnd().split(/\r?\n/).length <= 3);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('hud run JSON is pure for passing and failing commands', () => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-json-route-'));
   try {
@@ -111,6 +131,52 @@ test('hud run JSON is pure for passing and failing commands', () => {
     assert.equal(failing.status, 1, failing.stderr);
     assert.equal(JSON.parse(failing.stdout).status, 'fail');
     assert.doesNotMatch(failing.stdout, /^not-before-json/m);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hud run preserves argv metacharacters instead of invoking a command shell', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-argv-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const result = spawnSync(process.execPath, [cli, 'run', '--root', root, '--quiet', '--json', '--', process.execPath, '-e', 'console.log(process.argv[1])', 'left|right'], {
+      cwd: root, encoding: 'utf8', timeout: 10_000,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const value = JSON.parse(result.stdout);
+    assert.equal(readFileSync(value.stdoutPath, 'utf8').trim(), 'left|right');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hud search reports a missing rg capability without attempting execution', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-search-capability-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    writeFileSync(join(root, 'content.txt'), 'needle\n');
+    execFileSync('git', ['add', '.'], { cwd: root });
+    execFileSync('git', ['commit', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const locator = spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', ['git'], { encoding: 'utf8' });
+    assert.equal(locator.status, 0, locator.stderr);
+    const gitDirectory = dirname(locator.stdout.split(/\r?\n/).find(Boolean));
+    const result = spawnSync(process.execPath, [cli, 'search', '--json', 'needle'], {
+      cwd: root, encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, PATH: gitDirectory, HUD_STATE_ROOT: join(root, '.state') },
+    });
+    assert.equal(result.status, 2, result.stderr || result.stdout);
+    const value = JSON.parse(result.stdout);
+    assert.equal(value.status, 'blocked');
+    assert.equal(value.operation.requiredCapability, 'rg');
+    assert.equal(value.operation.capability.state, 'missing');
+    assert.equal(value.operation.executionAttempted, false);
+    assert.match(readFileSync(value.stderrPath, 'utf8'), /was not executed/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

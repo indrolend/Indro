@@ -33,14 +33,6 @@ test('failed operation preserves status and exit code', () => {
   assert.equal(result.content.exitCode, 7);
 });
 
-test('generic operation uses its existing bounded reduction tail as the reply', () => {
-  const [, result] = projectRunToConversation(run('2', {
-    operation: { type: 'terminal-command', displayCommand: 'printf hello', shell: 'bash', cwdBefore: '/repo', cwdAfter: '/repo', summary: [] },
-    reduction: { summary: [], tail: ['hello', 'x'.repeat(400), 'third', 'not included'] },
-  }));
-  assert.deepEqual(result.content.summary, ['hello', 'x'.repeat(240), 'third']);
-});
-
 test('running operation projects an ephemeral cancellable reply', () => {
   const items = projectActiveExecution({ id: 'active:1', input: 'npm run dev', cwd: '/repo', provider: 'bash', source: 'mobile-ui', startedAt: '2026-09-03T10:00:00.000Z', canCancel: true });
   assert.equal(items[0].content.command, 'npm run dev');

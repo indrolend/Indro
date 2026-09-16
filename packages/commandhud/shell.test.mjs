@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { createTuiInputRouter, deliverShellProjection, deliverShellResult, encodeClipboardInput, parseShellEvidenceCommand, renderShellEvidenceProjection, renderShellResult, routeTuiInput, shellInputIncomplete, startHudShell } from './shell.mjs';
+import { createTuiInputRouter, decodeComposerText, deliverShellProjection, deliverShellResult, encodeClipboardInput, parseShellEvidenceCommand, renderShellEvidenceProjection, renderShellResult, routeTuiInput, shellInputIncomplete, startHudShell } from './shell.mjs';
 import { listRuns, resolveProject, runRepositoryCommand } from './core.mjs';
 
 async function shellProject() {
@@ -70,6 +70,26 @@ test('TUI input buffers fragmented SGR mouse packets instead of leaking partial 
   route('24m');
   assert.equal(typed.join(''), 'echo ok');
   assert.deepEqual(dispatched, ['copy']);
+});
+
+test('TUI bracketed paste keeps 100 lines in one composer buffer and never submits them', () => {
+  const typed = [];
+  const dispatched = [];
+  const layout = {
+    actionAt() { return null; }, setHover() {}, setFocus() {}, moveFocus() {},
+    get focusedAction() { return null; },
+  };
+  const route = createTuiInputRouter({
+    layout, dispatch: (action) => dispatched.push(action), writeText: (text) => typed.push(text),
+  });
+  const wall = Array.from({ length: 100 }, (_, index) => `Write-Output ${index + 1}`).join('\r\n');
+  route(`\x1b[20`);
+  route(`0~${wall.slice(0, 317)}`);
+  route(`${wall.slice(317)}\x1b[20`);
+  route('1~');
+  assert.equal(decodeComposerText(typed.join('')), wall);
+  assert.equal(dispatched.length, 0);
+  assert.doesNotMatch(typed.join(''), /[\r\n]/);
 });
 
 test('terminal evidence commands target the latest or an explicit immutable run', () => {
@@ -335,4 +355,51 @@ test('Windows repository launcher works from outside its checkout', {
   assert.match(result.stdout, /Indro · semantic development system/);
   assert.match(result.stdout, /Repository: commandhud-launcher-/);
   assert.match(result.stdout, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+});
+
+test('TUI readline output constrains clear-screen-down to the command row', async () => {
+  const { createTuiReadlineOutput } = await import('./shell.mjs');
+
+  const writes = [];
+  const output = {
+    columns: 80,
+    rows: 24,
+    write(value) {
+      writes.push(Buffer.isBuffer(value) ? value.toString('utf8') : String(value));
+      return true;
+    },
+  };
+
+  const readlineOutput = createTuiReadlineOutput(output, true);
+
+  readlineOutput.write('\x1b[1G');
+  readlineOutput.write('\x1b[0J');
+  readlineOutput.write('> ');
+  readlineOutput.write('\x1b[3G');
+
+  assert.deepEqual(writes, [
+    '\x1b[1G',
+    '\x1b[2K',
+    '> ',
+    '\x1b[3G',
+  ]);
+  assert.equal(writes.some((value) => value.includes('\x1b[0J')), false);
+});
+
+test('non-TUI readline output remains unchanged', async () => {
+  const { createTuiReadlineOutput } = await import('./shell.mjs');
+
+  const writes = [];
+  const output = {
+    write(value) {
+      writes.push(String(value));
+      return true;
+    },
+  };
+
+  const readlineOutput = createTuiReadlineOutput(output, false);
+  assert.equal(readlineOutput, output);
+
+  readlineOutput.write('\x1b[0J');
+  assert.deepEqual(writes, ['\x1b[0J']);
 });

@@ -3,8 +3,47 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverCommands, discoverShells, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveProject, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveProject, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+
+test('probe execution times out and records the deadline as evidence', async () => {
+  const project = await fixtureProject();
+  const record = await runCommand(project, [process.execPath, '-e', 'setTimeout(() => {}, 10000)'], {
+    stream: false, shell: false, mode: 'probe', timeoutMs: 50,
+  });
+  assert.equal(record.status, 'timeout');
+  assert.equal(record.resultReason, 'DEADLINE_EXCEEDED');
+  assert.equal(record.timedOut, true);
+  assert.ok(record.durationMs < 5000);
+});
+
+test('declared evidence rejects empty and BOM-only output', async () => {
+  const project = await fixtureProject();
+  for (const script of ['', 'process.stdout.write("\\ufeff")']) {
+    const record = await runCommand(project, [process.execPath, '-e', script], {
+      stream: false, shell: false, mode: 'probe', timeoutMs: 1000, requiredOutput: 'stdout',
+    });
+    assert.equal(record.status, 'fail');
+    assert.equal(record.resultReason, 'INVALID_OUTPUT');
+    assert.equal(record.evidence.validity.valid, false);
+  }
+});
+
+test('doctor continues after a failed probe and retains structured evidence', async () => {
+  const project = await fixtureProject();
+  const value = await doctor(project, { probes: [
+    { name: 'bad', argv: [process.execPath, '-e', 'process.exit(7)'], timeoutMs: 1000 },
+    { name: 'good', argv: [process.execPath, '-e', 'console.log("ok")'], timeoutMs: 1000, requiredOutput: 'stdout' },
+  ] });
+  assert.equal(value.status, 'fail');
+  assert.deepEqual(value.probes.map((item) => item.status), ['fail', 'pass']);
+  assert.equal(runById(project, value.probes[0].runId).resultReason, 'NONZERO_EXIT');
+  assert.ok(value.probes.every((item) => runById(project, item.runId)));
+});
+
+const searchFixture = fileURLToPath(new URL('./search-tool.fixture.mjs', import.meta.url));
+const fixtureSearchOptions = { tool: process.execPath, toolArgs: [searchFixture] };
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'hud-fixture-'));
@@ -297,12 +336,12 @@ test('repository command discovery derives a deterministic inspectable library',
   mkdirSync(join(root, 'tools'));
   writeFileSync(join(root, 'tools', 'run-native-tests.mjs'), '');
   writeFileSync(join(root, 'commandhud.project.json'), JSON.stringify({ id: 'fixture/commands', commandHud: { commands: [
-    { name: 'native-tests', command: 'node tools/run-native-tests.mjs', argv: ['node', 'tools/run-native-tests.mjs'], owner: 'tools/run-native-tests.mjs', kind: 'test' },
+    { name: 'native-tests', action: 'Check', command: 'node tools/run-native-tests.mjs', argv: ['node', 'tools/run-native-tests.mjs'], owner: 'tools/run-native-tests.mjs', kind: 'test' },
   ] } }));
   assert.deepEqual(discoverCommands(root), [
     { name: 'npm:build', command: 'npm run build' },
     { name: 'npm:test', command: 'npm run test' },
-    { name: 'native-tests', command: 'node tools/run-native-tests.mjs' },
+    { name: 'native-tests', command: 'node tools/run-native-tests.mjs', action: 'Check' },
   ]);
 });
 
@@ -323,6 +362,18 @@ test('repository command declarations fail closed when malformed, duplicate, or 
 
   writeCommands([{ name: 'markers', command: 'node markers.mjs', argv: ['node', 'markers.mjs'], resultMarkers: 'yes' }]);
   assert.throws(() => discoverCommands(root), /Invalid CommandHUD result marker declaration/);
+
+  writeCommands([{ name: 'action', action: 'Too many words here', command: 'node action.mjs', argv: ['node', 'action.mjs'] }]);
+  assert.throws(() => discoverCommands(root), /Invalid CommandHUD action declaration/);
+
+  writeCommands(Array.from({ length: 6 }, (_, index) => ({ name: `action-${index}`, action: `Go ${index}`, command: `node ${index}.mjs`, argv: ['node', `${index}.mjs`] })));
+  assert.throws(() => discoverCommands(root), /at most five repository actions/);
+
+  writeCommands([
+    { name: 'first', action: 'Play', command: 'node first.mjs', argv: ['node', 'first.mjs'] },
+    { name: 'second', action: 'play', command: 'node second.mjs', argv: ['node', 'second.mjs'] },
+  ]);
+  assert.throws(() => discoverCommands(root), /action labels must be unique/);
 
   writeCommands([{ name: 'stages', command: 'node stages.mjs', argv: ['node', 'stages.mjs'], stages: [{ name: 'a', paths: ['src'] }] }]);
   assert.throws(() => discoverCommands(root), /Invalid CommandHUD stage declaration/);
@@ -759,7 +810,10 @@ test('PowerShell surfaced command failures override a zero host exit without tre
   const command = 'Get-ChildItem | commandhud-command-that-does-not-exist';
   const record = await runTerminalCommand(project, command, { shell: 'powershell' });
   assert.equal(record.exitCode, 0, 'the regression requires the observed zero-exit PowerShell host behavior');
+  assert.equal(record.processExitCode, 0);
   assert.equal(record.status, 'fail');
+  assert.equal(record.resultClassification, 'FAIL');
+  assert.equal(record.resultReason, 'POWERSHELL_ERROR_RECORD');
   assert.equal(record.operation.status, 'fail');
   assert.equal(record.capturedFailure?.kind, 'command-not-found');
   assert.equal(record.reduction.classification, 'environment');
@@ -1159,8 +1213,11 @@ test('search records real scoped matches, truthful zero results, raw evidence, a
   writeFileSync(join(project.root, 'src', 'beta.txt'), 'needle only\n');
   writeFileSync(join(project.root, 'outside.txt'), 'needle outside scope\n');
 
-  const record = await searchRepository(project, 'needle', 'src');
+  const record = await searchRepository(project, 'needle', 'src', fixtureSearchOptions);
   assert.equal(record.status, 'pass');
+  assert.equal(record.operation.requiredCapability, 'rg');
+  assert.equal(record.operation.capability.state, 'available');
+  assert.equal(record.operation.executionAttempted, true);
   assert.equal(record.operation.matchCount, 3);
   assert.equal(record.operation.fileCount, 2);
   assert.deepEqual(record.operation.files, [
@@ -1180,14 +1237,14 @@ test('search records real scoped matches, truthful zero results, raw evidence, a
   assert.match(handoff, /src\/alpha\.txt 2 lines=1,3/);
   assert.ok(handoff.length < readFileSync(record.stdoutPath, 'utf8').length + 600);
 
-  const zero = await searchRepository(project, 'definitely-not-present', 'src');
+  const zero = await searchRepository(project, 'definitely-not-present', 'src', fixtureSearchOptions);
   assert.equal(zero.status, 'pass');
   assert.equal(zero.exitCode, 1);
   assert.deepEqual(zero.operation.files, []);
   assert.equal(zero.operation.matchCount, 0);
 
   writeFileSync(join(project.root, 'src', 'huge.txt'), Array.from({ length: 300 }, () => `huge-needle ${'x'.repeat(9000)}`).join('\n'));
-  const huge = await searchRepository(project, 'huge-needle', 'src');
+  const huge = await searchRepository(project, 'huge-needle', 'src', fixtureSearchOptions);
   assert.equal(huge.operation.matchCount, 300);
   assert.equal(huge.operation.fileCount, 1);
   assert.equal(huge.operation.files[0].count, 300);
@@ -1199,7 +1256,7 @@ test('search records real scoped matches, truthful zero results, raw evidence, a
   assert.ok(readFileSync(huge.stdoutPath).length > 2 * 1024 * 1024);
   assert.match(buildOperationHandoff(project, huge), /DETAILS BOUNDED/);
 
-  const singleFile = await searchRepository(project, 'huge-needle', 'src/huge.txt');
+  const singleFile = await searchRepository(project, 'huge-needle', 'src/huge.txt', fixtureSearchOptions);
   assert.equal(singleFile.operation.matchCount, 300);
   assert.equal(singleFile.operation.files[0].path, 'src/huge.txt');
 
@@ -1212,7 +1269,13 @@ test('search records real scoped matches, truthful zero results, raw evidence, a
   const unavailable = await searchRepository(project, 'needle', 'src', { tool: 'commandhud-missing-search-tool' });
   assert.equal(unavailable.status, 'blocked');
   assert.equal(unavailable.operation.toolAvailable, false);
-  assert.match(readFileSync(unavailable.stderrPath, 'utf8'), /ENOENT|not found/i);
+  assert.equal(unavailable.operation.requiredCapability, 'rg');
+  assert.equal(unavailable.operation.capability.state, 'missing');
+  assert.equal(unavailable.operation.executionAttempted, false);
+  assert.equal(unavailable.provenance.finalizedBy, 'capability-preflight');
+  assert.match(unavailable.packet.VERIFY, /execution not attempted; required capability rg is missing/);
+  assert.match(unavailable.packet.RESULT, /blocked before execution/);
+  assert.match(readFileSync(unavailable.stderrPath, 'utf8'), /required capability rg is missing/i);
 });
 
 test('search result paths share repository projection identity at root scope', () => {
@@ -1240,12 +1303,29 @@ test('terminal commands preserve exact intent and working directory across avail
     const record = await runTerminalCommand(project, example.command, { shell: shell.id });
     assert.equal(record.status, 'pass', `${shell.id}: ${readFileSync(record.stderrPath, 'utf8')}`);
     assert.equal(record.command, example.command);
+    assert.equal(record.inputText, example.command);
+    assert.equal(record.operationId, record.id);
+    assert.equal(record.processExitCode, record.exitCode);
     assert.notEqual(record.transportCommand, record.command);
     assert.equal(record.operation.shell, shell.id);
     assert.equal(record.operation.cwdAfter, join(project.root, 'sub'), JSON.stringify(record.operation));
     assert.equal(record.operation.cwdPersistence, 'updated');
     assert.match(readFileSync(record.stdoutPath, 'utf8'), example.output);
   }
+});
+
+test('one multiline PowerShell operation preserves its wall and guard semantics', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const project = await fixtureProject();
+  const target = join(project.root, 'must-not-exist.txt');
+  const wall = `$x = 0\nif ($x -ne 1) { throw "stop" }\nSet-Content -LiteralPath '${target.replaceAll("'", "''")}' -Value unsafe`;
+  const record = await runTerminalCommand(project, wall, { shell: 'powershell' });
+  assert.equal(record.inputText, wall);
+  assert.equal(record.operation.displayCommand, wall);
+  assert.equal(record.status, 'fail');
+  assert.equal(existsSync(target), false);
+  assert.equal(listRuns(project, 100).filter((item) => item.id === record.id).length, 1);
 });
 
 test('terminal working directory cannot persist outside the verified repository', async () => {

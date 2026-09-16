@@ -2,9 +2,7 @@ import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSy
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCurrentOperationContext, classifyEvidence, currentState, lastRun, lintRepository, listRuns, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runById, runRepositoryCommand, searchRepository, undoOperation, undoPlan } from './core.mjs';
-import { buildConversation, projectBuiltinExchange } from './conversation.mjs';
-import { createShellSession } from './shell-session.mjs';
+import { buildCurrentOperationContext, classifyEvidence, currentState, discoverShells, lastRun, lintRepository, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runById, runRepositoryCommand, runTerminalCommand, searchRepository, undoOperation, undoPlan } from './core.mjs';
 
 const staticRoot = join(dirname(fileURLToPath(import.meta.url)), 'repository-map-client');
 const contentTypes = {
@@ -221,10 +219,10 @@ function sendFile(request, response, path, { cache = 'no-cache' } = {}) {
   else createReadStream(path).pipe(response);
 }
 
-export function createHudServer(project, { terminal = false, shellSession = null, onSessionClientsChanged = null } = {}) {
-  if (terminal && !shellSession) throw new Error('Trusted terminal hosting requires a ShellSession.');
+export function createHudServer(project, { terminal = false, onSessionClientsChanged = null, searchOptions = {} } = {}) {
   let activeOperation = null;
   let activeExecution = null;
+  let terminalCwd = project.root;
   let eventSequence = 0;
   const eventClients = new Set();
   let navigation = { revision: 0, clientId: null, directory: '', file: null, updatedAt: null };
@@ -234,22 +232,6 @@ export function createHudServer(project, { terminal = false, shellSession = null
     for (const response of eventClients) response.write(body);
     return event;
   };
-  const unsubscribeShell = shellSession?.subscribe((event) => {
-    if (event.type === 'execution-start' || event.type === 'execution-update') {
-      const execution = event.execution;
-      activeOperation = {
-        type: 'terminal-command', label: execution.input, state: execution.runId ? 'running' : 'starting',
-        startedAt: execution.startedAt, runId: execution.runId, command: execution.input, cancellable: execution.canCancel,
-      };
-      publish('operation', { operation: activeOperation });
-    } else if (event.type === 'execution-end') {
-      if (event.record) publish('state', { reason: 'operation-complete', runId: event.record.id, status: event.record.status, operationType: event.record.operation?.type || 'terminal-command' });
-      activeOperation = null;
-      publish('operation', { operation: null });
-    } else if (event.type === 'builtin') {
-      publish('conversation', { items: projectBuiltinExchange({ ...event, cwd: shellSession.cwd, provider: shellSession.provider.id }) });
-    }
-  });
   const runTypedOperation = async (type, label, action, { cancellable = false } = {}) => {
     if (activeOperation) {
       const error = Object.assign(new Error(`CommandHUD is busy with ${activeOperation.type}: ${activeOperation.label}`), { statusCode: 409 });
@@ -301,7 +283,7 @@ export function createHudServer(project, { terminal = false, shellSession = null
         validateOperationRequest(request);
         const operation = searchRequest(await jsonBody(request));
         let record;
-        try { record = await runTypedOperation('search', `${operation.query} in ${operation.scope}`, () => searchRepository(project, operation.query, operation.scope, { origin: 'local-server' })); }
+        try { record = await runTypedOperation('search', `${operation.query} in ${operation.scope}`, () => searchRepository(project, operation.query, operation.scope, { ...searchOptions, origin: 'local-server' })); }
         catch (error) {
           if (/Search scope (?:is outside|does not exist)/.test(error.message)) error.statusCode = 400;
           throw error;
@@ -329,15 +311,12 @@ export function createHudServer(project, { terminal = false, shellSession = null
       if (request.method === 'POST' && url.pathname === '/operations/cancel') {
         validateOperationRequest(request);
         const operation = cancelRequest(await jsonBody(request));
-        const shellExecution = shellSession?.activeExecution;
-        const cancellableExecution = activeExecution || shellExecution;
-        if (!activeOperation || !cancellableExecution || activeOperation.runId !== operation.runId || !activeOperation.cancellable) {
+        if (!activeOperation || !activeExecution || activeOperation.runId !== operation.runId || !activeOperation.cancellable) {
           throw Object.assign(new Error('The requested run is not the active cancellable operation.'), { statusCode: 409 });
         }
         activeOperation = { ...activeOperation, state: 'cancelling' };
         publish('operation', { operation: activeOperation });
-        if (shellExecution) shellSession.cancelActiveExecution();
-        else activeExecution.controller.abort();
+        activeExecution.controller.abort();
         json(response, 202, { runId: operation.runId, status: 'cancelling' });
         return;
       }
@@ -383,24 +362,19 @@ export function createHudServer(project, { terminal = false, shellSession = null
         validateOperationRequest(request);
         if (!terminal) throw Object.assign(new Error('Terminal execution is available only in the trusted desktop application.'), { statusCode: 403 });
         const operation = terminalCommandRequest(await jsonBody(request));
-        if (activeOperation) throw Object.assign(new Error(`CommandHUD is busy with ${activeOperation.type}: ${activeOperation.label}`), { statusCode: 409, busy: activeOperation });
-        let record;
-        try {
-          shellSession.setProvider(operation.shell);
-          record = await shellSession.execute(operation.command, { source: 'local-server' });
-        } catch (error) {
-          if (/Terminal shell is unavailable/.test(error.message)) error.statusCode = 400;
-          throw error;
-        }
-        if (record.kind === 'builtin') {
-          json(response, 200, { kind: 'builtin', result: record, state: await currentState(project, { cwd: shellSession.cwd }) });
-          return;
-        }
+        const shells = await discoverShells(project.root);
+        if (!shells.find((entry) => entry.id === operation.shell)?.available) throw Object.assign(new Error(`Terminal shell is unavailable: ${operation.shell}`), { statusCode: 400 });
+        const record = await runTypedOperation(
+          'terminal-command', operation.command,
+          ({ signal, onStart }) => runTerminalCommand(project, operation.command, { shell: operation.shell, cwd: terminalCwd, signal, onStart, origin: 'local-server' }),
+          { cancellable: true },
+        );
+        if (record.operation?.cwdPersistence !== 'outside-repository') terminalCwd = record.operation.cwdAfter;
         json(response, 200, {
           runId: record.id, status: record.status, operation: record.operation,
           presentation: record.presentation,
           evidence: { stdout: record.stdoutPath, stderr: record.stderrPath },
-          state: await currentState(project, { cwd: shellSession.cwd }),
+          state: await currentState(project, { cwd: terminalCwd }),
         });
         return;
       }
@@ -430,30 +404,21 @@ export function createHudServer(project, { terminal = false, shellSession = null
         return;
       }
       if (url.pathname === '/runtime') {
-        const shells = terminal ? shellSession.providers.map((provider) => ({
-          id: provider.id, label: provider.label, available: true, executable: provider.shell?.executable || null,
-        })) : [];
+        const shells = terminal ? await discoverShells(project.root) : [];
         json(response, 200, {
           busy: activeOperation,
           capabilities: { terminal, shells },
-          terminal: terminal ? { cwd: shellSession.cwd, displayCwd: relative(project.root, shellSession.cwd).replaceAll('\\', '/') || '.', provider: shellSession.provider.id } : null,
+          terminal: terminal ? { cwd: terminalCwd, displayCwd: relative(project.root, terminalCwd).replaceAll('\\', '/') || '.' } : null,
           session: { id: project.key, connectedClients: eventClients.size, eventSequence, navigation },
         });
-        return;
-      }
-      if (url.pathname === '/conversation') {
-        const limit = Number(url.searchParams.get('limit') || 50);
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw Object.assign(new Error('Conversation limit must be an integer from 1 to 100.'), { statusCode: 400 });
-        json(response, 200, { items: buildConversation({ runs: listRuns(project, limit), session: shellSession, limit }) });
         return;
       }
       const activeEvidenceMatch = url.pathname.match(/^\/runtime\/evidence\/(stdout|stderr)$/i);
       if (activeEvidenceMatch) {
         const runId = url.searchParams.get('run');
-        const execution = activeExecution || shellSession?.activeExecution;
-        if (!activeOperation?.runId || runId !== activeOperation.runId || !execution) throw Object.assign(new Error('Active run evidence is unavailable.'), { statusCode: 409 });
+        if (!activeOperation?.runId || runId !== activeOperation.runId || !activeExecution) throw Object.assign(new Error('Active run evidence is unavailable.'), { statusCode: 409 });
         const stream = activeEvidenceMatch[1].toLowerCase();
-        const path = stream === 'stdout' ? execution.stdoutPath : execution.stderrPath;
+        const path = stream === 'stdout' ? activeExecution.stdoutPath : activeExecution.stderrPath;
         json(response, 200, { runId, stream, ...boundedEvidence(path, url.searchParams.get('tail') || 200) });
         return;
       }
@@ -525,11 +490,11 @@ export function createHudServer(project, { terminal = false, shellSession = null
     } catch (error) {
       json(response, error.statusCode || 500, { error: error.message, ...(error.busy ? { busy: error.busy } : {}) });
     }
-  }).once('close', () => unsubscribeShell?.());
+  });
 }
 
 export async function startHudServer(project, {
-  host = '127.0.0.1', port = 8765, terminal = false, onSessionClientsChanged = null,
+  host = '127.0.0.1', port = 8765, terminal = false, onSessionClientsChanged = null, searchOptions = {},
 } = {}) {
   const recovery = await recoverInterruptedRuns(project);
   if (recovery.corrupt.length) {
@@ -540,12 +505,11 @@ export async function startHudServer(project, {
     const run = recovery.detached[0];
     throw new Error(`A detached CommandHUD process still appears active for run ${run.runId}. Refusing to start another operation runtime.`);
   }
-  const shellSession = terminal ? await createShellSession(project) : null;
-  const server = createHudServer(project, { terminal, shellSession, onSessionClientsChanged });
+  const server = createHudServer(project, { terminal, onSessionClientsChanged, searchOptions });
   await new Promise((resolveListen, reject) => {
     server.once('error', reject);
     server.listen(port, host, resolveListen);
   });
   const address = server.address();
-  return { server, host, port: typeof address === 'object' ? address.port : port, recovery, shellSession };
+  return { server, host, port: typeof address === 'object' ? address.port : port, recovery };
 }

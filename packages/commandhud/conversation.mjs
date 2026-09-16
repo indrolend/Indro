@@ -17,13 +17,6 @@ function semanticFacts(record) {
   return facts;
 }
 
-function resultSummary(record) {
-  const operation = record.operation || {};
-  if (operation.summary?.length) return boundedStrings(operation.summary);
-  if (record.reduction?.summary?.length) return boundedStrings(record.reduction.summary);
-  return boundedStrings(record.reduction?.tail, 3);
-}
-
 function evidenceReference(record, stream) {
   const path = record[`${stream}Path`] || null;
   const evidence = record.evidence?.[stream] || {};
@@ -47,7 +40,7 @@ export function projectRunToConversation(record) {
     content: {
       status: record.status, exitCode: record.exitCode ?? null, durationMs: record.durationMs ?? null,
       operation: operation.type || null,
-      summary: resultSummary(record),
+      summary: boundedStrings(operation.summary?.length ? operation.summary : record.reduction?.summary),
       cwdBefore: operation.cwdBefore || record.cwd || null, cwdAfter: operation.cwdAfter || null,
       provider: operation.shell || null, semanticFacts: semanticFacts(record),
     },

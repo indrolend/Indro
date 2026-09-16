@@ -11,6 +11,81 @@ import { createShellSession } from './shell-session.mjs';
 import { createShellVisualStatus, IDLE_FACE, visualMotionEnabled } from './shell-visual.mjs';
 import { createShellLayout, splitMouseInput } from './shell-layout.mjs';
 
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
+const COMPOSER_ESCAPE = '\uFDD0';
+
+export function encodeComposerPaste(text) {
+  return String(text).replaceAll(COMPOSER_ESCAPE, `${COMPOSER_ESCAPE}e`)
+    .replaceAll('\r\n', `${COMPOSER_ESCAPE}n`)
+    .replaceAll('\r', `${COMPOSER_ESCAPE}r`)
+    .replaceAll('\n', `${COMPOSER_ESCAPE}l`);
+}
+
+export function decodeComposerText(text) {
+  return String(text).replace(new RegExp(`${COMPOSER_ESCAPE}([enrl])`, 'g'), (_, code) => (
+    code === 'e' ? COMPOSER_ESCAPE : code === 'n' ? '\r\n' : code === 'r' ? '\r' : '\n'
+  ));
+}
+
+function possibleSequencePrefix(value, sequence) {
+  for (let length = Math.min(value.length, sequence.length - 1); length > 0; length--) {
+    if (sequence.startsWith(value.slice(-length))) return length;
+  }
+  return 0;
+}
+
+export function createBracketedPasteDecoder({ writeText, writePaste }) {
+  let pending = '';
+  let pasting = false;
+  const emitAvailable = () => {
+    while (pending) {
+      const boundary = pasting ? PASTE_END : PASTE_START;
+      const index = pending.indexOf(boundary);
+      if (index >= 0) {
+        const value = pending.slice(0, index);
+        if (value) (pasting ? writePaste : writeText)(value);
+        pending = pending.slice(index + boundary.length);
+        pasting = !pasting;
+        continue;
+      }
+      const retained = possibleSequencePrefix(pending, boundary);
+      if (!pasting && pending === '\x1b') {
+        writeText(pending);
+        pending = '';
+        break;
+      }
+      const value = pending.slice(0, pending.length - retained);
+      if (value) (pasting ? writePaste : writeText)(value);
+      pending = pending.slice(pending.length - retained);
+      break;
+    }
+  };
+  return {
+    push(value) { pending += Buffer.isBuffer(value) ? value.toString('utf8') : String(value); emitAvailable(); },
+    flush() { if (pending) (pasting ? writePaste : writeText)(pending); pending = ''; },
+    get pasting() { return pasting; },
+  };
+}
+
+export function createTuiReadlineOutput(output, enabled = true) {
+  if (!enabled) return output;
+  return new Proxy(output, {
+    get(target, property) {
+      if (property === 'write') {
+        return (chunk, ...args) => {
+          const isBuffer = Buffer.isBuffer(chunk);
+          const text = isBuffer ? chunk.toString('utf8') : String(chunk);
+          const safe = text.replace(/\x1b\[0J/g, '\x1b[2K');
+          return target.write(isBuffer ? Buffer.from(safe, 'utf8') : safe, ...args);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 function createActionChannel() {
   const queue = [];
   let waiter = null;
@@ -65,7 +140,11 @@ export function routeTuiInput(value, { layout, dispatch, writeText, restoreEdito
 
 export function createTuiInputRouter(options) {
   let pendingMouse = '';
-  return (value) => {
+  const pasteDecoder = createBracketedPasteDecoder({
+    writeText: (value) => route(value),
+    writePaste: (value) => options.writeText(encodeComposerPaste(value)),
+  });
+  const route = (value) => {
     const combined = pendingMouse + (Buffer.isBuffer(value) ? value.toString('utf8') : String(value));
     pendingMouse = '';
     const start = combined.lastIndexOf('\x1b[<');
@@ -76,6 +155,7 @@ export function createTuiInputRouter(options) {
     }
     routeTuiInput(combined, options);
   };
+  return (value) => pasteDecoder.push(value);
 }
 
 export function encodeClipboardInput(text, targetPlatform = process.platform) {
@@ -171,7 +251,8 @@ export async function startHudShell(project, {
     filteredInput.isTTY = true;
     filteredInput.setRawMode = (mode) => input.setRawMode?.(mode);
   }
-  const terminal = createInterface({ input: filteredInput, output, terminal: interactive });
+  const readlineOutput = createTuiReadlineOutput(output, interactive && tui);
+  const terminal = createInterface({ input: filteredInput, output: readlineOutput, terminal: interactive });
   const commandLines = terminal[Symbol.asyncIterator]();
   const actions = createActionChannel();
   let pendingLine = null;
@@ -273,8 +354,10 @@ export async function startHudShell(project, {
           break;
         }
       }
-      command = command.trim();
-      if (!command) continue;
+      const containedPaste = command.includes(COMPOSER_ESCAPE);
+      command = decodeComposerText(command);
+      if (!containedPaste) command = command.trim();
+      if (!command.trim()) continue;
       layout.setFocus(null);
       if (session.isBuiltin(command)) {
         try {

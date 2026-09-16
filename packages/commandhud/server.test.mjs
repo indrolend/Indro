@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { resolveProject, searchRepository } from './core.mjs';
 import { startHudServer } from './server.mjs';
+
+const searchFixture = fileURLToPath(new URL('./search-tool.fixture.mjs', import.meta.url));
 
 function fixtureProject() {
   const root = mkdtempSync(join(tmpdir(), 'hud-server-'));
@@ -114,7 +117,6 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   t.after(() => running.server.close());
   const base = `http://127.0.0.1:${running.port}`;
   const runtime = await (await fetch(`${base}/runtime`)).json();
-  assert.ok(running.shellSession);
   assert.equal(runtime.capabilities.terminal, true);
   const shell = runtime.capabilities.shells.find((entry) => entry.available && entry.id === (process.platform === 'win32' ? 'powershell' : 'bash'));
   assert.ok(shell);
@@ -125,7 +127,6 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   });
   assert.equal(first.status, 200);
   assert.equal((await first.json()).operation.cwdPersistence, 'updated');
-  assert.equal(running.shellSession.cwd, join(project.root, 'tools'));
   const after = await (await fetch(`${base}/runtime`)).json();
   assert.equal(after.terminal.displayCwd, 'tools');
   const exact = 'echo HUD_TERMINAL_OK';
@@ -137,22 +138,6 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   assert.equal(second.status, 200);
   assert.equal(result.operation.displayCommand, exact);
   assert.equal(result.operation.cwdBefore, join(project.root, 'tools'));
-  const conversation = await (await fetch(`${base}/conversation?limit=10`)).json();
-  const exchange = conversation.items.filter((item) => item.runId === result.runId);
-  assert.deepEqual(exchange.map((item) => item.kind), ['command', 'result']);
-  assert.equal(exchange[0].content.command, exact);
-  assert.equal(exchange[1].content.status, 'pass');
-  assert.equal(exchange[1].evidence.stdout.path, result.evidence.stdout);
-  assert.equal('content' in exchange[1].evidence.stdout, false);
-  const cwdBuiltin = await fetch(`${base}/operations/terminal`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ shell: shell.id, command: '/cwd' }),
-  });
-  assert.equal(cwdBuiltin.status, 200);
-  const cwdResult = await cwdBuiltin.json();
-  assert.equal(cwdResult.kind, 'builtin');
-  assert.equal(cwdResult.result.name, 'cwd');
-  assert.equal(cwdResult.result.text, join(project.root, 'tools'));
   assert.equal((await fetch(`${base}/operations/terminal`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ shell: shell.id, command: exact, cwd: '..' }),
@@ -200,8 +185,11 @@ test('live session streams operation state and validated shared navigation', asy
 
 test('HUD server serializes typed operations and exposes bounded evidence, live reads, and media', async (t) => {
   const project = await fixtureProject();
-  await searchRepository(project, 'RIFF', 'media');
-  const running = await startHudServer(project, { port: 0 });
+  await searchRepository(project, 'RIFF', 'media', { tool: process.execPath, toolArgs: [searchFixture] });
+  const running = await startHudServer(project, {
+    port: 0,
+    searchOptions: { tool: process.execPath, toolArgs: [searchFixture] },
+  });
   t.after(() => new Promise((resolveClose) => running.server.close(resolveClose)));
   const base = `http://127.0.0.1:${running.port}`;
 
@@ -279,7 +267,11 @@ test('HUD server serializes typed operations and exposes bounded evidence, live 
   assert.equal(searchResponse.status, 200);
   const search = await searchResponse.json();
   assert.equal(search.status, 'pass');
-  assert.equal(search.operation.command, 'rg -n --no-heading --with-filename --color never --fixed-strings -- RIFF media');
+  assert.equal(search.operation.tool, process.execPath);
+  assert.equal(search.operation.capability.state, 'available');
+  assert.equal(search.operation.executionAttempted, true);
+  assert.match(search.operation.command, /search-tool\.fixture\.mjs/);
+  assert.match(search.operation.command, /-- RIFF media$/);
   assert.deepEqual(search.operation.files, [{ path: 'media/tone.wav', count: 1, lines: [1] }]);
   assert.equal(search.state.last.runId, search.runId);
   assert.deepEqual(search.state.lastOperation, search.operation);

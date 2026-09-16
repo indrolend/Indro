@@ -16,7 +16,7 @@ From the repository root (the sole package installation authority):
 npm link
 ```
 
-This exposes `hud` and `commandhud` through npm's user-level binary directory. It does not install a service or start a UI. Remove it with `npm unlink --global @indrolend/hate-this-meaningless-life`.
+This exposes `indro`, `i`, `hud`, and `commandhud` through npm's user-level binary directory. It does not install a service or start a UI. Remove it with `npm unlink --global @indrolend/indro`.
 
 Without linking, use `node packages/commandhud/cli.mjs <command>` from the repository root.
 
@@ -136,6 +136,12 @@ Each `run.json` is created immutably and records repository currency before and 
 
 `hud continue` compares durable evidence with the current HEAD and a content fingerprint of tracked and non-ignored untracked files. Evidence is `CURRENT`, `STALE`, or `UNKNOWN`; legacy records without currency remain readable and are classified `UNKNOWN`.
 
+## Bounded operations and doctor
+
+The execution core classifies operations as `finite`, `probe`, `interactive`, `watch`, `detached`, or `training`. Probe operations require a deadline. Recorded finite/probe evidence includes the mode, configured timeout, observed timeout state, immediate native exit code, duration, stdout/stderr byte counts and hashes, and declared output validity. A declared output is invalid when it is empty, whitespace-only, or BOM-only; file existence alone is not proof of content.
+
+`hud doctor` runs independent bounded probes for Node.js, Git, the selected repository, and ripgrep. One failure does not prevent later probes. Normal output is a compact summary plus immutable evidence IDs; `hud doctor --json` returns the structured result. Individual retained runs distinguish deadline expiry, unavailable commands, nonzero exits, and invalid output.
+
 ## Current architecture
 
 The core follows one directional data flow:
@@ -239,7 +245,7 @@ hud search --json currentState packages/commandhud
 hud handoff --copy
 ```
 
-`rg` exit code 1 is represented truthfully as a successful zero-match search. Missing tools are blocked and other search-tool failures remain failed. Search output is parsed incrementally: total matches and files remain exact, while retained line-number detail is bounded to 200 matches per file and explicitly marked when truncated. Complete `rg` output remains immutable raw evidence. The compact handoff lists the repository, branch, scope, exact command, factual file/line counts, and the immutable run ID and raw evidence paths. The live map reads `lastOperation` from `currentState()` and highlights those same paths; it does not infer dependencies or file meaning.
+`rg` exit code 1 is represented truthfully as a successful zero-match search. `hud tools --json` exposes the structured `rg` capability state. Search preflights that same capability boundary: when `rg` is missing, CommandHUD records a deterministic blocked operation with `executionAttempted: false` instead of using a spawn failure for discovery. Other search-tool failures remain failed. Search output is parsed incrementally: total matches and files remain exact, while retained line-number detail is bounded to 200 matches per file and explicitly marked when truncated. Complete `rg` output remains immutable raw evidence. The compact handoff lists the repository, branch, scope, exact command, factual file/line counts, and the immutable run ID and raw evidence paths. The live map reads `lastOperation` from `currentState()` and highlights those same paths; it does not infer dependencies or file meaning.
 
 Selecting a matching file in the live map requests a bounded read-only excerpt from `/source`. The server accepts only a file in the current repository projection that also appears in the latest Search record, derives the line numbers from that record, limits context and file size, rejects binary content, and reports whether the Search evidence is `CURRENT` or `STALE`. Snapshot mode does not claim source access.
 
