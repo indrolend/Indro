@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentSession, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverAgentHarnesses, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { agentSession, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -125,6 +125,34 @@ test('detached agent returns a journal-backed identity before finishing and surv
   assert.ok(completed);
   assert.equal(readFileSync(join(completed.worktree, 'detached-change.txt'), 'utf8'), 'detached change\n');
   assert.deepEqual(await gitSnapshot(project.root), sourceBefore);
+});
+
+test('agent lifecycle lists, stops, and discards only its evidence-owned workspace', async () => {
+  const project = await fixtureProject();
+  const directory = mkdtempSync(join(tmpdir(), 'commandhud-stoppable-agent-'));
+  const fake = join(directory, 'fake-codex.mjs');
+  writeFileSync(fake, `for await (const chunk of process.stdin) {}\nsetTimeout(() => {}, 30000);\n`);
+  const sourceBefore = await gitSnapshot(project.root);
+  const started = await startDetachedAgent(project, 'stop this worker', {
+    expectedHead: sourceBefore.head, codexLauncher: [process.execPath, fake],
+  });
+  assert.equal(listAgentSessions(project).find((item) => item.id === started.id)?.status, 'WORKING');
+  assert.equal(stopAgentSession(project, started.id).status, 'STOPPING');
+  assert.equal(stopAgentSession(project, started.id).status, 'STOPPING');
+  let stopped = null;
+  for (let attempt = 0; attempt < 60 && !stopped; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const observed = agentSession(project, started.id);
+    if (observed?.status === 'STOPPED') stopped = observed;
+  }
+  assert.ok(stopped);
+  assert.equal(existsSync(stopped.worktree), true);
+  const discarded = await discardAgentWorkspace(project, started.id);
+  assert.equal(discarded.status, 'DISCARDED');
+  assert.equal(existsSync(stopped.worktree), false);
+  assert.equal((await discardAgentWorkspace(project, started.id)).alreadyAbsent, true);
+  assert.deepEqual(await gitSnapshot(project.root), sourceBefore);
+  await assert.rejects(() => discardAgentWorkspace(project, '20200101000000-dead'), /not found/);
 });
 
 test('probe execution times out and records the deadline as evidence', async () => {

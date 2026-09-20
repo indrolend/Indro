@@ -2,7 +2,7 @@ import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSy
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { agentSession, buildCurrentOperationContext, classifyEvidence, currentState, discoverAgentHarnesses, discoverShells, lastRun, lintRepository, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, startDetachedAgent, undoOperation, undoPlan } from './core.mjs';
+import { agentSession, buildCurrentOperationContext, classifyEvidence, currentState, discardAgentWorkspace, discoverAgentHarnesses, discoverShells, lastRun, lintRepository, listAgentSessions, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, startDetachedAgent, stopAgentSession, undoOperation, undoPlan } from './core.mjs';
 
 const staticRoot = join(dirname(fileURLToPath(import.meta.url)), 'repository-map-client');
 const contentTypes = {
@@ -96,6 +96,14 @@ function cancelRequest(value) {
   if (unknown.length) throw Object.assign(new Error(`Unsupported Cancel fields: ${unknown.join(', ')}`), { statusCode: 400 });
   if (typeof value.runId !== 'string' || !/^\d{14}-[0-9a-f]{4}$/i.test(value.runId)) throw Object.assign(new Error('Cancel requires the active run ID.'), { statusCode: 400 });
   return { runId: value.runId };
+}
+
+function agentActionRequest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw Object.assign(new Error('Agent action request must be an object.'), { statusCode: 400 });
+  const unknown = Object.keys(value).filter((key) => key !== 'action');
+  if (unknown.length) throw Object.assign(new Error(`Unsupported agent action fields: ${unknown.join(', ')}`), { statusCode: 400 });
+  if (!['stop', 'discard'].includes(value.action)) throw Object.assign(new Error('Agent action must be stop or discard.'), { statusCode: 400 });
+  return value.action;
 }
 
 function navigationRequest(value) {
@@ -403,6 +411,21 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
         }
         return;
       }
+      const agentActionMatch = url.pathname.match(/^\/agents\/(\d{14}-[0-9a-f]{4})\/actions$/i);
+      if (request.method === 'POST' && agentActionMatch) {
+        validateOperationRequest(request);
+        const action = agentActionRequest(await jsonBody(request));
+        try {
+          const result = action === 'stop'
+            ? stopAgentSession(project, agentActionMatch[1])
+            : await discardAgentWorkspace(project, agentActionMatch[1]);
+          json(response, 200, result);
+        } catch (error) {
+          if (/not found|cannot be discarded|does not identify|not a registered/.test(error.message)) error.statusCode = 409;
+          throw error;
+        }
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/operations/terminal') {
         validateOperationRequest(request);
         if (!terminal) throw Object.assign(new Error('Terminal execution is available only in the trusted desktop application.'), { statusCode: 403 });
@@ -479,6 +502,12 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
       }
       if (url.pathname === '/agents') {
         json(response, 200, { agents: await discoverAgentHarnesses(agentOptions) });
+        return;
+      }
+      if (url.pathname === '/agent-sessions') {
+        const limit = Number(url.searchParams.get('limit') || 25);
+        try { json(response, 200, { sessions: listAgentSessions(project, limit) }); }
+        catch (error) { error.statusCode = 400; throw error; }
         return;
       }
       const agentMatch = url.pathname.match(/^\/agents\/(\d{14}-[0-9a-f]{4})$/i);

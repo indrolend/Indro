@@ -26,6 +26,8 @@ CommandHUD verifies the selected directory through `git rev-parse --show-topleve
 
 Local coding agents are replaceable workers behind CommandHUD's existing authority boundary. The first adapter names the installed Codex CLI as `codex/local`; a start request must carry the exact expected Git HEAD, and CommandHUD rejects mismatch before process launch. Typed starts create a detached Git worktree under CommandHUD's machine-local state root at that exact commit, so the worker never edits the authoritative checkout. The immutable run ID is the stable session/evidence identity while provider thread IDs remain non-authoritative metadata. Agent state is derived from the active typed operation or its final run record, not mirrored into another mutable store. The local SSE and cancellation primitives are reused. Public connectivity and authentication belong in a later narrow remote adapter, never in the desktop terminal surface.
 
+Detached-agent listing scans those same run directories. Cancellation is a typed request placed inside the verified inflight run and consumed by the owning worker; remote callers never supply a PID. Workspace discard resolves the path from final immutable evidence, requires it to remain under CommandHUD's worktree root and registered to the verified source repository, and leaves the run evidence intact.
+
 Repository scripts and files remain the source of discovered commands. Package scripts are discovered mechanically; additional typed commands are declared under `commandHud.commands` in the selected project manifest. Commands may select generic test/audit/smoke reduction and declare literal success markers. Generic CommandHUD code does not copy DATA-specific commands or output markers into another authority.
 
 ## State boundary

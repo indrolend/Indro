@@ -16,7 +16,7 @@ test('agent API discovers one bounded harness and fails closed on repository ide
   const fake = join(directory, 'fake-codex.mjs');
   writeFileSync(fake, [
     `if (process.argv.includes('--version')) console.log('codex-fixture 1.0');`,
-    `else { let input = ''; for await (const chunk of process.stdin) input += chunk; console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' })); console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'fixture complete' } })); }`,
+    `else { let input = ''; for await (const chunk of process.stdin) input += chunk; if (input.includes('detached objective')) await new Promise((resolve) => setTimeout(resolve, 30000)); console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' })); console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'fixture complete' } })); }`,
   ].join('\n'));
   const running = await startHudServer(project, { port: 0, agentOptions: { codexLauncher: [process.execPath, fake] } });
   t.after(() => running.server.close());
@@ -48,6 +48,25 @@ test('agent API discovers one bounded harness and fails closed on repository ide
   assert.match(detached.id, /^\d{14}-[0-9a-f]{4}$/i);
   assert.notEqual(detached.worktree, project.root);
   assert.equal(detached.repoRoot, project.root);
+  const sessions = await (await fetch(`${base}/agent-sessions`)).json();
+  assert.equal(sessions.sessions.find((item) => item.id === detached.id)?.status, 'WORKING');
+  const action = (value) => fetch(`${base}/agents/${detached.id}/actions`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value),
+  });
+  assert.equal((await action({ action: 'powershell', command: 'whoami' })).status, 400);
+  const stopping = await action({ action: 'stop' });
+  assert.equal(stopping.status, 200);
+  assert.equal((await stopping.json()).status, 'STOPPING');
+  let stopped = null;
+  for (let attempt = 0; attempt < 60 && !stopped; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const observed = await (await fetch(`${base}/agents/${detached.id}`)).json();
+    if (observed.status === 'STOPPED') stopped = observed;
+  }
+  assert.ok(stopped);
+  const discarded = await action({ action: 'discard' });
+  assert.equal(discarded.status, 200);
+  assert.equal((await discarded.json()).status, 'DISCARDED');
 });
 
 function fixtureProject() {

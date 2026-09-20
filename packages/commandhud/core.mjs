@@ -1096,6 +1096,7 @@ export async function runCommand(project, tokens, {
   outputObserver = null,
   mode = 'finite', timeoutMs = null, requiredOutput = 'none',
   stdin = null,
+  externalCancellation = false,
 } = {}) {
   if (!tokens.length) throw new Error('hud run requires a command.');
   const origins = new Set(['core-api', 'cli-argv', 'terminal-ui', 'local-server']);
@@ -1159,6 +1160,7 @@ export async function runCommand(project, tokens, {
   let timeoutRequested = false;
   let forceTimer = null;
   let deadlineTimer = null;
+  let externalCancellationTimer = null;
   try {
     child = shell
       ? spawn(transportCommand, { cwd, shell: true, windowsHide: true, env: process.env })
@@ -1212,6 +1214,11 @@ export async function runCommand(project, tokens, {
     }, policy.timeoutMs);
     deadlineTimer.unref?.();
   }
+  if (externalCancellation) {
+    const cancellationPath = join(runDirectory, 'cancel.request.json');
+    externalCancellationTimer = setInterval(() => { if (existsSync(cancellationPath)) cancel(); }, 100);
+    externalCancellationTimer.unref?.();
+  }
   child.stdin.on('error', () => {});
   child.stdin.end(stdinBytes || undefined);
   onStart?.({ runId: id, command, startedAt: started.toISOString(), stdoutPath, stderrPath, pid: child.pid });
@@ -1255,6 +1262,7 @@ export async function runCommand(project, tokens, {
   });
   if (forceTimer) clearTimeout(forceTimer);
   if (deadlineTimer) clearTimeout(deadlineTimer);
+  if (externalCancellationTimer) clearInterval(externalCancellationTimer);
   signal?.removeEventListener?.('abort', cancel);
   await Promise.all([new Promise((r) => stdoutFile.end(r)), new Promise((r) => stderrFile.end(r))]);
   const stdout = stdoutCapture.chunks.slice(stdoutCapture.start).join('');
@@ -1882,6 +1890,50 @@ export function agentSession(project, runId) {
   };
 }
 
+export function listAgentSessions(project, limit = 25) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Agent session limit must be from 1 to 100.');
+  const { ids } = runIdsNewest(project);
+  return ids.map((id) => agentSession(project, id)).filter(Boolean).slice(0, limit);
+}
+
+function agentRunDirectory(project, runId) {
+  if (typeof runId !== 'string' || !/^\d{14}-[0-9a-f]{4}$/i.test(runId)) throw new Error('Agent action requires a valid session ID.');
+  return join(project.store, 'runs', project.key, runId);
+}
+
+export function stopAgentSession(project, runId) {
+  const directory = agentRunDirectory(project, runId);
+  const inflight = readJson(join(directory, 'inflight.json'));
+  const problem = interruptedJournalProblem(project, directory, runId, inflight);
+  if (problem || inflight?.operationIdentity?.type !== 'agent-request') throw new Error(`Running agent session was not found: ${runId}`);
+  const path = join(directory, 'cancel.request.json');
+  if (!existsSync(path)) atomicWriteJson(path, {
+    schemaVersion: SCHEMA_VERSION, runId, action: 'stop', requestedAt: new Date().toISOString(),
+  }, { exclusive: true });
+  return { id: runId, status: 'STOPPING', processId: inflight.pid };
+}
+
+export async function discardAgentWorkspace(project, runId) {
+  const session = agentSession(project, runId);
+  if (!session) throw new Error(`Agent session was not found: ${runId}`);
+  if (session.status === 'WORKING') throw new Error('A running agent workspace cannot be discarded. Stop it first.');
+  const record = runById(project, runId);
+  const worktree = resolve(record?.operation?.worktree || '');
+  const worktreesRoot = resolve(project.store, 'worktrees', project.key);
+  const within = relative(worktreesRoot, worktree);
+  if (!record?.operation?.isolated || !within || within.startsWith('..') || resolve(record.operation.sourceRoot || '') !== resolve(project.root)) {
+    throw new Error('Agent evidence does not identify a CommandHUD-owned workspace.');
+  }
+  if (!existsSync(worktree)) return { id: runId, status: 'DISCARDED', worktree, alreadyAbsent: true };
+  const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
+  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === worktree)) {
+    throw new Error('Agent workspace is not a registered worktree of the verified source repository.');
+  }
+  const removed = await exec('git', ['worktree', 'remove', '--force', worktree], project.root);
+  if (!removed.ok) throw new Error(`Unable to discard agent workspace: ${removed.stderr}`);
+  return { id: runId, status: 'DISCARDED', worktree, alreadyAbsent: false };
+}
+
 export async function runAgentRequest(project, prompt, {
   stream = false, signal = null, onStart = null, onOutput = null, origin = 'core-api', codexLauncher = null,
   agent = 'codex/local', expectedHead = null, isolate = false,
@@ -1916,6 +1968,7 @@ export async function runAgentRequest(project, prompt, {
     request: 'make from idea', objective: idea, stream, shell: false, captureDelta: true,
     signal, onStart, onOutput, origin, displayCommand: `Make It: ${idea}`,
     stdin: idea,
+    externalCancellation: isolate,
     operationIdentity: {
       type: 'agent-request', agent, baseSha: before.head, sourceRoot: project.root,
       worktree: executionProject.root, isolated: isolate, prompt: idea,

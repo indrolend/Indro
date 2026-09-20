@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { agentSession, discoverAgentHarnesses, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 
@@ -19,7 +19,7 @@ Run from any Git repository:
   hud proof <name>                 reuse current successful evidence without executing
   hud impact <name>                inspect retained stage evidence against current paths
   hud agents [--json]              discover trusted local agent harnesses
-  hud agent-start|agent-show ...   start at exact HEAD or inspect retained evidence
+  hud agent-start|show|ls|stop ... typed local-agent lifecycle and evidence
 
 Retained evidence (never reruns the command):
   hud storage [--json]              read-only evidence usage and integrity inventory
@@ -92,7 +92,8 @@ function validateCommandOptions(command, args, options, usedOptions) {
     'service-reset-plan': rootJson, search: rootJson, proof: rootJson, impact: rootJson,
     'undo-plan': rootJson, continue: rootJson, objective: rootJson, frontier: rootJson,
     tools: rootJson, last: rootJson, history: rootJson, sequences: rootJson,
-    agents: rootJson, 'agent-show': rootJson,
+    agents: rootJson, 'agent-show': rootJson, 'agent-ls': rootJson,
+    'agent-stop': rootJson, 'agent-discard': rootJson,
     'agent-start': new Set(['root', 'quiet', 'json', 'agent', 'expected-head', 'detach']),
     raw: rootJson, head: rootJson, tail: rootJson, find: rootJson, around: rootJson,
     diff: rootJson, copy: rootJson, update: rootJson,
@@ -121,7 +122,8 @@ function validateCommandOptions(command, args, options, usedOptions) {
     search: [1, 2], 'repository-command': [1, 1], proof: [1, 1], impact: [1, 1], lint: [0, 0],
     'undo-plan': [1, 1], undo: [1, 1], handoff: [0, 0], continue: [0, 0], tools: [0, 0],
     run: [1, Infinity], last: [0, 0], packet: [0, 0], workflow: [1, 1], history: [0, 1],
-    agents: [0, 0], 'agent-start': [1, Infinity], 'agent-show': [1, 1],
+    agents: [0, 0], 'agent-start': [1, Infinity], 'agent-show': [1, 1], 'agent-ls': [0, 1],
+    'agent-stop': [1, 1], 'agent-discard': [1, 1],
     sequences: [0, 1], raw: [1, 1], head: [1, 2], tail: [1, 2], find: [2, Infinity],
     around: [2, 3], diff: [2, 2], copy: [1, 1], update: [0, 0], open: [0, 1],
   };
@@ -293,6 +295,21 @@ async function main() {
     if (options.json) return console.log(JSON.stringify(value, null, 2));
     printObject(value);
     return;
+  }
+  if (command === 'agent-ls') {
+    const limit = args[0] === undefined ? 25 : Number(args[0]);
+    const value = { sessions: listAgentSessions(project, limit) };
+    if (options.json) return console.log(JSON.stringify(value, null, 2));
+    for (const session of value.sessions) console.log(`${session.id} ${session.status} ${session.agent} ${session.objective}`);
+    return;
+  }
+  if (command === 'agent-stop') {
+    const value = stopAgentSession(project, args[0]);
+    return options.json ? console.log(JSON.stringify(value, null, 2)) : printObject(value);
+  }
+  if (command === 'agent-discard') {
+    const value = await discardAgentWorkspace(project, args[0]);
+    return options.json ? console.log(JSON.stringify(value, null, 2)) : printObject(value);
   }
   if (command === 'storage') {
     if (args.length) throw new Error('hud storage does not accept positional arguments.');
