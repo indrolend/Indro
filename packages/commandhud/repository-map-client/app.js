@@ -109,7 +109,8 @@
     monitorRepositoryCommand(monitor, 'agent-request');
     try {
       const response = await fetch('/operations/make', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: idea }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: idea, expectedHead: state.git.head, agent: 'codex/local' }),
       });
       monitor.done = true;
       const result = await response.json();

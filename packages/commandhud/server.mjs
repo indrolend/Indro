@@ -2,7 +2,7 @@ import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSy
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCurrentOperationContext, classifyEvidence, currentState, discoverShells, lastRun, lintRepository, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, undoOperation, undoPlan } from './core.mjs';
+import { agentSession, buildCurrentOperationContext, classifyEvidence, currentState, discoverAgentHarnesses, discoverShells, lastRun, lintRepository, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, undoOperation, undoPlan } from './core.mjs';
 
 const staticRoot = join(dirname(fileURLToPath(import.meta.url)), 'repository-map-client');
 const contentTypes = {
@@ -65,10 +65,12 @@ function repositoryCommandRequest(value) {
 
 function agentRequest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Object.assign(new Error('Make It request must be an object.'), { statusCode: 400 });
-  const unknown = Object.keys(value).filter((key) => key !== 'prompt');
+  const unknown = Object.keys(value).filter((key) => !['prompt', 'expectedHead', 'agent'].includes(key));
   if (unknown.length) throw Object.assign(new Error(`Unsupported Make It fields: ${unknown.join(', ')}`), { statusCode: 400 });
   if (typeof value.prompt !== 'string' || !value.prompt.trim() || value.prompt.length > MAX_AGENT_PROMPT_CHARACTERS) throw Object.assign(new Error('Make It idea must be 1-131072 characters.'), { statusCode: 400 });
-  return { prompt: value.prompt.trim() };
+  if (typeof value.expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(value.expectedHead)) throw Object.assign(new Error('Make It requires an exact 40-character expectedHead.'), { statusCode: 400 });
+  if (typeof value.agent !== 'string' || !value.agent) throw Object.assign(new Error('Make It requires a named agent harness.'), { statusCode: 400 });
+  return { prompt: value.prompt.trim(), expectedHead: value.expectedHead, agent: value.agent };
 }
 
 function terminalCommandRequest(value) {
@@ -227,7 +229,7 @@ function sendFile(request, response, path, { cache = 'no-cache' } = {}) {
   else createReadStream(path).pipe(response);
 }
 
-export function createHudServer(project, { terminal = false, onSessionClientsChanged = null, searchOptions = {} } = {}) {
+export function createHudServer(project, { terminal = false, onSessionClientsChanged = null, searchOptions = {}, agentOptions = {} } = {}) {
   let activeOperation = null;
   let activeExecution = null;
   let terminalCwd = project.root;
@@ -369,11 +371,18 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
       if (request.method === 'POST' && url.pathname === '/operations/make') {
         validateOperationRequest(request);
         const operation = agentRequest(await jsonBody(request, MAX_AGENT_PROMPT_CHARACTERS * 4 + 4096));
-        const record = await runTypedOperation(
-          'agent-request', operation.prompt,
-          ({ signal, onStart }) => runAgentRequest(project, operation.prompt, { signal, onStart, origin: 'local-server' }),
-          { cancellable: true },
-        );
+        let record;
+        try {
+          record = await runTypedOperation(
+            'agent-request', operation.prompt,
+            ({ signal, onStart }) => runAgentRequest(project, operation.prompt, { ...agentOptions, ...operation, signal, onStart, origin: 'local-server' }),
+            { cancellable: true },
+          );
+        } catch (error) {
+          if (/^Expected Git HEAD /.test(error.message)) error.statusCode = 409;
+          if (/^Unknown agent harness:/.test(error.message)) error.statusCode = 400;
+          throw error;
+        }
         json(response, 200, {
           runId: record.id, status: record.status, operation: record.operation,
           evidence: { stdout: record.stdoutPath, stderr: record.stderrPath },
@@ -455,6 +464,26 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
         json(response, 200, { history: await operationHistory(project, limit) });
         return;
       }
+      if (url.pathname === '/agents') {
+        json(response, 200, { agents: await discoverAgentHarnesses(agentOptions) });
+        return;
+      }
+      const agentMatch = url.pathname.match(/^\/agents\/(\d{14}-[0-9a-f]{4})$/i);
+      if (agentMatch) {
+        if (activeOperation?.type === 'agent-request' && activeOperation.runId === agentMatch[1]) {
+          json(response, 200, {
+            id: activeOperation.runId, status: activeOperation.state === 'starting' ? 'STARTING' : 'WORKING',
+            reason: null, agent: 'codex/local', project: project.identity.id, repoRoot: project.root,
+            objective: activeOperation.label, startedAt: activeOperation.startedAt, updatedAt: new Date().toISOString(),
+            evidence: { runId: activeOperation.runId, stdout: activeExecution?.stdoutPath, stderr: activeExecution?.stderrPath },
+          });
+          return;
+        }
+        const session = agentSession(project, agentMatch[1]);
+        if (!session) throw Object.assign(new Error('Agent session was not found.'), { statusCode: 404 });
+        json(response, 200, session);
+        return;
+      }
       const undoMatch = url.pathname.match(/^\/undo\/(\d{14}-[0-9a-f]{4})$/i);
       if (undoMatch) {
         try { json(response, 200, await undoPlan(project, undoMatch[1])); }
@@ -517,7 +546,7 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
 }
 
 export async function startHudServer(project, {
-  host = '127.0.0.1', port = 8765, terminal = false, onSessionClientsChanged = null, searchOptions = {},
+  host = '127.0.0.1', port = 8765, terminal = false, onSessionClientsChanged = null, searchOptions = {}, agentOptions = {},
 } = {}) {
   const recovery = await recoverInterruptedRuns(project);
   if (recovery.corrupt.length) {
@@ -528,7 +557,7 @@ export async function startHudServer(project, {
     const run = recovery.detached[0];
     throw new Error(`A detached CommandHUD process still appears active for run ${run.runId}. Refusing to start another operation runtime.`);
   }
-  const server = createHudServer(project, { terminal, onSessionClientsChanged, searchOptions });
+  const server = createHudServer(project, { terminal, onSessionClientsChanged, searchOptions, agentOptions });
   await new Promise((resolveListen, reject) => {
     server.once('error', reject);
     server.listen(port, host, resolveListen);

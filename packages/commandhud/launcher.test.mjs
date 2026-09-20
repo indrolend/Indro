@@ -51,5 +51,5 @@ test('Windows compatibility launcher matches the no-argument CLI context route',
     cwd: productRoot, encoding: 'utf8', timeout: 10_000, windowsHide: true,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /PROJECT=indrolend\/hate\.this\.meaningless\.life/);
+  assert.match(result.stdout, /PROJECT=indrolend\/Indro/);
 });

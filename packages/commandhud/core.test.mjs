@@ -6,12 +6,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { agentSession, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverAgentHarnesses, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
   await assert.rejects(() => runAgentRequest(project, '   '), /between 1 and 131072 characters/);
   await assert.rejects(() => runAgentRequest(project, 'x'.repeat(131073)), /between 1 and 131072 characters/);
+});
+
+test('local agent discovery is typed and grounded in the configured launcher', async () => {
+  const agents = await discoverAgentHarnesses({ codexLauncher: [process.execPath, '--version'] });
+  assert.equal(agents[0].id, 'codex/local');
+  assert.equal(agents[0].available, true);
+  assert.equal(agents[0].capabilities.approvals, false);
 });
 
 test('Windows Make It bypasses the stdin-hostile PowerShell shim when the npm Codex entry exists', () => {
@@ -46,14 +53,20 @@ test('Make It persists and resumes only its project agent session', async () => 
     `console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: process.argv.slice(2).join(' ') + ' INPUT=' + input } }));`,
     `console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 100, cached_input_tokens: 70, output_tokens: 5, reasoning_output_tokens: 1 } }));`,
   ].join('\n'));
-  const first = await runAgentRequest(project, 'make one', { codexLauncher: [process.execPath, fake] });
+  const head = (await gitSnapshot(project.root)).head;
+  await assert.rejects(() => runAgentRequest(project, 'stale', { expectedHead: '0'.repeat(40), codexLauncher: [process.execPath, fake] }), /does not match current HEAD/);
+  await assert.rejects(() => runAgentRequest(project, 'unknown', { agent: 'shell/anything', expectedHead: head, codexLauncher: [process.execPath, fake] }), /Unknown agent harness/);
+  const first = await runAgentRequest(project, 'make one', { expectedHead: head, codexLauncher: [process.execPath, fake] });
   assert.equal(first.operation.sessionReused, false);
+  assert.equal(first.operation.agent, 'codex/local');
+  assert.equal(first.operation.baseSha, head);
   assert.equal(first.operation.usage.uncachedInputTokens, 30);
   assert.equal(readProjectState(project).agentSession.id, first.operation.sessionId);
-  const second = await runAgentRequest(project, 'make two', { codexLauncher: [process.execPath, fake] });
+  const second = await runAgentRequest(project, 'make two', { expectedHead: head, codexLauncher: [process.execPath, fake] });
   assert.equal(second.operation.sessionReused, true);
   assert.match(second.operation.message, /exec resume --json 01a098a6-4b2a-71a3-a165-df5c3607037d - INPUT=make two/);
   assert.equal(second.evidence.stdin.bytes, Buffer.byteLength('make two'));
+  assert.equal(agentSession(project, second.id).status, 'DONE');
 });
 
 test('probe execution times out and records the deadline as evidence', async () => {

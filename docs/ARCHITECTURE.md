@@ -24,6 +24,8 @@ Indro owns language meaning and planning. CommandHUD owns execution and evidence
 
 CommandHUD verifies the selected directory through `git rev-parse --show-toplevel`. An optional project manifest supplies stable human identity and project-specific metadata. Without a manifest, the Git remote or root name supplies identity.
 
+Local coding agents are replaceable workers behind CommandHUD's existing authority boundary. The first adapter names the installed Codex CLI as `codex/local`; a start request must carry the exact expected Git HEAD, and CommandHUD rejects mismatch before process launch. The immutable run ID is the stable session/evidence identity while provider thread IDs remain non-authoritative metadata. Agent state is derived from the active typed operation or its final run record, not mirrored into another mutable store. The local SSE and cancellation primitives are reused. Public connectivity and authentication belong in a later narrow remote adapter, never in the desktop terminal surface.
+
 Repository scripts and files remain the source of discovered commands. Package scripts are discovered mechanically; additional typed commands are declared under `commandHud.commands` in the selected project manifest. Commands may select generic test/audit/smoke reduction and declare literal success markers. Generic CommandHUD code does not copy DATA-specific commands or output markers into another authority.
 
 ## State boundary

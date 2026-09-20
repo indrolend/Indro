@@ -1818,11 +1818,46 @@ export function resolveCodexLauncher({ env = process.env, targetPlatform = proce
   return ['codex'];
 }
 
+export async function discoverAgentHarnesses({ codexLauncher = null } = {}) {
+  const launcher = Array.isArray(codexLauncher) && codexLauncher.length ? codexLauncher : resolveCodexLauncher();
+  const capability = await discoverCapability('codex', launcher[0], { args: [...launcher.slice(1), '--version'] });
+  return [{
+    id: 'codex/local', provider: 'codex', transport: 'local-process',
+    available: capability.available, state: capability.state, version: capability.version,
+    capabilities: { edit: true, cancel: true, resume: true, questions: false, approvals: false },
+  }];
+}
+
+export function agentSession(project, runId) {
+  const record = runById(project, runId);
+  if (!record || record.operation?.type !== 'agent-request') return null;
+  const operation = record.operation;
+  const status = record.status === 'pass' ? 'DONE'
+    : record.status === 'cancelled' ? 'STOPPED' : 'FAILED';
+  return {
+    id: record.id, status, reason: record.resultReason || null,
+    agent: operation.agent, providerSessionId: operation.sessionId,
+    project: project.identity.id, repoRoot: project.root,
+    baseSha: operation.baseSha, head: record.gitAfter?.head || null,
+    dirty: record.gitAfter?.dirty ?? null, objective: operation.prompt,
+    startedAt: record.startedAt, updatedAt: record.endedAt,
+    changedFiles: operation.changedFiles || [], message: operation.message || '',
+    evidence: { runId: record.id, stdout: record.stdoutPath, stderr: record.stderrPath },
+  };
+}
+
 export async function runAgentRequest(project, prompt, {
   stream = false, signal = null, onStart = null, onOutput = null, origin = 'core-api', codexLauncher = null,
+  agent = 'codex/local', expectedHead = null,
 } = {}) {
   const idea = String(prompt || '').trim();
   if (!idea || idea.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Make It requires an idea between 1 and 131072 characters.');
+  if (agent !== 'codex/local') throw new Error(`Unknown agent harness: ${agent}`);
+  if (typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedHead)) throw new Error('Agent start requires an exact 40-character expected Git HEAD.');
+  const before = await gitSnapshot(project.root);
+  if (before.head.toLowerCase() !== expectedHead.toLowerCase()) {
+    throw new Error(`Expected Git HEAD ${expectedHead} does not match current HEAD ${before.head}.`);
+  }
   const projectState = readProjectState(project);
   const savedSession = projectState.agentSession;
   const reused = Boolean(savedSession?.id && /^[0-9a-f-]{36}$/i.test(savedSession.id));
@@ -1838,7 +1873,7 @@ export async function runAgentRequest(project, prompt, {
     operationReducer: ({ stdout, exitCode, record: value }) => {
       const parsed = parseCodexJsonEvents(stdout);
       return {
-        type: 'agent-request', prompt: idea, command: `Make It: ${idea}`, exitCode,
+        type: 'agent-request', agent, baseSha: before.head, prompt: idea, command: `Make It: ${idea}`, exitCode,
         status: value.status, durationMs: value.durationMs, sessionId: parsed.sessionId || savedSession?.id || null,
         sessionReused: reused, usage: parsed.usage, message: parsed.message.slice(0, 4000),
         changedFiles: value.delta?.paths || [], fileCount: value.delta?.fileCount || 0,

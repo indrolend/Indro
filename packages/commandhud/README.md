@@ -68,6 +68,19 @@ hud tools
 hud update
 ```
 
+## Local agent foundation
+
+CommandHUD exposes the installed Codex worker as the typed harness `codex/local`. Harness discovery is read-only (`hud agents --json` or `GET /agents`). Starting work requires a locally verified repository and the caller's exact expected 40-character HEAD; a stale HEAD fails before Codex launches:
+
+```text
+hud agent-start "Investigate the failing parser test" --agent codex/local --expected-head <full-sha> --json
+hud agent-show <run-id> --json
+```
+
+The immutable CommandHUD run ID is the agent-session identity. Codex's thread ID remains provider metadata. Completed state, changed paths, Git state, output, and evidence paths are derived from the normal run record; there is no agent database. The loopback server provides the same contract through `POST /operations/make` with `{ "prompt", "agent", "expectedHead" }`, `GET /agents`, and `GET /agents/<run-id>`. Existing SSE operation events and `POST /operations/cancel` provide live observation and bounded cancellation.
+
+This checkpoint deliberately does not claim detached execution, worktree isolation, structured questions/approvals, remote authentication, or public reachability. `hud serve` stays loopback-only by default, and its desktop terminal endpoint is not part of the agent protocol. A future remote adapter must authenticate separately and expose only these typed identities and actions.
+
 `hud compare-files` is an immutable typed operation: it records both absolute identities, exact SHA-256 values, equality status, raw JSON, process outcome, and repository currency. Absolute paths allow source-to-built or source-to-installed comparisons; filenames, sizes, and timestamps never substitute for byte equality.
 
 On Windows, `hud service <name>` performs a validated read-only service probe and records status, start type, process identity, dependencies, dependents, raw JSON, and Git currency as one immutable operation. The runtime owns the encoded PowerShell transport; the caller supplies only a restricted service name, never executable text.

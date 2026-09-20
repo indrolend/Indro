@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discoverAgentHarnesses, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 
@@ -18,6 +18,8 @@ Run from any Git repository:
   hud repository-command <name>    run a repository-owned typed command
   hud proof <name>                 reuse current successful evidence without executing
   hud impact <name>                inspect retained stage evidence against current paths
+  hud agents [--json]              discover trusted local agent harnesses
+  hud agent-start|agent-show ...   start at exact HEAD or inspect retained evidence
 
 Retained evidence (never reruns the command):
   hud storage [--json]              read-only evidence usage and integrity inventory
@@ -40,12 +42,11 @@ Safety and authority:
 Other clients:
   hud desktop                       Windows Repository Map application
   hud serve                         loopback typed-operation server
-
 Use --root <path> to select an explicit Git repository.`;
 
 function parse(argv) {
   const args = [...argv];
-  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765 };
+  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null };
   const command = args.shift() || 'context';
   const positionals = [];
   const usedOptions = new Set();
@@ -66,7 +67,8 @@ function parse(argv) {
     else if (value === '--lan') { options.host = '0.0.0.0'; usedOptions.add('host'); }
     else if (value === '--host') { options.host = optionValue(value, index); index++; }
     else if (value === '--port') { options.port = Number(optionValue(value, index)); index++; }
-    else if (value === '--root' || value === '--shell' || value === '--objective' || value === '--request') { options[value.slice(2)] = optionValue(value, index); index++; }
+    else if (value === '--root' || value === '--shell' || value === '--objective' || value === '--request' || value === '--agent') { options[value.slice(2)] = optionValue(value, index); index++; }
+    else if (value === '--expected-head') { options.expectedHead = optionValue(value, index); index++; }
     else if (value === '--request-b64') { options.requestB64 = optionValue(value, index); index++; }
     else if (value === '--workflow-id') { options.workflowId = optionValue(value, index); index++; }
     else if (value === '--workflow-name') { options.workflowName = optionValue(value, index); index++; }
@@ -89,6 +91,8 @@ function validateCommandOptions(command, args, options, usedOptions) {
     'service-reset-plan': rootJson, search: rootJson, proof: rootJson, impact: rootJson,
     'undo-plan': rootJson, continue: rootJson, objective: rootJson, frontier: rootJson,
     tools: rootJson, last: rootJson, history: rootJson, sequences: rootJson,
+    agents: rootJson, 'agent-show': rootJson,
+    'agent-start': new Set(['root', 'quiet', 'json', 'agent', 'expected-head']),
     raw: rootJson, head: rootJson, tail: rootJson, find: rootJson, around: rootJson,
     diff: rootJson, copy: rootJson, update: rootJson,
     desktop: new Set(['root']),
@@ -116,6 +120,7 @@ function validateCommandOptions(command, args, options, usedOptions) {
     search: [1, 2], 'repository-command': [1, 1], proof: [1, 1], impact: [1, 1], lint: [0, 0],
     'undo-plan': [1, 1], undo: [1, 1], handoff: [0, 0], continue: [0, 0], tools: [0, 0],
     run: [1, Infinity], last: [0, 0], packet: [0, 0], workflow: [1, 1], history: [0, 1],
+    agents: [0, 0], 'agent-start': [1, Infinity], 'agent-show': [1, 1],
     sequences: [0, 1], raw: [1, 1], head: [1, 2], tail: [1, 2], find: [2, Infinity],
     around: [2, 3], diff: [2, 2], copy: [1, 1], update: [0, 0], open: [0, 1],
   };
@@ -257,6 +262,31 @@ async function main() {
     return;
   }
   const project = await resolveProject({ root: options.root });
+  if (command === 'agents') {
+    const value = { agents: await discoverAgentHarnesses() };
+    if (options.json) return console.log(JSON.stringify(value, null, 2));
+    for (const agent of value.agents) console.log(`${agent.id} ${agent.state.toUpperCase()}${agent.version ? ` ${agent.version}` : ''}`);
+    return;
+  }
+  if (command === 'agent-start') {
+    const objective = args.join(' ').trim();
+    const record = await runAgentRequest(project, objective, {
+      agent: options.agent, expectedHead: options.expectedHead,
+      stream: !options.quiet && !options.json, origin: 'cli-argv',
+    });
+    const value = agentSession(project, record.id);
+    if (options.json) console.log(JSON.stringify(value, null, 2));
+    else printObject({ session: value.id, status: value.status, agent: value.agent, base_sha: value.baseSha, changed_files: value.changedFiles.length, evidence: `run:${value.id}` });
+    process.exitCode = record.status === 'pass' ? 0 : record.status === 'cancelled' ? 2 : 1;
+    return;
+  }
+  if (command === 'agent-show') {
+    const value = agentSession(project, args[0]);
+    if (!value) throw new Error(`Agent session was not found: ${args[0]}`);
+    if (options.json) return console.log(JSON.stringify(value, null, 2));
+    printObject(value);
+    return;
+  }
   if (command === 'storage') {
     if (args.length) throw new Error('hud storage does not accept positional arguments.');
     const value = storageInventory(project);

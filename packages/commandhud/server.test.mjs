@@ -5,10 +5,41 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { resolveProject, searchRepository } from './core.mjs';
+import { gitSnapshot, resolveProject, searchRepository } from './core.mjs';
 import { startHudServer } from './server.mjs';
 
 const searchFixture = fileURLToPath(new URL('./search-tool.fixture.mjs', import.meta.url));
+
+test('agent API discovers one bounded harness and fails closed on repository identity', async (t) => {
+  const project = await fixtureProject();
+  const directory = mkdtempSync(join(tmpdir(), 'hud-server-agent-'));
+  const fake = join(directory, 'fake-codex.mjs');
+  writeFileSync(fake, [
+    `if (process.argv.includes('--version')) console.log('codex-fixture 1.0');`,
+    `else { let input = ''; for await (const chunk of process.stdin) input += chunk; console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' })); console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'fixture complete' } })); }`,
+  ].join('\n'));
+  const running = await startHudServer(project, { port: 0, agentOptions: { codexLauncher: [process.execPath, fake] } });
+  t.after(() => running.server.close());
+  const base = `http://127.0.0.1:${running.port}`;
+  const agents = await (await fetch(`${base}/agents`)).json();
+  assert.deepEqual(agents.agents.map((agent) => agent.id), ['codex/local']);
+  assert.equal(agents.agents[0].available, true);
+  const head = (await gitSnapshot(project.root)).head;
+  const request = (body) => fetch(`${base}/operations/make`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal((await request({ prompt: 'no shell', expectedHead: head, agent: 'codex/local', command: 'whoami' })).status, 400);
+  assert.equal((await request({ prompt: 'stale', expectedHead: '0'.repeat(40), agent: 'codex/local' })).status, 409);
+  assert.equal((await request({ prompt: 'unknown', expectedHead: head, agent: 'shell/arbitrary' })).status, 400);
+  const started = await request({ prompt: 'bounded objective', expectedHead: head, agent: 'codex/local' });
+  assert.equal(started.status, 200);
+  const result = await started.json();
+  assert.equal(result.operation.baseSha, head);
+  assert.equal(result.operation.agent, 'codex/local');
+  const session = await (await fetch(`${base}/agents/${result.runId}`)).json();
+  assert.equal(session.status, 'DONE');
+  assert.equal(session.evidence.runId, result.runId);
+});
 
 function fixtureProject() {
   const root = mkdtempSync(join(tmpdir(), 'hud-server-'));
