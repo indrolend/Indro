@@ -74,12 +74,13 @@ CommandHUD exposes the installed Codex worker as the typed harness `codex/local`
 
 ```text
 hud agent-start "Investigate the failing parser test" --agent codex/local --expected-head <full-sha> --json
+hud agent-start "Investigate in background" --agent codex/local --expected-head <full-sha> --detach --json
 hud agent-show <run-id> --json
 ```
 
-The immutable CommandHUD run ID is the agent-session identity. Codex's thread ID remains provider metadata. Completed state, changed paths, Git state, output, and evidence paths are derived from the normal run record; there is no agent database. The loopback server provides the same contract through `POST /operations/make` with `{ "prompt", "agent", "expectedHead" }`, `GET /agents`, and `GET /agents/<run-id>`. Existing SSE operation events and `POST /operations/cancel` provide live observation and bounded cancellation.
+The immutable CommandHUD run ID is the agent-session identity. Codex's thread ID remains provider metadata. Typed CLI and server starts create a detached Git worktree under the CommandHUD state root at the verified source SHA, then give Codex write access only to that workspace. The source checkout is recorded separately and remains untouched. Completed state, changed paths, Git state, output, and evidence paths are derived from the normal run record; there is no agent database. The loopback server provides the same contract through `POST /operations/make` with `{ "prompt", "agent", "expectedHead" }`, `GET /agents`, and `GET /agents/<run-id>`. Existing SSE operation events and `POST /operations/cancel` provide live observation and bounded cancellation.
 
-This checkpoint deliberately does not claim detached execution, worktree isolation, structured questions/approvals, remote authentication, or public reachability. `hud serve` stays loopback-only by default, and its desktop terminal endpoint is not part of the agent protocol. A future remote adapter must authenticate separately and expose only these typed identities and actions.
+`--detach` and `POST /agents/start` launch a background worker and return only after the ordinary CommandHUD inflight journal exists. The job therefore survives the submitting CLI or HTTP connection, and `agent-show`/`GET /agents/<run-id>` derives `WORKING` or terminal state from that journal/run pair. This checkpoint deliberately does not yet claim automated workspace disposal, detached-session cancellation, structured questions/approvals, remote authentication, or public reachability. `hud serve` stays loopback-only by default, and its desktop terminal endpoint is not part of the agent protocol. A future remote adapter must authenticate separately and expose only these typed identities and actions.
 
 `hud compare-files` is an immutable typed operation: it records both absolute identities, exact SHA-256 values, equality status, raw JSON, process outcome, and repository currency. Absolute paths allow source-to-built or source-to-installed comparisons; filenames, sizes, and timestamps never substitute for byte equality.
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentSession, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverAgentHarnesses, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { agentSession, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverAgentHarnesses, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -67,6 +67,64 @@ test('Make It persists and resumes only its project agent session', async () => 
   assert.match(second.operation.message, /exec resume --json 01a098a6-4b2a-71a3-a165-df5c3607037d - INPUT=make two/);
   assert.equal(second.evidence.stdin.bytes, Buffer.byteLength('make two'));
   assert.equal(agentSession(project, second.id).status, 'DONE');
+});
+
+test('typed agent starts edit only an isolated worktree at the verified source SHA', async () => {
+  const project = await fixtureProject();
+  const directory = mkdtempSync(join(tmpdir(), 'commandhud-isolated-agent-'));
+  const fake = join(directory, 'fake-codex.mjs');
+  writeFileSync(fake, [
+    `import { writeFileSync } from 'node:fs';`,
+    `for await (const chunk of process.stdin) {}`,
+    `writeFileSync('agent-change.txt', 'isolated change\\n');`,
+    `console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' }));`,
+    `console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'isolated' } }));`,
+  ].join('\n'));
+  const sourceBefore = await gitSnapshot(project.root);
+  const record = await runAgentRequest(project, 'isolated edit', {
+    expectedHead: sourceBefore.head, isolate: true, codexLauncher: [process.execPath, fake],
+  });
+  const sourceAfter = await gitSnapshot(project.root);
+  assert.deepEqual(sourceAfter, sourceBefore);
+  assert.equal(existsSync(join(project.root, 'agent-change.txt')), false);
+  assert.notEqual(record.root, project.root);
+  assert.equal(record.operation.sourceRoot, project.root);
+  assert.equal(record.operation.worktree, record.root);
+  assert.equal(record.operation.isolated, true);
+  assert.deepEqual(record.operation.changedFiles, ['agent-change.txt']);
+  assert.equal(readFileSync(join(record.root, 'agent-change.txt'), 'utf8'), 'isolated change\n');
+  assert.equal(agentSession(project, record.id).worktree, record.root);
+});
+
+test('detached agent returns a journal-backed identity before finishing and survives its caller', async () => {
+  const project = await fixtureProject();
+  const directory = mkdtempSync(join(tmpdir(), 'commandhud-detached-agent-'));
+  const fake = join(directory, 'fake-codex.mjs');
+  writeFileSync(fake, [
+    `import { writeFileSync } from 'node:fs';`,
+    `for await (const chunk of process.stdin) {}`,
+    `await new Promise((resolve) => setTimeout(resolve, 600));`,
+    `writeFileSync('detached-change.txt', 'detached change\\n');`,
+    `console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' }));`,
+  ].join('\n'));
+  const sourceBefore = await gitSnapshot(project.root);
+  const started = await startDetachedAgent(project, 'detached edit', {
+    expectedHead: sourceBefore.head, codexLauncher: [process.execPath, fake],
+  });
+  assert.equal(started.status, 'WORKING');
+  assert.ok(started.processId > 0);
+  const recovery = await recoverInterruptedRuns(project);
+  assert.deepEqual(recovery.corrupt, []);
+  assert.equal(recovery.detached.find((item) => item.runId === started.id)?.operationType, 'agent-request');
+  let completed = null;
+  for (let attempt = 0; attempt < 50 && !completed; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const observed = agentSession(project, started.id);
+    if (observed?.status === 'DONE') completed = observed;
+  }
+  assert.ok(completed);
+  assert.equal(readFileSync(join(completed.worktree, 'detached-change.txt'), 'utf8'), 'detached change\n');
+  assert.deepEqual(await gitSnapshot(project.root), sourceBefore);
 });
 
 test('probe execution times out and records the deadline as evidence', async () => {

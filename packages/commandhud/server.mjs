@@ -2,7 +2,7 @@ import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSy
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { agentSession, buildCurrentOperationContext, classifyEvidence, currentState, discoverAgentHarnesses, discoverShells, lastRun, lintRepository, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, undoOperation, undoPlan } from './core.mjs';
+import { agentSession, buildCurrentOperationContext, classifyEvidence, currentState, discoverAgentHarnesses, discoverShells, lastRun, lintRepository, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, startDetachedAgent, undoOperation, undoPlan } from './core.mjs';
 
 const staticRoot = join(dirname(fileURLToPath(import.meta.url)), 'repository-map-client');
 const contentTypes = {
@@ -375,7 +375,7 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
         try {
           record = await runTypedOperation(
             'agent-request', operation.prompt,
-            ({ signal, onStart }) => runAgentRequest(project, operation.prompt, { ...agentOptions, ...operation, signal, onStart, origin: 'local-server' }),
+            ({ signal, onStart }) => runAgentRequest(project, operation.prompt, { ...agentOptions, ...operation, isolate: true, signal, onStart, origin: 'local-server' }),
             { cancellable: true },
           );
         } catch (error) {
@@ -388,6 +388,19 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
           evidence: { stdout: record.stdoutPath, stderr: record.stderrPath },
           state: await currentState(project),
         });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/agents/start') {
+        validateOperationRequest(request);
+        const operation = agentRequest(await jsonBody(request, MAX_AGENT_PROMPT_CHARACTERS * 4 + 4096));
+        try {
+          const session = await startDetachedAgent(project, operation.prompt, { ...agentOptions, ...operation });
+          json(response, 202, session);
+        } catch (error) {
+          if (/^Expected Git HEAD /.test(error.message)) error.statusCode = 409;
+          if (/^Unknown agent harness:/.test(error.message)) error.statusCode = 400;
+          throw error;
+        }
         return;
       }
       if (request.method === 'POST' && url.pathname === '/operations/terminal') {
@@ -553,8 +566,9 @@ export async function startHudServer(project, {
     const run = recovery.corrupt[0];
     throw new Error(`Interrupted evidence is corrupt for run ${run.runId}: ${run.reason} Refusing to start the operation runtime.`);
   }
-  if (recovery.detached.length) {
-    const run = recovery.detached[0];
+  const blockingDetached = recovery.detached.find((run) => run.operationType !== 'agent-request');
+  if (blockingDetached) {
+    const run = blockingDetached;
     throw new Error(`A detached CommandHUD process still appears active for run ${run.runId}. Refusing to start another operation runtime.`);
   }
   const server = createHudServer(project, { terminal, onSessionClientsChanged, searchOptions, agentOptions });

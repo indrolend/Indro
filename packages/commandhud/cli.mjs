@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { agentSession, discoverAgentHarnesses, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discoverAgentHarnesses, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 
@@ -46,7 +46,7 @@ Use --root <path> to select an explicit Git repository.`;
 
 function parse(argv) {
   const args = [...argv];
-  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null };
+  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false };
   const command = args.shift() || 'context';
   const positionals = [];
   const usedOptions = new Set();
@@ -63,6 +63,7 @@ function parse(argv) {
     else if (value === '--plain') { options.tui = false; usedOptions.add('tui'); }
     else if (value === '--tui') { options.tui = true; usedOptions.add('tui'); }
     else if (value === '--quiet') { options.quiet = true; usedOptions.add('quiet'); }
+    else if (value === '--detach') { options.detach = true; usedOptions.add('detach'); }
     else if (value === '--json') { options.json = true; usedOptions.add('json'); }
     else if (value === '--lan') { options.host = '0.0.0.0'; usedOptions.add('host'); }
     else if (value === '--host') { options.host = optionValue(value, index); index++; }
@@ -92,7 +93,7 @@ function validateCommandOptions(command, args, options, usedOptions) {
     'undo-plan': rootJson, continue: rootJson, objective: rootJson, frontier: rootJson,
     tools: rootJson, last: rootJson, history: rootJson, sequences: rootJson,
     agents: rootJson, 'agent-show': rootJson,
-    'agent-start': new Set(['root', 'quiet', 'json', 'agent', 'expected-head']),
+    'agent-start': new Set(['root', 'quiet', 'json', 'agent', 'expected-head', 'detach']),
     raw: rootJson, head: rootJson, tail: rootJson, find: rootJson, around: rootJson,
     diff: rootJson, copy: rootJson, update: rootJson,
     desktop: new Set(['root']),
@@ -270,9 +271,15 @@ async function main() {
   }
   if (command === 'agent-start') {
     const objective = args.join(' ').trim();
+    if (options.detach) {
+      const value = await startDetachedAgent(project, objective, { agent: options.agent, expectedHead: options.expectedHead });
+      if (options.json) console.log(JSON.stringify(value, null, 2));
+      else printObject({ session: value.id, status: value.status, agent: value.agent, base_sha: value.baseSha, worktree: value.worktree, evidence: `run:${value.id}` });
+      return;
+    }
     const record = await runAgentRequest(project, objective, {
       agent: options.agent, expectedHead: options.expectedHead,
-      stream: !options.quiet && !options.json, origin: 'cli-argv',
+      isolate: true, stream: !options.quiet && !options.json, origin: 'cli-argv',
     });
     const value = agentSession(project, record.id);
     if (options.json) console.log(JSON.stringify(value, null, 2));

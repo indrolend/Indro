@@ -5,6 +5,7 @@ import { homedir, platform, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { operationPolicy, validateOperationEvidence } from './operation-kernel.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -1376,7 +1377,14 @@ function processAppearsAlive(pid) {
 function interruptedJournalProblem(project, runDirectory, id, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'Journal is not valid JSON object evidence.';
   if (value.schemaVersion !== SCHEMA_VERSION) return `Unsupported journal schema: ${value.schemaVersion}`;
-  if (value.id !== id || value.project !== project.identity.id || resolve(value.root || '') !== resolve(project.root)) return 'Journal identity does not match this verified project and run.';
+  const agent = value.operationIdentity?.type === 'agent-request';
+  const expectedWorktrees = resolve(project.store, 'worktrees', project.key);
+  const worktree = resolve(value.root || '');
+  const agentRootValid = agent
+    && resolve(value.operationIdentity?.sourceRoot || '') === resolve(project.root)
+    && resolve(value.operationIdentity?.worktree || '') === worktree
+    && relative(expectedWorktrees, worktree) && !relative(expectedWorktrees, worktree).startsWith('..');
+  if (value.id !== id || value.project !== project.identity.id || (worktree !== resolve(project.root) && !agentRootValid)) return 'Journal identity does not match this verified project and run.';
   if (!Number.isInteger(value.pid) || value.pid <= 0) return 'Journal has no valid process identity.';
   if (typeof value.command !== 'string' || !value.command || !Array.isArray(value.argv) || value.argv.some((part) => typeof part !== 'string')) return 'Journal has no valid command identity.';
   if (!Number.isFinite(Date.parse(value.startedAt || ''))) return 'Journal has no valid start time.';
@@ -1425,7 +1433,10 @@ export async function recoverInterruptedRuns(project) {
       continue;
     }
     if (processAppearsAlive(inflight.pid)) {
-      detached.push({ runId: id, pid: inflight.pid, command: inflight.command, startedAt: inflight.startedAt });
+      detached.push({
+        runId: id, pid: inflight.pid, command: inflight.command, startedAt: inflight.startedAt,
+        ...(inflight.operationIdentity?.type ? { operationType: inflight.operationIdentity.type } : {}),
+      });
       continue;
     }
     const stdoutEvidence = readEvidenceTail(inflight.stdoutPath);
@@ -1434,14 +1445,15 @@ export async function recoverInterruptedRuns(project) {
     const stderr = stderrEvidence.text;
     const observedMarkers = await collectEvidenceMarkers(inflight.stdoutPath, inflight.stderrPath, inflight.resultMarkers === true);
     const ended = new Date();
+    const evidenceRoot = inflight.operationIdentity?.type === 'agent-request' ? inflight.root : project.root;
     const [after, currencyAfter, treeAfter] = await Promise.all([
-      gitSnapshot(project.root), repositoryCurrency(project.root, project.identity.id), inflight.captureDelta ? worktreeTree(project.root) : null,
+      gitSnapshot(evidenceRoot), repositoryCurrency(evidenceRoot, project.identity.id), inflight.captureDelta ? worktreeTree(evidenceRoot) : null,
     ]);
     const reduction = reduceOutput(inflight.command, stdout, stderr, 1, {
-      root: project.root, resultMarkers: inflight.resultMarkers === true, observedMarkers,
+      root: evidenceRoot, resultMarkers: inflight.resultMarkers === true, observedMarkers,
     });
     const record = {
-      schemaVersion: SCHEMA_VERSION, id, project: project.identity.id, root: project.root,
+      schemaVersion: SCHEMA_VERSION, id, project: project.identity.id, root: evidenceRoot,
       operationId: id, inputText: inflight.inputText || inflight.command,
       branch: inflight.gitBefore.branch, headBefore: inflight.gitBefore.head, headAfter: after.head, upstream: inflight.gitBefore.upstream,
       request: inflight.request, command: inflight.command, transportCommand: inflight.transportCommand || inflight.command,
@@ -1465,15 +1477,22 @@ export async function recoverInterruptedRuns(project) {
       provenance: { origin: inflight.provenance?.origin || 'legacy-unknown', finalizedBy: 'startup-recovery' },
     };
     if (inflight.captureDelta && inflight.treeBefore && treeAfter) {
-      const patch = await exec('git', ['diff', '--binary', '--full-index', inflight.treeBefore, treeAfter], project.root, { trim: false });
-      const names = await exec('git', ['diff', '--name-only', '-z', inflight.treeBefore, treeAfter], project.root, { trim: false });
+      const patch = await exec('git', ['diff', '--binary', '--full-index', inflight.treeBefore, treeAfter], evidenceRoot, { trim: false });
+      const names = await exec('git', ['diff', '--name-only', '-z', inflight.treeBefore, treeAfter], evidenceRoot, { trim: false });
       if (!patch.ok || !names.ok) throw new Error(`Unable to recover interrupted operation delta: ${patch.stderr || names.stderr}`);
       const paths = names.stdout.split('\0').filter(Boolean).map((path) => path.replaceAll('\\', '/'));
       const patchPath = join(runDirectory, 'worktree.patch');
       if (patch.stdout) writeFileSync(patchPath, patch.stdout, { flag: 'wx' });
       record.delta = { kind: 'worktree-patch', treeBefore: inflight.treeBefore, treeAfter, paths, fileCount: paths.length, patchPath: patch.stdout ? patchPath : null };
     }
-    if (inflight.operationIdentity?.type === 'repository-command' || inflight.operationIdentity?.type === 'lint') {
+    if (inflight.operationIdentity?.type === 'agent-request') {
+      record.operation = {
+        ...inflight.operationIdentity, command: inflight.command, exitCode: null,
+        status: 'interrupted', durationMs: record.durationMs, sessionId: null,
+        sessionReused: false, usage: null, message: '',
+        changedFiles: record.delta?.paths || [], fileCount: record.delta?.fileCount || 0,
+      };
+    } else if (inflight.operationIdentity?.type === 'repository-command' || inflight.operationIdentity?.type === 'lint') {
       record.operation = {
         ...inflight.operationIdentity, command: inflight.command, exitCode: null,
         status: 'interrupted', durationMs: record.durationMs, summary: [...reduction.summary], markers: [...reduction.markers],
@@ -1830,14 +1849,31 @@ export async function discoverAgentHarnesses({ codexLauncher = null } = {}) {
 
 export function agentSession(project, runId) {
   const record = runById(project, runId);
-  if (!record || record.operation?.type !== 'agent-request') return null;
+  if (!record) {
+    const directory = join(project.store, 'runs', project.key, runId);
+    const inflight = readJson(join(directory, 'inflight.json'));
+    if (inflight?.operationIdentity?.type !== 'agent-request') return null;
+    const operation = inflight.operationIdentity;
+    return {
+      id: runId, status: 'WORKING', reason: null, agent: operation.agent,
+      providerSessionId: null, processId: inflight.pid,
+      project: project.identity.id, repoRoot: operation.sourceRoot,
+      worktree: operation.worktree || inflight.root, baseSha: operation.baseSha,
+      head: inflight.gitBefore?.head || null, dirty: inflight.gitBefore?.dirty ?? null,
+      objective: operation.prompt, startedAt: inflight.startedAt, updatedAt: inflight.startedAt,
+      changedFiles: [], message: '',
+      evidence: { runId, stdout: inflight.stdoutPath, stderr: inflight.stderrPath },
+    };
+  }
+  if (record.operation?.type !== 'agent-request') return null;
   const operation = record.operation;
   const status = record.status === 'pass' ? 'DONE'
     : record.status === 'cancelled' ? 'STOPPED' : 'FAILED';
   return {
     id: record.id, status, reason: record.resultReason || null,
     agent: operation.agent, providerSessionId: operation.sessionId,
-    project: project.identity.id, repoRoot: project.root,
+    project: project.identity.id, repoRoot: operation.sourceRoot || project.root,
+    worktree: operation.worktree || record.root,
     baseSha: operation.baseSha, head: record.gitAfter?.head || null,
     dirty: record.gitAfter?.dirty ?? null, objective: operation.prompt,
     startedAt: record.startedAt, updatedAt: record.endedAt,
@@ -1848,7 +1884,7 @@ export function agentSession(project, runId) {
 
 export async function runAgentRequest(project, prompt, {
   stream = false, signal = null, onStart = null, onOutput = null, origin = 'core-api', codexLauncher = null,
-  agent = 'codex/local', expectedHead = null,
+  agent = 'codex/local', expectedHead = null, isolate = false,
 } = {}) {
   const idea = String(prompt || '').trim();
   if (!idea || idea.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Make It requires an idea between 1 and 131072 characters.');
@@ -1858,34 +1894,86 @@ export async function runAgentRequest(project, prompt, {
   if (before.head.toLowerCase() !== expectedHead.toLowerCase()) {
     throw new Error(`Expected Git HEAD ${expectedHead} does not match current HEAD ${before.head}.`);
   }
+  let executionProject = project;
+  let worktree = null;
+  if (isolate) {
+    const workspaceId = createRunId();
+    worktree = join(project.store, 'worktrees', project.key, workspaceId);
+    mkdirSync(dirname(worktree), { recursive: true });
+    const created = await exec('git', ['worktree', 'add', '--detach', worktree, before.head], project.root);
+    if (!created.ok) throw new Error(`Unable to create isolated agent worktree: ${created.stderr}`);
+    executionProject = { ...project, root: worktree };
+  }
   const projectState = readProjectState(project);
   const savedSession = projectState.agentSession;
-  const reused = Boolean(savedSession?.id && /^[0-9a-f-]{36}$/i.test(savedSession.id));
+  const reused = !isolate && Boolean(savedSession?.id && /^[0-9a-f-]{36}$/i.test(savedSession.id));
   const args = reused
     ? ['exec', 'resume', '--json', savedSession.id, '-']
-    : ['exec', '--json', '--color', 'never', '--sandbox', 'workspace-write', '-C', project.root, '-'];
+    : ['exec', '--json', '--color', 'never', '--sandbox', 'workspace-write', '-C', executionProject.root, '-'];
   const launcher = Array.isArray(codexLauncher) && codexLauncher.length ? codexLauncher : resolveCodexLauncher();
   const tokens = [...launcher, ...args];
-  const record = await runCommand(project, tokens, {
+  const record = await runCommand(executionProject, tokens, {
     request: 'make from idea', objective: idea, stream, shell: false, captureDelta: true,
     signal, onStart, onOutput, origin, displayCommand: `Make It: ${idea}`,
     stdin: idea,
+    operationIdentity: {
+      type: 'agent-request', agent, baseSha: before.head, sourceRoot: project.root,
+      worktree: executionProject.root, isolated: isolate, prompt: idea,
+    },
     operationReducer: ({ stdout, exitCode, record: value }) => {
       const parsed = parseCodexJsonEvents(stdout);
       return {
-        type: 'agent-request', agent, baseSha: before.head, prompt: idea, command: `Make It: ${idea}`, exitCode,
+        type: 'agent-request', agent, baseSha: before.head, sourceRoot: project.root,
+        worktree: executionProject.root, isolated: isolate,
+        prompt: idea, command: `Make It: ${idea}`, exitCode,
         status: value.status, durationMs: value.durationMs, sessionId: parsed.sessionId || savedSession?.id || null,
         sessionReused: reused, usage: parsed.usage, message: parsed.message.slice(0, 4000),
         changedFiles: value.delta?.paths || [], fileCount: value.delta?.fileCount || 0,
       };
     },
   });
-  if (record.operation.sessionId) {
+  if (record.operation.sessionId && !isolate) {
     const current = readProjectState(project);
     current.agentSession = { id: record.operation.sessionId, updatedAt: record.endedAt };
     writeProjectState(project, current);
   }
   return record;
+}
+
+export async function startDetachedAgent(project, prompt, { agent = 'codex/local', expectedHead = null, codexLauncher = null } = {}) {
+  const idea = String(prompt || '').trim();
+  if (!idea || idea.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Make It requires an idea between 1 and 131072 characters.');
+  if (agent !== 'codex/local') throw new Error(`Unknown agent harness: ${agent}`);
+  if (typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedHead)) throw new Error('Agent start requires an exact 40-character expected Git HEAD.');
+  const current = await gitSnapshot(project.root);
+  if (current.head.toLowerCase() !== expectedHead.toLowerCase()) throw new Error(`Expected Git HEAD ${expectedHead} does not match current HEAD ${current.head}.`);
+  const worker = fileURLToPath(new URL('./agent-worker.mjs', import.meta.url));
+  const payload = Buffer.from(JSON.stringify({ root: project.root, store: project.store, prompt: idea, agent, expectedHead, codexLauncher }), 'utf8').toString('base64url');
+  const child = spawn(process.execPath, [worker, payload], {
+    cwd: project.root, detached: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: process.env,
+  });
+  let stdout = '';
+  let stderr = '';
+  const started = await new Promise((resolveStarted, rejectStarted) => {
+    const timer = setTimeout(() => rejectStarted(new Error('Detached agent did not create its evidence journal in time.')), 30_000);
+    const finish = (error, value) => {
+      clearTimeout(timer);
+      if (error) rejectStarted(error); else resolveStarted(value);
+    };
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+      const line = stdout.split(/\r?\n/).find(Boolean);
+      if (!line) return;
+      try { finish(null, JSON.parse(line)); } catch { finish(new Error('Detached agent returned an invalid launch identity.')); }
+    });
+    child.stderr.on('data', (chunk) => { if (stderr.length < 8192) stderr += chunk.toString(); });
+    child.once('error', (error) => finish(new Error(`Unable to start detached agent: ${error.message}`)));
+    child.once('exit', (code) => { if (!stdout.trim()) finish(new Error(stderr.trim() || `Detached agent exited before launch (${code}).`)); });
+  });
+  child.stdout.destroy();
+  child.stderr.destroy();
+  child.unref();
+  return agentSession(project, started.runId) || started;
 }
 
 export async function undoPlan(project, runId) {

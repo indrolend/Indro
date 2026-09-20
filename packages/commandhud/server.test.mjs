@@ -39,6 +39,15 @@ test('agent API discovers one bounded harness and fails closed on repository ide
   const session = await (await fetch(`${base}/agents/${result.runId}`)).json();
   assert.equal(session.status, 'DONE');
   assert.equal(session.evidence.runId, result.runId);
+  const detachedResponse = await fetch(`${base}/agents/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: 'detached objective', expectedHead: head, agent: 'codex/local' }),
+  });
+  assert.equal(detachedResponse.status, 202);
+  const detached = await detachedResponse.json();
+  assert.match(detached.id, /^\d{14}-[0-9a-f]{4}$/i);
+  assert.notEqual(detached.worktree, project.root);
+  assert.equal(detached.repoRoot, project.root);
 });
 
 function fixtureProject() {
