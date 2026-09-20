@@ -3,7 +3,7 @@ import { basename, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { PassThrough } from 'node:stream';
 import {
-  buildCurrentOperationContext, buildOperationContext,
+  buildCurrentOperationContext, buildOperationContext, MAX_TERMINAL_INPUT_CHARACTERS,
 } from './core.mjs';
 export { parseShellEvidenceCommand, renderShellEvidenceProjection } from './shell-builtins.mjs';
 export { shellInputIncomplete } from './execution-provider.mjs';
@@ -311,6 +311,7 @@ export async function startHudShell(project, {
           : await pendingLine;
         if (interaction.kind === 'action') {
           try {
+            if (interaction.action === 'details') { layout.toggleDetails(); continue; }
             const result = presentBuiltin(await session.execute(`/${interaction.action}`));
             if (result.exit) break;
           } catch (error) { show(`${error.message}\n\n`); }
@@ -348,8 +349,8 @@ export async function startHudShell(project, {
           break;
         }
         command += `\n${continuation}`;
-        if (command.length > 32 * 1024) {
-          show('INPUT_REJECTED\nMultiline command exceeds 32 KiB. Nothing was executed.\n\n');
+        if (command.length > MAX_TERMINAL_INPUT_CHARACTERS) {
+          show('INPUT_REJECTED\nMultiline command exceeds 1 MiB. Nothing was executed.\n\n');
           command = '';
           break;
         }
@@ -359,6 +360,10 @@ export async function startHudShell(project, {
       if (!containedPaste) command = command.trim();
       if (!command.trim()) continue;
       layout.setFocus(null);
+      if (layout.active && /^\/(?:details|collapse)$/i.test(command)) {
+        layout.toggleDetails();
+        continue;
+      }
       if (session.isBuiltin(command)) {
         try {
           const result = presentBuiltin(await session.execute(command, { source: 'terminal-ui' }));
@@ -367,21 +372,29 @@ export async function startHudShell(project, {
         continue;
       }
       const visualStatus = createShellVisualStatus(output, {
-        enabled: layout.active || motion, animated: motion, row: layout.active ? 2 : null, showFace: !layout.active,
+        enabled: layout.active || motion, animated: motion,
+        morph: process.env.COMMANDHUD_PARTICLE_MORPH === '1',
+        row: layout.active ? 2 : null, showFace: !layout.active,
       });
       try {
         visualStatus.start(command);
         const record = await session.execute(command, { stream: false, source: 'terminal-ui' });
         await visualStatus.finish(record.status);
+        if (layout.active) layout.setFace(record.status);
         if (layout.active) {
-          const context = (await buildCurrentOperationContext(project, record)).handoff;
+          const currentContext = await buildCurrentOperationContext(project, record);
+          const context = currentContext.handoff;
           let copyState;
           try { clipboardWriter(context); copyState = `COPIED · run:${record.id}`; }
           catch (error) { copyState = `NOT COPIED · ${error.message} · use /copy to retry`; }
-          show(`SHORTENED OUTPUT\n${context}\n\n${copyState}`);
+          layout.renderDisclosure(
+            `${renderShellResult(project, record, currentContext)}\n${copyState}\n\nDETAILS HIDDEN · /details opens compact evidence`,
+            `COMPACT EVIDENCE\n${context}`,
+          );
         } else await deliverShellResult(project, record, output, clipboardWriter);
       } catch (error) {
         await visualStatus.finish(error.name === 'AbortError' ? 'interrupted' : 'fail');
+        if (layout.active) layout.setFace(error.name === 'AbortError' ? 'interrupted' : 'fail');
         show(`ERROR · ${error.message}\n\n`);
       } finally {
         visualStatus.clear();

@@ -94,6 +94,47 @@
     container.replaceChildren(...actions, undo);
     $('#actionDock').hidden = false;
   };
+  const commandByAction = (label) => discovered.find((entry) => entry.action?.toLowerCase() === label.toLowerCase());
+
+  async function executeMake(prompt) {
+    const idea = String(prompt || '').trim();
+    if (!idea) return $('#ideaInput').focus();
+    output.classList.add('open');
+    $('#outputTitle').textContent = 'Making it';
+    $('#outputText').textContent = `${idea}\n\nCodex is inspecting the project…`;
+    $('#outputResults').replaceChildren();
+    $('#outputActions').replaceChildren();
+    showRuntime({ ...runtime, busy: { type: 'agent-request' } });
+    const monitor = { done: false };
+    monitorRepositoryCommand(monitor, 'agent-request');
+    try {
+      const response = await fetch('/operations/make', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: idea }),
+      });
+      monitor.done = true;
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Make It failed with HTTP ${response.status}.`);
+      state = result.state;
+      $('#outputTitle').textContent = result.status === 'pass' ? 'Made it' : `Make It ${result.status}`;
+      const usage = result.operation.usage;
+      const usageLine = usage
+        ? `${usage.totalTokens.toLocaleString()} tokens · ${usage.cachedInputTokens.toLocaleString()} cached · ${usage.uncachedInputTokens.toLocaleString()} new input`
+        : 'Token usage unavailable';
+      const sessionLine = result.operation.sessionReused ? 'Continued this project’s existing agent session' : 'Started this project’s agent session';
+      const changeLine = `${result.operation.fileCount} file${result.operation.fileCount === 1 ? '' : 's'} changed`;
+      $('#outputText').textContent = `${result.operation.message || (result.status === 'pass' ? 'The project was updated.' : 'The agent did not complete successfully.')}\n\n${changeLine} · ${(result.operation.durationMs / 1000).toFixed(1)}s\n${usageLine}\n${sessionLine}\nRaw evidence: run:${result.runId}`;
+      const actions = $('#outputActions');
+      actions.replaceChildren(outputAction('Undo', 'confirm', showLatestUndo), outputAction('Evidence', '', () => showHistoryDetail(result.runId)));
+      actions.classList.add('open');
+      $('#ideaInput').value = '';
+      await refreshRuntime();
+    } catch (error) {
+      monitor.done = true;
+      $('#outputTitle').textContent = 'Make It stopped';
+      $('#outputText').textContent = `${idea}\n\n${error.message}`;
+      await refreshRuntime();
+    }
+  }
   const packageNames = discovered.filter((entry) => entry.name.startsWith('npm:')).map((entry) => entry.name.slice(4));
   const namespaces = new Set(packageNames.filter((name) => name.includes(':')).map((name) => name.split(':')[0]));
   const libraryGroups = new Map();
@@ -1338,6 +1379,16 @@
     input.focus();
   };
   toolkit.onclick = () => togglePicker();
+  $('#ideaForm').onsubmit = (event) => { event.preventDefault(); executeMake($('#ideaInput').value); };
+  $('#creator').addEventListener('click', (event) => {
+    const action = event.target.closest('[data-creator-action]')?.dataset.creatorAction;
+    if (!action) return;
+    if (action === 'more') { app.classList.add('advanced'); renderTree(); renderMap(); resetCamera(); return; }
+    if (action === 'undo') return showLatestUndo();
+    if (action === 'improve') return executeMake('Inspect the current game, choose one high-impact improvement that belongs to the authoritative release path, implement it, and verify it with focused evidence. Preserve valuable behavior and avoid optimizing legacy code.');
+    const command = commandByAction(action === 'play' ? 'Play' : 'Check');
+    if (command) confirmRepositoryCommand([command.action, 'Repository-declared action.', command.command, 'repository', command.name]);
+  });
   $('#pickerSearch').oninput = renderPicker;
   $('#pickerList').onclick = (event) => {
     const sectionButton = event.target.closest('[data-section]');

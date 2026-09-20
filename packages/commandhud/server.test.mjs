@@ -116,6 +116,11 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   const running = await startHudServer(project, { port: 0, terminal: true });
   t.after(() => running.server.close());
   const base = `http://127.0.0.1:${running.port}`;
+
+  const invalidMake = await fetch(`${base}/operations/make`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: '' }),
+  });
+  assert.equal(invalidMake.status, 400);
   const runtime = await (await fetch(`${base}/runtime`)).json();
   assert.equal(runtime.capabilities.terminal, true);
   const shell = runtime.capabilities.shells.find((entry) => entry.available && entry.id === (process.platform === 'win32' ? 'powershell' : 'bash'));
@@ -138,6 +143,14 @@ test('terminal execution is desktop-only and persists repository-contained cwd',
   assert.equal(second.status, 200);
   assert.equal(result.operation.displayCommand, exact);
   assert.equal(result.operation.cwdBefore, join(project.root, 'tools'));
+  const large = `${'# transport padding\n'.repeat(3000)}echo LARGE_REQUEST_OK`;
+  const largeResponse = await fetch(`${base}/operations/terminal`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ shell: shell.id, command: large }),
+  });
+  const largeResult = await largeResponse.json();
+  assert.equal(largeResponse.status, 200, JSON.stringify(largeResult));
+  assert.equal(largeResult.operation.inputBytes, Buffer.byteLength(large));
   assert.equal((await fetch(`${base}/operations/terminal`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ shell: shell.id, command: exact, cwd: '..' }),

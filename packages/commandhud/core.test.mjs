@@ -1,11 +1,60 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveProject, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discoverCommands, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+
+test('Make It rejects empty and oversized ideas before launching an agent', async () => {
+  const project = await fixtureProject();
+  await assert.rejects(() => runAgentRequest(project, '   '), /between 1 and 131072 characters/);
+  await assert.rejects(() => runAgentRequest(project, 'x'.repeat(131073)), /between 1 and 131072 characters/);
+});
+
+test('Windows Make It bypasses the stdin-hostile PowerShell shim when the npm Codex entry exists', () => {
+  const appData = mkdtempSync(join(tmpdir(), 'commandhud-appdata-'));
+  const entry = join(appData, 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+  mkdirSync(join(appData, 'npm', 'node_modules', '@openai', 'codex', 'bin'), { recursive: true });
+  writeFileSync(entry, '');
+  assert.deepEqual(resolveCodexLauncher({ env: { APPDATA: appData }, targetPlatform: 'win32', nodeExecutable: 'node.exe' }), ['node.exe', entry]);
+  assert.deepEqual(resolveCodexLauncher({ env: {}, targetPlatform: 'linux', nodeExecutable: 'node' }), ['codex']);
+});
+
+test('Codex JSON events expose exact session reuse and measured token usage', () => {
+  const parsed = parseCodexJsonEvents([
+    JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' }),
+    'not json',
+    JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Done.' } }),
+    JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 18089, cached_input_tokens: 11136, output_tokens: 5, reasoning_output_tokens: 0 } }),
+  ].join('\n'));
+  assert.deepEqual(parsed, {
+    sessionId: '01a098a6-4b2a-71a3-a165-df5c3607037d', message: 'Done.',
+    usage: { inputTokens: 18089, cachedInputTokens: 11136, outputTokens: 5, reasoningOutputTokens: 0, uncachedInputTokens: 6953, totalTokens: 18094 },
+  });
+});
+
+test('Make It persists and resumes only its project agent session', async () => {
+  const project = await fixtureProject();
+  const directory = mkdtempSync(join(tmpdir(), 'commandhud-agent-'));
+  const fake = join(directory, 'fake-codex.mjs');
+  writeFileSync(fake, [
+    `let input = ''; for await (const chunk of process.stdin) input += chunk;`,
+    `console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' }));`,
+    `console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: process.argv.slice(2).join(' ') + ' INPUT=' + input } }));`,
+    `console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 100, cached_input_tokens: 70, output_tokens: 5, reasoning_output_tokens: 1 } }));`,
+  ].join('\n'));
+  const first = await runAgentRequest(project, 'make one', { codexLauncher: [process.execPath, fake] });
+  assert.equal(first.operation.sessionReused, false);
+  assert.equal(first.operation.usage.uncachedInputTokens, 30);
+  assert.equal(readProjectState(project).agentSession.id, first.operation.sessionId);
+  const second = await runAgentRequest(project, 'make two', { codexLauncher: [process.execPath, fake] });
+  assert.equal(second.operation.sessionReused, true);
+  assert.match(second.operation.message, /exec resume --json 01a098a6-4b2a-71a3-a165-df5c3607037d - INPUT=make two/);
+  assert.equal(second.evidence.stdin.bytes, Buffer.byteLength('make two'));
+});
 
 test('probe execution times out and records the deadline as evidence', async () => {
   const project = await fixtureProject();
@@ -795,7 +844,7 @@ test('PowerShell unknown command is blocked but missing filesystem path is not',
   assert.equal(ordinaryFailure.status, 'fail');
 });
 
-test('PowerShell surfaced command failures override a zero host exit without treating ordinary stderr as failure', async () => {
+test('PowerShell missing commands are blocked without treating ordinary stderr as failure', async () => {
   const diagnostic = "rg: The term 'rg' is not recognized as a name of a cmdlet, function, script file, or executable program.\nCommandNotFoundException";
   assert.deepEqual(classifyPowerShellShellFailure(diagnostic), {
     kind: 'command-not-found',
@@ -809,14 +858,12 @@ test('PowerShell surfaced command failures override a zero host exit without tre
   if (!powershell.available) return;
   const command = 'Get-ChildItem | commandhud-command-that-does-not-exist';
   const record = await runTerminalCommand(project, command, { shell: 'powershell' });
-  assert.equal(record.exitCode, 0, 'the regression requires the observed zero-exit PowerShell host behavior');
-  assert.equal(record.processExitCode, 0);
-  assert.equal(record.status, 'fail');
-  assert.equal(record.resultClassification, 'FAIL');
-  assert.equal(record.resultReason, 'POWERSHELL_ERROR_RECORD');
-  assert.equal(record.operation.status, 'fail');
-  assert.equal(record.capturedFailure?.kind, 'command-not-found');
-  assert.equal(record.reduction.classification, 'environment');
+  assert.notEqual(record.exitCode, 0);
+  assert.notEqual(record.processExitCode, 0);
+  assert.equal(record.status, 'blocked');
+  assert.equal(record.resultClassification, 'BLOCKED');
+  assert.equal(record.resultReason, 'COMMAND_UNAVAILABLE');
+  assert.equal(record.operation.status, 'blocked');
   assert.match(record.presentation.headline, /not recognized/i);
   assert.match(readFileSync(record.stderrPath, 'utf8'), /CommandNotFoundException|not recognized/i);
 
@@ -1326,6 +1373,21 @@ test('one multiline PowerShell operation preserves its wall and guard semantics'
   assert.equal(record.status, 'fail');
   assert.equal(existsSync(target), false);
   assert.equal(listRuns(project, 100).filter((item) => item.id === record.id).length, 1);
+});
+
+test('large PowerShell walls bypass the Windows command-line ceiling with exact input evidence', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const project = await fixtureProject();
+  const padding = 'x'.repeat(128 * 1024);
+  const wall = `$payload = '${padding}'\nWrite-Output $payload.Length`;
+  const record = await runTerminalCommand(project, wall, { shell: 'powershell' });
+  assert.equal(record.status, 'pass', readFileSync(record.stderrPath, 'utf8'));
+  assert.match(readFileSync(record.stdoutPath, 'utf8'), /131072/);
+  assert.equal(record.operation.transport, 'temporary-script');
+  assert.equal(record.operation.inputBytes, Buffer.byteLength(wall));
+  assert.equal(record.operation.inputSha256, `sha256:${createHash('sha256').update(wall).digest('hex')}`);
+  assert.doesNotMatch(record.transportCommand, /EncodedCommand/);
 });
 
 test('terminal working directory cannot persist outside the verified repository', async () => {

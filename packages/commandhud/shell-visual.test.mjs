@@ -25,7 +25,7 @@ test('disabled visual status produces no terminal control output', async () => {
   assert.equal(value, '');
 });
 
-test('enabled visual status animates one replaceable row to a factual result', async () => {
+test('enabled visual status animates one replaceable row to a factual result without decorative morphing by default', async () => {
   let value = '';
   const status = createShellVisualStatus({ write: (text) => { value += text; } }, { enabled: true, frameMs: 1 });
   status.start('npm run hud:test');
@@ -33,7 +33,17 @@ test('enabled visual status animates one replaceable row to a factual result', a
   await status.finish('pass');
   assert.match(value, /\r\x1b\[2K\(o_o\) RUNNING/);
   assert.match(value, /\(\^_\^\) PASS\s+· npm run hud:test\n$/);
+  assert.doesNotMatch(value, /[⠂⠒⠤⠲⠴⠦⠖⠶]/);
   assert.doesNotMatch(value, /FAIL|STOPPED/);
+});
+
+test('particle morph is available only through an explicit visual option', async () => {
+  let value = '';
+  const status = createShellVisualStatus({ write: (text) => { value += text; } }, { enabled: true, animated: true, morph: true, frameMs: 1 });
+  status.start('fixture');
+  await status.finish('pass');
+  assert.match(value, /[⠂⠒⠤⠲⠴⠦⠖⠶]/);
+  assert.match(value, /\(\^_\^\) PASS/);
 });
 
 test('reduced-motion visual status still updates its fixed row factually', async () => {

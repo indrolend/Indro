@@ -2,7 +2,7 @@ import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSy
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCurrentOperationContext, classifyEvidence, currentState, discoverShells, lastRun, lintRepository, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runById, runRepositoryCommand, runTerminalCommand, searchRepository, undoOperation, undoPlan } from './core.mjs';
+import { buildCurrentOperationContext, classifyEvidence, currentState, discoverShells, lastRun, lintRepository, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, undoOperation, undoPlan } from './core.mjs';
 
 const staticRoot = join(dirname(fileURLToPath(import.meta.url)), 'repository-map-client');
 const contentTypes = {
@@ -63,11 +63,19 @@ function repositoryCommandRequest(value) {
   return { name: value.name };
 }
 
+function agentRequest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw Object.assign(new Error('Make It request must be an object.'), { statusCode: 400 });
+  const unknown = Object.keys(value).filter((key) => key !== 'prompt');
+  if (unknown.length) throw Object.assign(new Error(`Unsupported Make It fields: ${unknown.join(', ')}`), { statusCode: 400 });
+  if (typeof value.prompt !== 'string' || !value.prompt.trim() || value.prompt.length > MAX_AGENT_PROMPT_CHARACTERS) throw Object.assign(new Error('Make It idea must be 1-131072 characters.'), { statusCode: 400 });
+  return { prompt: value.prompt.trim() };
+}
+
 function terminalCommandRequest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Object.assign(new Error('Terminal request must be an object.'), { statusCode: 400 });
   const unknown = Object.keys(value).filter((key) => !['command', 'shell'].includes(key));
   if (unknown.length) throw Object.assign(new Error(`Unsupported terminal fields: ${unknown.join(', ')}`), { statusCode: 400 });
-  if (typeof value.command !== 'string' || !value.command.trim() || value.command.length > 32 * 1024) throw Object.assign(new Error('Terminal command must be 1-32768 characters.'), { statusCode: 400 });
+  if (typeof value.command !== 'string' || !value.command.trim() || value.command.length > MAX_TERMINAL_INPUT_CHARACTERS) throw Object.assign(new Error('Terminal command must be 1-1048576 characters.'), { statusCode: 400 });
   if (typeof value.shell !== 'string' || !['powershell', 'bash', 'cmd'].includes(value.shell)) throw Object.assign(new Error('Terminal shell must be powershell, bash, or cmd.'), { statusCode: 400 });
   return { command: value.command, shell: value.shell };
 }
@@ -358,10 +366,25 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
         });
         return;
       }
+      if (request.method === 'POST' && url.pathname === '/operations/make') {
+        validateOperationRequest(request);
+        const operation = agentRequest(await jsonBody(request, MAX_AGENT_PROMPT_CHARACTERS * 4 + 4096));
+        const record = await runTypedOperation(
+          'agent-request', operation.prompt,
+          ({ signal, onStart }) => runAgentRequest(project, operation.prompt, { signal, onStart, origin: 'local-server' }),
+          { cancellable: true },
+        );
+        json(response, 200, {
+          runId: record.id, status: record.status, operation: record.operation,
+          evidence: { stdout: record.stdoutPath, stderr: record.stderrPath },
+          state: await currentState(project),
+        });
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/operations/terminal') {
         validateOperationRequest(request);
         if (!terminal) throw Object.assign(new Error('Terminal execution is available only in the trusted desktop application.'), { statusCode: 403 });
-        const operation = terminalCommandRequest(await jsonBody(request));
+        const operation = terminalCommandRequest(await jsonBody(request, MAX_TERMINAL_INPUT_CHARACTERS * 4 + 4096));
         const shells = await discoverShells(project.root);
         if (!shells.find((entry) => entry.id === operation.shell)?.available) throw Object.assign(new Error(`Terminal shell is unavailable: ${operation.shell}`), { statusCode: 400 });
         const record = await runTypedOperation(

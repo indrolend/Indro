@@ -1,7 +1,8 @@
 const CSI = '\x1b[';
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const FOOTER_ACTIONS = [
-  { label: '[ COPY OUTPUT ]', id: 'copy' },
+  { label: '[ DETAILS ]', id: 'details' },
+  { label: '[ COPY ]', id: 'copy' },
   { label: '[ RAW ]', id: 'raw' },
   { label: '[ UNDO ]', id: 'undo' },
   { label: '[ HELP ]', id: 'help' },
@@ -63,8 +64,17 @@ function clip(text, width) {
   return clipAnsi(String(text).replace(ANSI_PATTERN, ''), width);
 }
 
+function stylePanel(text) {
+  return String(text)
+    .replace(/^(PASS.*)$/gm, '\x1b[1;32m$1\x1b[0m')
+    .replace(/^(FAIL.*|ERROR.*)$/gm, '\x1b[1;31m$1\x1b[0m')
+    .replace(/^(BLOCKED.*|TIMEOUT.*|INTERRUPTED.*|CANCELLED.*)$/gm, '\x1b[1;33m$1\x1b[0m')
+    .replace(/^(COMPACT EVIDENCE|SHORTENED OUTPUT|CHANGED FILES|STDOUT_EXCERPT|STDERR_EXCERPT)$/gm, '\x1b[1;36m$1\x1b[0m')
+    .replace(/^(DETAILS HIDDEN.*|RAW \d+ B.*|RUN \S+.*)$/gm, '\x1b[2m$1\x1b[0m');
+}
+
 export function fitPanelLines(text, width, height) {
-  const lines = String(text).replace(ANSI_PATTERN, '').split(/\r?\n/).map((line) => clip(line, width));
+  const lines = String(text).split(/\r?\n/).map((line) => clipAnsi(line, width));
   if (lines.length <= height) return [...lines, ...Array(Math.max(0, height - lines.length)).fill('')];
   if (height < 3) return lines.slice(0, height);
   const head = Math.ceil((height - 1) * 0.7);
@@ -74,7 +84,10 @@ export function fitPanelLines(text, width, height) {
 
 export function createShellLayout(output, { enabled = true } = {}) {
   let active = false;
+  let face = '(._.)';
   let lastPanel = '';
+  let disclosure = null;
+  let detailsExpanded = false;
   let hoveredAction = null;
   let focusedAction = null;
 
@@ -95,27 +108,51 @@ export function createShellLayout(output, { enabled = true } = {}) {
     writeAt(rows, clipAnsi(value.trimEnd(), columns), preserveCursor);
   }
 
-  function renderOutput(text) {
-    lastPanel = String(text);
+  function paintOutput(text) {
     if (!active) return;
     const { columns, rows } = terminalSize(output);
     const top = 6;
     const height = Math.max(0, rows - 8);
-    const lines = fitPanelLines(lastPanel, columns, height);
+    const lines = fitPanelLines(stylePanel(text), columns, height);
     for (let index = 0; index < height; index++) writeAt(top + index, lines[index] || '', true);
+  }
+
+  function renderOutput(text) {
+    disclosure = null;
+    detailsExpanded = false;
+    lastPanel = String(text);
+    paintOutput(lastPanel);
+  }
+
+  function renderDisclosure(summary, details) {
+    disclosure = { summary: String(summary), details: String(details) };
+    detailsExpanded = false;
+    lastPanel = disclosure.summary;
+    paintOutput(lastPanel);
+    renderFooter(true);
+  }
+
+  function toggleDetails() {
+    if (!disclosure) return false;
+    detailsExpanded = !detailsExpanded;
+    lastPanel = detailsExpanded ? `${disclosure.summary}\n\n${disclosure.details}` : disclosure.summary;
+    paintOutput(lastPanel);
+    frame();
+    return detailsExpanded;
   }
 
   function frame() {
     if (!active) return;
     const { columns, rows } = terminalSize(output);
     const rule = '─'.repeat(columns);
-    writeAt(1, clip('(._.)  Indro  ·  semantic development system', columns), true);
-    writeAt(2, focusedAction ? `CONTROLS · ${focusedAction.toUpperCase()} · Enter activates · Esc returns to command` : 'COMMAND INPUT', true);
+    writeAt(1, clipAnsi(`\x1b[1;36m${face}  Indro\x1b[0m  ·  semantic development system`, columns), true);
+    const mode = disclosure ? `RESULT · DETAILS ${detailsExpanded ? 'OPEN' : 'HIDDEN'} · press /details to toggle` : 'COMMAND INPUT';
+    writeAt(2, focusedAction ? `CONTROLS · ${focusedAction.toUpperCase()} · Enter activates · Esc returns to command` : mode, true);
     writeAt(3, rule, true);
     writeAt(5, rule, true);
     writeAt(rows - 2, rule, true);
     renderFooter(true);
-    renderOutput(lastPanel);
+    paintOutput(lastPanel);
   }
 
   function placePrompt() {
@@ -137,6 +174,13 @@ export function createShellLayout(output, { enabled = true } = {}) {
   }
 
   function updateShell() { frame(); }
+
+  function setFace(status) {
+    face = status === 'pass' ? '(^_^)' : status === 'interrupted' || status === 'cancelled' ? '(-_-)'
+      : status === 'fail' || status === 'blocked' || status === 'timeout' ? '(x_x)' : '(._.)';
+    frame();
+    return face;
+  }
 
   function finish() {
     if (!active) return;
@@ -177,7 +221,9 @@ export function createShellLayout(output, { enabled = true } = {}) {
   }
 
   return {
-    start, finish, renderOutput, placePrompt, clearPrompt, updateShell, actionAt, setHover, setFocus, moveFocus,
+    start, finish, renderOutput, renderDisclosure, toggleDetails, placePrompt, clearPrompt, updateShell, setFace, actionAt, setHover, setFocus, moveFocus,
+    get face() { return face; },
+    get detailsExpanded() { return detailsExpanded; },
     get focusedAction() { return focusedAction; },
     get active() { return active; },
   };

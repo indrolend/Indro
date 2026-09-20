@@ -9,6 +9,8 @@ import { operationPolicy, validateOperationEvidence } from './operation-kernel.m
 
 const execFileAsync = promisify(execFile);
 export const SCHEMA_VERSION = 1;
+export const MAX_AGENT_PROMPT_CHARACTERS = 128 * 1024;
+export const MAX_TERMINAL_INPUT_CHARACTERS = 1024 * 1024;
 
 export function stateRoot(env = process.env) {
   if (env.HUD_STATE_ROOT) return resolve(env.HUD_STATE_ROOT);
@@ -962,8 +964,8 @@ export function reduceOutput(command, stdout, stderr, exitCode, { root = '', kin
 export function classifyPowerShellShellFailure(stderr) {
   const text = normalizeTerminalText(String(stderr || ''));
   const commandNotFound = firstMatch(text, [
-    /[^\r\n]*The term '[^']+' is not recognized as a name of a cmdlet, function, script file, or executable program[^\r\n]*/i,
-    /[^\r\n]*CommandNotFoundException[^\r\n]*/i,
+    /^.*The term '[^']+' is not recognized as a name of a cmdlet, function, script file, or executable program.*$/im,
+    /^.*CommandNotFoundException.*$/im,
   ]);
   if (commandNotFound) return { kind: 'command-not-found', classification: 'environment', message: commandNotFound };
   return null;
@@ -1092,6 +1094,7 @@ export async function runCommand(project, tokens, {
   captureOutput = 'bounded', captureLimitCharacters = 1024 * 1024,
   outputObserver = null,
   mode = 'finite', timeoutMs = null, requiredOutput = 'none',
+  stdin = null,
 } = {}) {
   if (!tokens.length) throw new Error('hud run requires a command.');
   const origins = new Set(['core-api', 'cli-argv', 'terminal-ui', 'local-server']);
@@ -1100,6 +1103,9 @@ export async function runCommand(project, tokens, {
   if (!Number.isSafeInteger(captureLimitCharacters) || captureLimitCharacters < 1024) {
     throw new Error('Output capture limit must be an integer of at least 1024 characters.');
   }
+  if (stdin !== null && typeof stdin !== 'string' && !Buffer.isBuffer(stdin)) throw new Error('Command stdin must be text, bytes, or null.');
+  const stdinBytes = stdin === null ? null : Buffer.from(stdin);
+  const stdinEvidence = stdinBytes === null ? null : { bytes: stdinBytes.length, sha256: `sha256:${createHash('sha256').update(stdinBytes).digest('hex')}` };
   const policy = operationPolicy({ mode, timeoutMs, requiredOutput });
   const transportCommand = tokens.map((token) => /[\s"']/.test(token) ? JSON.stringify(token) : token).join(' ');
   const command = displayCommand || transportCommand;
@@ -1114,8 +1120,8 @@ export async function runCommand(project, tokens, {
   const stderrPath = join(runDirectory, 'stderr.log');
   const stdoutFile = createWriteStream(stdoutPath, { flags: 'wx' });
   const stderrFile = createWriteStream(stderrPath, { flags: 'wx' });
-  const stdoutCapture = { chunks: [], characters: 0, truncated: false };
-  const stderrCapture = { chunks: [], characters: 0, truncated: false };
+  const stdoutCapture = { chunks: [], start: 0, characters: 0, truncated: false };
+  const stderrCapture = { chunks: [], start: 0, characters: 0, truncated: false };
   let stdoutBytes = 0;
   let stderrBytes = 0;
   const stdoutHash = createHash('sha256');
@@ -1127,15 +1133,23 @@ export async function runCommand(project, tokens, {
     if (captureOutput === 'full' || state.characters <= captureLimitCharacters) return;
     state.truncated = true;
     let excess = state.characters - captureLimitCharacters;
-    while (excess > 0 && state.chunks.length) {
-      if (state.chunks[0].length <= excess) {
-        excess -= state.chunks[0].length;
-        state.characters -= state.chunks.shift().length;
+    while (excess > 0 && state.start < state.chunks.length) {
+      const first = state.chunks[state.start];
+      if (first.length <= excess) {
+        excess -= first.length;
+        state.characters -= first.length;
+        state.start++;
       } else {
-        state.chunks[0] = state.chunks[0].slice(excess);
+        state.chunks[state.start] = first.slice(excess);
         state.characters -= excess;
         excess = 0;
       }
+    }
+    // Array.shift() made high-volume, small-chunk output quadratic. Compact only
+    // occasionally so bounded capture remains O(total output).
+    if (state.start > 4096 && state.start * 2 > state.chunks.length) {
+      state.chunks = state.chunks.slice(state.start);
+      state.start = 0;
     }
   };
   const started = new Date();
@@ -1170,6 +1184,7 @@ export async function runCommand(project, tokens, {
       startedAt: started.toISOString(), pid: child.pid, captureDelta, treeBefore,
       gitBefore: before, currencyBefore, stdoutPath, stderrPath, operationIdentity, resultMarkers,
       captureOutput, captureLimitCharacters,
+      stdin: stdinEvidence,
       operationPolicy: policy,
       provenance: { origin },
     }, { exclusive: true });
@@ -1196,6 +1211,8 @@ export async function runCommand(project, tokens, {
     }, policy.timeoutMs);
     deadlineTimer.unref?.();
   }
+  child.stdin.on('error', () => {});
+  child.stdin.end(stdinBytes || undefined);
   onStart?.({ runId: id, command, startedAt: started.toISOString(), stdoutPath, stderrPath, pid: child.pid });
   child.stdout.on('data', (chunk) => {
     const value = chunk.toString();
@@ -1204,10 +1221,11 @@ export async function runCommand(project, tokens, {
     capture(stdoutCapture, value);
     markerCollector.observe('stdout', value);
     outputObserver?.observe?.('stdout', value);
-    if (!stdoutFile.write(chunk)) {
-      child.stdout.pause();
-      stdoutFile.once('drain', () => child.stdout.resume());
-    }
+    // Keep draining the child until it closes. Pausing here can deadlock a
+    // short-lived process whose final burst is larger than the file stream's
+    // high-water mark: Node waits for the pipes before emitting `close`, while
+    // the paused pipe waits for code after `close` to finish the file stream.
+    stdoutFile.write(chunk);
     onOutput?.('stdout', value);
     if (stream) process.stdout.write(chunk);
   });
@@ -1218,10 +1236,7 @@ export async function runCommand(project, tokens, {
     capture(stderrCapture, value);
     markerCollector.observe('stderr', value);
     outputObserver?.observe?.('stderr', value);
-    if (!stderrFile.write(chunk)) {
-      child.stderr.pause();
-      stderrFile.once('drain', () => child.stderr.resume());
-    }
+    stderrFile.write(chunk);
     onOutput?.('stderr', value);
     if (stream) process.stderr.write(chunk);
   });
@@ -1241,8 +1256,8 @@ export async function runCommand(project, tokens, {
   if (deadlineTimer) clearTimeout(deadlineTimer);
   signal?.removeEventListener?.('abort', cancel);
   await Promise.all([new Promise((r) => stdoutFile.end(r)), new Promise((r) => stderrFile.end(r))]);
-  const stdout = stdoutCapture.chunks.join('');
-  const stderr = stderrCapture.chunks.join('');
+  const stdout = stdoutCapture.chunks.slice(stdoutCapture.start).join('');
+  const stderr = stderrCapture.chunks.slice(stderrCapture.start).join('');
   const ended = new Date();
   const [after, currencyAfter, treeAfter] = await Promise.all([
     gitSnapshot(project.root), repositoryCurrency(project.root, project.identity.id), captureDelta ? worktreeTree(project.root) : null,
@@ -1284,6 +1299,7 @@ export async function runCommand(project, tokens, {
     currencyBefore, currencyAfter,
     stdoutPath, stderrPath, reducer: reduction.reducer, reduction,
     evidence: {
+      stdin: stdinEvidence,
       stdout: { bytes: stdoutBytes, sha256: `sha256:${stdoutHash.digest('hex')}` },
       stderr: { bytes: stderrBytes, sha256: `sha256:${stderrHash.digest('hex')}` },
       validity: evidenceValidity,
@@ -1698,7 +1714,7 @@ export async function runTerminalCommand(project, command, {
 } = {}) {
   const text = String(command || '');
   if (!text.trim()) throw new Error('Terminal command must not be empty.');
-  if (text.length > 32 * 1024) throw new Error('Terminal command exceeds 32 KiB.');
+  if (text.length > MAX_TERMINAL_INPUT_CHARACTERS) throw new Error('Terminal command exceeds 1 MiB.');
   const selectedCwd = repositoryDirectory(project.root, cwd);
   const available = await discoverShells(project.root);
   const selected = available.find((entry) => entry.id === shell);
@@ -1707,19 +1723,21 @@ export async function runTerminalCommand(project, command, {
   const temporary = mkdtempSync(join(tmpdir(), 'commandhud-terminal-'));
   const cwdPath = shell === 'bash' ? join(project.root, '.git', `.commandhud-cwd-${randomBytes(8).toString('hex')}.tmp`) : join(temporary, 'cwd.txt');
   let tokens;
+  let stdin = null;
   if (shell === 'powershell') {
     const quotedCwdPath = cwdPath.replaceAll("'", "''");
-    const script = `$global:LASTEXITCODE = 0; & { ${text}\n}; $hudSucceeded = $?; $hudNativeExit = $LASTEXITCODE; $hudExit = if ($hudNativeExit -is [int] -and $hudNativeExit -ne 0) { $hudNativeExit } elseif ($hudSucceeded) { 0 } else { 1 }; (Get-Location).ProviderPath | Set-Content -LiteralPath '${quotedCwdPath}' -NoNewline -Encoding utf8; exit $hudExit`;
-    tokens = [selected.executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+    const scriptPath = join(temporary, 'commandhud.ps1');
+    writeFileSync(scriptPath, `$global:LASTEXITCODE = 0; $Error.Clear(); & { ${text}\n}; $hudSucceeded = $?; $hudHadErrors = $Error.Count -gt 0; $hudNativeExit = $LASTEXITCODE; $hudExit = if ($hudNativeExit -is [int] -and $hudNativeExit -ne 0) { $hudNativeExit } elseif ($hudSucceeded -and -not $hudHadErrors) { 0 } else { 1 }; (Get-Location).ProviderPath | Set-Content -LiteralPath '${quotedCwdPath}' -NoNewline -Encoding utf8; exit $hudExit`, { flag: 'wx', encoding: 'utf8' });
+    tokens = [selected.executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-File', scriptPath];
   } else if (shell === 'bash') {
     if (selected.executable.toLowerCase().endsWith('wsl.exe')) {
       const start = relative(project.root, selectedCwd).replaceAll('\\', '/') || '.';
-      const script = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\npwd -P >&3\nexit $hud_exit`;
-      tokens = [selected.executable, '--cd', project.root, 'bash', '--noprofile', '--norc', '-c', script];
+      stdin = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\npwd -P >&3\nexit $hud_exit`;
+      tokens = [selected.executable, '--cd', project.root, 'bash', '--noprofile', '--norc'];
     } else {
       const start = relative(project.root, selectedCwd).replaceAll('\\', '/') || '.';
-      const script = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\npwd -W >&3\nexit $hud_exit`;
-      tokens = [selected.executable, '--noprofile', '--norc', '-c', script];
+      stdin = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\npwd -W >&3\nexit $hud_exit`;
+      tokens = [selected.executable, '--noprofile', '--norc'];
     }
   } else {
     const quotedCwdPath = cwdPath.replaceAll('%', '%%').replaceAll('"', '""');
@@ -1732,9 +1750,10 @@ export async function runTerminalCommand(project, command, {
       request: `terminal ${shell}`,
       objective: `Run terminal command with ${selected.label}`,
       stream, shell: false, captureDelta: true, signal, onStart, onOutput,
+      stdin,
       origin,
       cwd: selectedCwd, displayCommand: text,
-      classifyCapturedFailure: shell === 'powershell' ? ({ stderr }) => classifyPowerShellShellFailure(stderr) : null,
+      classifyCapturedFailure: shell === 'powershell' ? ({ stdout, stderr }) => classifyPowerShellShellFailure(`${stdout}\n${stderr}`) : null,
       operationIdentity: { type: 'terminal-command', shell, displayCommand: text, cwdBefore: selectedCwd },
       operationReducer: ({ exitCode, record }) => {
         let cwdAfter = selectedCwd;
@@ -1751,6 +1770,8 @@ export async function runTerminalCommand(project, command, {
         return {
           type: 'terminal-command', shell, shellLabel: selected.label,
           displayCommand: text, command: text, exitCode, status: record.status,
+          inputBytes: Buffer.byteLength(text), inputSha256: `sha256:${createHash('sha256').update(text).digest('hex')}`,
+          transport: shell === 'bash' ? 'stdin-script' : 'temporary-script',
           durationMs: record.durationMs, cwdBefore: selectedCwd, cwdAfter, cwdPersistence,
           reportedCwd,
           summary: [...record.reduction.summary],
@@ -1762,6 +1783,74 @@ export async function runTerminalCommand(project, command, {
     if (shell === 'bash') rmSync(cwdPath, { force: true });
     rmSync(temporary, { recursive: true, force: true });
   }
+}
+
+export function parseCodexJsonEvents(output) {
+  let sessionId = null;
+  let message = '';
+  let usage = null;
+  for (const line of String(output || '').split(/\r?\n/)) {
+    let event;
+    try { event = JSON.parse(line); } catch { continue; }
+    if (event?.type === 'thread.started' && typeof event.thread_id === 'string' && /^[0-9a-f-]{36}$/i.test(event.thread_id)) sessionId = event.thread_id;
+    if (event?.type === 'item.completed' && event.item?.type === 'agent_message' && typeof event.item.text === 'string') message = event.item.text;
+    if (event?.type === 'turn.completed' && event.usage && typeof event.usage === 'object') {
+      const number = (value) => Number.isSafeInteger(value) && value >= 0 ? value : 0;
+      usage = {
+        inputTokens: number(event.usage.input_tokens),
+        cachedInputTokens: number(event.usage.cached_input_tokens),
+        outputTokens: number(event.usage.output_tokens),
+        reasoningOutputTokens: number(event.usage.reasoning_output_tokens),
+      };
+      usage.uncachedInputTokens = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
+      usage.totalTokens = usage.inputTokens + usage.outputTokens;
+    }
+  }
+  return { sessionId, message, usage };
+}
+
+export function resolveCodexLauncher({ env = process.env, targetPlatform = process.platform, nodeExecutable = process.execPath } = {}) {
+  if (targetPlatform !== 'win32') return ['codex'];
+  const npmEntry = join(env.APPDATA || '', 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+  // Bypass the generated PowerShell shim: when stdin carries the prompt, that
+  // shim can reinterpret the literal `-` argument before Codex ever starts.
+  if (existsSync(npmEntry)) return [nodeExecutable, npmEntry];
+  return ['codex'];
+}
+
+export async function runAgentRequest(project, prompt, {
+  stream = false, signal = null, onStart = null, onOutput = null, origin = 'core-api', codexLauncher = null,
+} = {}) {
+  const idea = String(prompt || '').trim();
+  if (!idea || idea.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Make It requires an idea between 1 and 131072 characters.');
+  const projectState = readProjectState(project);
+  const savedSession = projectState.agentSession;
+  const reused = Boolean(savedSession?.id && /^[0-9a-f-]{36}$/i.test(savedSession.id));
+  const args = reused
+    ? ['exec', 'resume', '--json', savedSession.id, '-']
+    : ['exec', '--json', '--color', 'never', '--sandbox', 'workspace-write', '-C', project.root, '-'];
+  const launcher = Array.isArray(codexLauncher) && codexLauncher.length ? codexLauncher : resolveCodexLauncher();
+  const tokens = [...launcher, ...args];
+  const record = await runCommand(project, tokens, {
+    request: 'make from idea', objective: idea, stream, shell: false, captureDelta: true,
+    signal, onStart, onOutput, origin, displayCommand: `Make It: ${idea}`,
+    stdin: idea,
+    operationReducer: ({ stdout, exitCode, record: value }) => {
+      const parsed = parseCodexJsonEvents(stdout);
+      return {
+        type: 'agent-request', prompt: idea, command: `Make It: ${idea}`, exitCode,
+        status: value.status, durationMs: value.durationMs, sessionId: parsed.sessionId || savedSession?.id || null,
+        sessionReused: reused, usage: parsed.usage, message: parsed.message.slice(0, 4000),
+        changedFiles: value.delta?.paths || [], fileCount: value.delta?.fileCount || 0,
+      };
+    },
+  });
+  if (record.operation.sessionId) {
+    const current = readProjectState(project);
+    current.agentSession = { id: record.operation.sessionId, updatedAt: record.endedAt };
+    writeProjectState(project, current);
+  }
+  return record;
 }
 
 export async function undoPlan(project, runId) {

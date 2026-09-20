@@ -30,7 +30,7 @@ export function visualMotionEnabled({ interactive, requested = true, env = proce
     && env.COMMANDHUD_REDUCED_MOTION !== '1' && env.REDUCE_MOTION !== '1');
 }
 
-export function createShellVisualStatus(output, { enabled = true, animated = true, frameMs = 140, row = null, showFace = true } = {}) {
+export function createShellVisualStatus(output, { enabled = true, animated = true, morph = false, frameMs = 140, row = null, showFace = true } = {}) {
   let timer = null;
   let faceIndex = 0;
   let commandLabel = '';
@@ -60,8 +60,9 @@ export function createShellVisualStatus(output, { enabled = true, animated = tru
       const stopped = status === 'interrupted' || status === 'cancelled';
       const finalState = status === 'pass' ? 'PASS' : stopped ? 'STOPPED' : 'FAIL';
       const finalFace = status === 'pass' ? '(^_^)' : stopped ? '(-_-)' : '(x_x)';
-      if (!animated) {
+      if (!animated || !morph) {
         draw(finalFace, finalState);
+        if (!row) output.write('\n');
         return;
       }
       for (const frame of particleMorphFrames('RUNNING', finalState)) {

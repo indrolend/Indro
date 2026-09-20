@@ -13,6 +13,12 @@ test('Repository Map client exposes one main menu over one command directory', (
   assert.match(html, /aria-label="Open main HUD menu"/);
   assert.match(html, /aria-label="Main HUD menu"/);
   assert.match(html, /aria-label="Repository actions"/);
+  assert.match(html, /What do you want to make\?/);
+  assert.match(html, /data-creator-action="play"/);
+  assert.match(html, /data-creator-action="improve"/);
+  assert.match(html, /data-creator-action="more"/);
+  assert.match(app, /fetch\('\/operations\/make'/);
+  assert.match(app, /app\.classList\.add\('advanced'\)/);
   assert.doesNotMatch(html, /id="(?:categories|undoButton|historyButton|refreshState)"/);
   assert.match(app, /HUD: \[/);
   assert.match(app, /'undo'\]/);

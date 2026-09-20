@@ -35,19 +35,20 @@ test('terminal footer highlights only its hovered action', () => {
   layout.start();
   value = '';
   layout.setHover('copy');
-  assert.match(value, /\x1b\[7m\[ COPY OUTPUT \]\x1b\[27m/);
+  assert.match(value, /\x1b\[7m\[ COPY \]\x1b\[27m/);
   assert.doesNotMatch(value, /\x1b\[7m\[ RAW \]/);
   layout.setHover(null);
-  assert.match(value, /\[ COPY OUTPUT \]/);
+  assert.match(value, /\[ COPY \]/);
   layout.finish();
 });
 
-test('terminal footer exposes bounded mouse actions without executable text', () => {
-  assert.equal(footerActionAt(19), 'copy');
-  assert.equal(footerActionAt(35), 'raw');
-  assert.equal(footerActionAt(43), 'undo');
-  assert.equal(footerActionAt(52), 'help');
-  assert.equal(footerActionAt(61), 'exit');
+test('terminal footer exposes disclosure and bounded mouse actions without executable text', () => {
+  assert.equal(footerActionAt(19), 'details');
+  assert.equal(footerActionAt(31), 'copy');
+  assert.equal(footerActionAt(40), 'raw');
+  assert.equal(footerActionAt(48), 'undo');
+  assert.equal(footerActionAt(57), 'help');
+  assert.equal(footerActionAt(66), 'exit');
   assert.equal(footerActionAt(1), null);
 });
 
@@ -57,12 +58,12 @@ test('terminal controls maintain explicit keyboard focus separate from hover', (
   const layout = createShellLayout(output);
   layout.start();
   value = '';
+  assert.equal(layout.moveFocus(1), 'details');
   assert.equal(layout.moveFocus(1), 'copy');
-  assert.equal(layout.moveFocus(1), 'raw');
-  assert.equal(layout.moveFocus(-1), 'copy');
+  assert.equal(layout.moveFocus(-1), 'details');
   layout.setHover('help');
-  assert.equal(layout.focusedAction, 'copy');
-  assert.match(value, /\x1b\[1;7m\[ COPY OUTPUT \]\x1b\[0m/);
+  assert.equal(layout.focusedAction, 'details');
+  assert.match(value, /\x1b\[1;7m\[ DETAILS \]\x1b\[0m/);
   assert.match(value, /\x1b\[7m\[ HELP \]\x1b\[27m/);
   layout.setFocus(null);
   assert.equal(layout.focusedAction, null);
@@ -74,8 +75,8 @@ test('ANSI footer styling clips by visible columns without changing hitbox geome
   const clipped = clipAnsi(styled, 18);
   assert.equal(visibleWidth(clipped), 18);
   assert.match(clipped, /\x1b\[7m/);
-  assert.equal(footerActionAt(19), 'copy');
-  assert.equal(footerActionAt(35), 'raw');
+  assert.equal(footerActionAt(31), 'copy');
+  assert.equal(footerActionAt(40), 'raw');
 });
 
 test('resize and repeated hover redraw fixed controls only at their absolute rows', () => {
@@ -92,6 +93,46 @@ test('resize and repeated hover redraw fixed controls only at their absolute row
   const footerWrites = writes.filter((value) => /\x1b\[(?:24|30);1H\x1b\[2K/.test(value));
   assert.ok(footerWrites.length >= 3);
   assert.ok(footerWrites.every((value) => /\x1b\[(?:24|30);1H\x1b\[2K/.test(value)));
+  layout.finish();
+});
+
+test('terminal result details collapse and expand without losing the summary', () => {
+  let value = '';
+  const output = { columns: 100, rows: 24, write: (text) => { value += text; }, on() {}, off() {} };
+  const layout = createShellLayout(output);
+  layout.start();
+  value = '';
+  layout.renderDisclosure('PASS · 2.6s\n3 files changed', 'COMPACT EVIDENCE\nRAW run:abc');
+  assert.match(value, /PASS · 2\.6s/);
+  assert.doesNotMatch(value, /RAW run:abc/);
+  assert.equal(layout.detailsExpanded, false);
+  value = '';
+  assert.equal(layout.toggleDetails(), true);
+  assert.match(value, /PASS · 2\.6s/);
+  assert.match(value, /RAW run:abc/);
+  assert.equal(layout.detailsExpanded, true);
+  value = '';
+  assert.equal(layout.toggleDetails(), false);
+  assert.match(value, /PASS · 2\.6s/);
+  assert.doesNotMatch(value, /RAW run:abc/);
+  layout.finish();
+});
+
+test('terminal face persists the last factual outcome in the header', () => {
+  let value = '';
+  const output = { columns: 100, rows: 24, write: (text) => { value += text; }, on() {}, off() {} };
+  const layout = createShellLayout(output);
+  layout.start();
+  assert.equal(layout.face, '(._.)');
+  value = '';
+  assert.equal(layout.setFace('pass'), '(^_^)');
+  assert.match(value, /\(\^_\^\).*Indro/);
+  value = '';
+  assert.equal(layout.setFace('blocked'), '(x_x)');
+  assert.match(value, /\(x_x\).*Indro/);
+  value = '';
+  assert.equal(layout.setFace('cancelled'), '(-_-)');
+  assert.match(value, /\(-_-\).*Indro/);
   layout.finish();
 });
 

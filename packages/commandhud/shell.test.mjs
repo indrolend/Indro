@@ -72,7 +72,7 @@ test('TUI input buffers fragmented SGR mouse packets instead of leaking partial 
   assert.deepEqual(dispatched, ['copy']);
 });
 
-test('TUI bracketed paste keeps 100 lines in one composer buffer and never submits them', () => {
+test('TUI bracketed paste keeps ten thousand lines in one composer buffer and never submits them', () => {
   const typed = [];
   const dispatched = [];
   const layout = {
@@ -82,7 +82,7 @@ test('TUI bracketed paste keeps 100 lines in one composer buffer and never submi
   const route = createTuiInputRouter({
     layout, dispatch: (action) => dispatched.push(action), writeText: (text) => typed.push(text),
   });
-  const wall = Array.from({ length: 100 }, (_, index) => `Write-Output ${index + 1}`).join('\r\n');
+  const wall = Array.from({ length: 10_000 }, (_, index) => `Write-Output ${index + 1}`).join('\r\n');
   route(`\x1b[20`);
   route(`0~${wall.slice(0, 317)}`);
   route(`${wall.slice(317)}\x1b[20`);
