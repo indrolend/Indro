@@ -87,6 +87,10 @@ The immutable CommandHUD run ID is the agent-session identity. Codex's thread ID
 
 This checkpoint deliberately does not yet claim structured questions/approvals, remote authentication, public reachability, or notification delivery. `hud serve` stays loopback-only by default, and its desktop terminal endpoint is not part of the agent protocol. A future remote adapter must authenticate separately and expose only these typed identities and actions.
 
+### ChatGPT MCP boundary
+
+`plugins/commandhud-remote` is the headless stdio MCP adapter for private ChatGPT/Codex use. It calls CommandHUD core directly and exposes only `list_projects`, `list_agents`, `start_agent`, `list_agent_sessions`, `get_agent`, `stop_agent`, and `discard_agent_workspace`. Project inputs are stable IDs returned by `list_projects`; repository roots are resolved and reverified locally and are omitted from remote results. There is no shell, executable, PID, cwd, or evidence-path input. The plugin is ready for local MCP testing but is not installed, published, or connected to an OpenAI Secure MCP Tunnel by repository setup.
+
 `hud compare-files` is an immutable typed operation: it records both absolute identities, exact SHA-256 values, equality status, raw JSON, process outcome, and repository currency. Absolute paths allow source-to-built or source-to-installed comparisons; filenames, sizes, and timestamps never substitute for byte equality.
 
 On Windows, `hud service <name>` performs a validated read-only service probe and records status, start type, process identity, dependencies, dependents, raw JSON, and Git currency as one immutable operation. The runtime owns the encoded PowerShell transport; the caller supplies only a restricted service name, never executable text.

@@ -28,6 +28,8 @@ Local coding agents are replaceable workers behind CommandHUD's existing authori
 
 Detached-agent listing scans those same run directories. Cancellation is a typed request placed inside the verified inflight run and consumed by the owning worker; remote callers never supply a PID. Workspace discard resolves the path from final immutable evidence, requires it to remain under CommandHUD's worktree root and registered to the verified source repository, and leaves the run evidence intact.
 
+The repository-owned `commandhud-remote` plugin is a stdio MCP projection over this core, not another server authority. Its tools accept project and session identities, resolve roots locally from the reverified CommandHUD registry, and return bounded semantic state without local filesystem roots. A private tunnel or other authenticated transport may carry this protocol, but transport does not gain the desktop terminal capability.
+
 Repository scripts and files remain the source of discovered commands. Package scripts are discovered mechanically; additional typed commands are declared under `commandHud.commands` in the selected project manifest. Commands may select generic test/audit/smoke reduction and declare literal success markers. Generic CommandHUD code does not copy DATA-specific commands or output markers into another authority.
 
 ## State boundary

@@ -152,6 +152,47 @@ function registerProject(project, store) {
   return { ...project, store, key: projectKey(project.identity) };
 }
 
+function excludedRemoteProjectRoot(root, store) {
+  return [resolve(tmpdir()), resolve(store, 'worktrees')].some((parent) => {
+    const nested = relative(parent, resolve(root));
+    return nested === '' || (nested && !nested.startsWith('..') && !isAbsolute(nested));
+  });
+}
+
+export async function discoverProjects({ store = stateRoot(), includeTemporary = process.env.NODE_ENV === 'test' } = {}) {
+  const directory = join(store, 'projects');
+  if (!existsSync(directory)) return [];
+  const projects = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true }).filter((item) => item.isFile() && item.name.endsWith('.json'))) {
+    const registration = readJson(join(directory, entry.name));
+    if (!registration?.id || !registration?.root) continue;
+    try {
+      const verified = await verifyRoot(registration.root);
+      if (verified.identity.id !== registration.id) continue;
+      if (!includeTemporary && excludedRemoteProjectRoot(verified.root, store)) continue;
+      const git = await gitSnapshot(verified.root);
+      projects.push({
+        id: verified.identity.id, name: verified.identity.name, root: verified.root,
+        branch: git.branch, head: git.head, dirty: git.dirty,
+        changedFileCount: git.changedFiles.length,
+      });
+    } catch {
+      // Stale registrations are not remote project authority.
+    }
+  }
+  return projects.sort((left, right) => left.name.localeCompare(right.name, 'en') || left.id.localeCompare(right.id, 'en'));
+}
+
+export async function resolveRegisteredProject(id, { store = stateRoot(), includeTemporary = process.env.NODE_ENV === 'test' } = {}) {
+  if (typeof id !== 'string' || !id.trim() || /[\0\r\n]/.test(id)) throw new Error('Project requires a valid registered identity.');
+  const registration = readJson(join(store, 'projects', `${projectKey({ id })}.json`));
+  if (!registration || registration.id !== id) throw new Error(`Unknown registered project: ${id}`);
+  const verified = await verifyRoot(registration.root);
+  if (verified.identity.id !== id) throw new Error(`Registered project identity no longer matches: ${id}`);
+  if (!includeTemporary && excludedRemoteProjectRoot(verified.root, store)) throw new Error(`Registered project is not eligible for remote control: ${id}`);
+  return registerProject(verified, store);
+}
+
 export async function gitSnapshot(root) {
   const [branch, head, upstreamRef, status] = await Promise.all([
     exec('git', ['branch', '--show-current'], root),
@@ -1875,6 +1916,7 @@ export function agentSession(project, runId) {
   }
   if (record.operation?.type !== 'agent-request') return null;
   const operation = record.operation;
+  if (resolve(operation.sourceRoot || '') !== resolve(project.root)) return null;
   const status = record.status === 'pass' ? 'DONE'
     : record.status === 'cancelled' ? 'STOPPED' : 'FAILED';
   return {

@@ -2,7 +2,7 @@ import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSy
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { agentSession, buildCurrentOperationContext, classifyEvidence, currentState, discardAgentWorkspace, discoverAgentHarnesses, discoverShells, lastRun, lintRepository, listAgentSessions, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, startDetachedAgent, stopAgentSession, undoOperation, undoPlan } from './core.mjs';
+import { agentSession, buildCurrentOperationContext, classifyEvidence, currentState, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, discoverShells, lastRun, lintRepository, listAgentSessions, MAX_AGENT_PROMPT_CHARACTERS, MAX_TERMINAL_INPUT_CHARACTERS, operationDetail, operationHistory, recoverInterruptedRuns, repositoryCurrency, repositoryTree, runAgentRequest, runById, runRepositoryCommand, runTerminalCommand, searchRepository, startDetachedAgent, stopAgentSession, undoOperation, undoPlan } from './core.mjs';
 
 const staticRoot = join(dirname(fileURLToPath(import.meta.url)), 'repository-map-client');
 const contentTypes = {
@@ -502,6 +502,10 @@ export function createHudServer(project, { terminal = false, onSessionClientsCha
       }
       if (url.pathname === '/agents') {
         json(response, 200, { agents: await discoverAgentHarnesses(agentOptions) });
+        return;
+      }
+      if (url.pathname === '/projects') {
+        json(response, 200, { projects: await discoverProjects({ store: project.store }) });
         return;
       }
       if (url.pathname === '/agent-sessions') {
