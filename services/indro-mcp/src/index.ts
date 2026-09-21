@@ -11,12 +11,14 @@ type AppEnv = Env & {
 	GITHUB_CLIENT_ID: string;
 	GITHUB_CLIENT_SECRET: string;
 	OAUTH_PROVIDER: OAuthHelpers;
+	HOME_EXECUTOR_TOKEN: string;
+	HOME_EXECUTOR_URL: string;
 };
 
 type GitHubTokenResponse = { access_token?: string; error?: string; error_description?: string };
 type GitHubUser = { id?: number; login?: string };
 
-function createServer() {
+function createServer(env: AppEnv) {
 	const server = new McpServer({ name: SERVICE_NAME, version: SERVICE_VERSION });
 	server.registerTool(
 		"commandhud.status",
@@ -35,10 +37,10 @@ function createServer() {
 			}],
 		}),
 	);
+server.registerTool("commandhud.home.status", { description: "Report whether the authenticated home Windows executor is reachable." }, async () => { const response = await fetch(env.HOME_EXECUTOR_URL + "/health", { headers: { Authorization: "Bearer " + env.HOME_EXECUTOR_TOKEN } }); if (!response.ok) throw new Error("Home executor returned HTTP " + response.status + "."); const result = await response.json(); return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] }; });
 	return server;
 }
 
-const mcpHandler = createMcpHandler(createServer);
 
 function randomState(): string {
 	const bytes = new Uint8Array(32);
@@ -126,8 +128,8 @@ async function finishAuthorization(request: Request, env: AppEnv): Promise<Respo
 }
 
 const protectedMcpHandler = {
-	async fetch(request: Request, _env: AppEnv, _ctx: ExecutionContext): Promise<Response> {
-		return mcpHandler.fetch(request);
+	async fetch(request: Request, env: AppEnv, ctx: ExecutionContext): Promise<Response> {
+		return createMcpHandler(() => createServer(env))(request, env, ctx);
 	},
 } satisfies ExportedHandler<AppEnv>;
 

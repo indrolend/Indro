@@ -23,7 +23,8 @@
 			"binding": "OAUTH_KV",
 			"id": "726ef8e2dc554cb7a5a9fcc4e0e429ba"
 		}
-	]
+	],
+	"vars": { "HOME_EXECUTOR_URL": "https://commandhud-home.indrolend.com" },
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
