@@ -4,11 +4,12 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { Script } from 'node:vm';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { resolveProject } from './core.mjs';
 
-test('CommandHUD MCP exposes only typed project and agent lifecycle tools', async (t) => {
+test('CommandHUD MCP exposes only its typed control panel and agent lifecycle tools', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-mcp-project-'));
   const store = mkdtempSync(join(tmpdir(), 'commandhud-mcp-state-'));
   mkdirSync(join(root, 'distribution'));
@@ -33,9 +34,40 @@ test('CommandHUD MCP exposes only typed project and agent lifecycle tools', asyn
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [
     'discard_agent_workspace', 'get_agent', 'list_agent_sessions', 'list_agents',
-    'list_projects', 'start_agent', 'stop_agent',
+    'list_projects', 'open_commandhud', 'start_agent', 'stop_agent',
   ]);
-  assert.equal(listed.tools.some((tool) => /shell|exec|powershell/i.test(tool.name)), false);
+  const exposedInputNames = listed.tools.flatMap((tool) => Object.keys(tool.inputSchema?.properties || {}));
+  assert.equal(exposedInputNames.some((name) => /shell|exec|command|pid|cwd|root|path/i.test(name)), false);
+  const panelTool = listed.tools.find((tool) => tool.name === 'open_commandhud');
+  assert.equal(panelTool.annotations.readOnlyHint, true);
+  assert.equal(panelTool._meta.ui.resourceUri, 'ui://commandhud/control-panel-v1.html');
+  assert.equal(panelTool._meta['openai/outputTemplate'], 'ui://commandhud/control-panel-v1.html');
+
+  const resources = await client.listResources();
+  assert.deepEqual(resources.resources.map(({ uri, mimeType }) => ({ uri, mimeType })), [{
+    uri: 'ui://commandhud/control-panel-v1.html', mimeType: 'text/html;profile=mcp-app',
+  }]);
+  const panelResource = await client.readResource({ uri: 'ui://commandhud/control-panel-v1.html' });
+  assert.equal(panelResource.contents[0].mimeType, 'text/html;profile=mcp-app');
+  assert.match(panelResource.contents[0].text, /window\.openai\?\.callTool/);
+  assert.match(panelResource.contents[0].text, /No paid fallback occurs automatically/);
+  const widgetScript = panelResource.contents[0].text.match(/<script>([\s\S]*)<\/script>/)?.[1];
+  assert.ok(widgetScript);
+  assert.doesNotThrow(() => new Script(widgetScript));
+
+  const panel = await client.callTool({ name: 'open_commandhud', arguments: {} });
+  assert.equal(panel.structuredContent.projects.length, 1);
+  assert.equal(panel.structuredContent.recipes.length, 7);
+  assert.deepEqual(panel.structuredContent.routing, {
+    policy: 'local-first-explicit-paid-escalation',
+    allowPaid: false,
+    candidates: [{
+      agent: 'codex/ollama',
+      reason: 'Prefer local execution to retain project data and avoid paid model usage.',
+    }],
+    automaticPaidFallback: false,
+  });
+  assert.equal(JSON.stringify(panel.structuredContent).includes(root), false);
   const projects = await client.callTool({ name: 'list_projects', arguments: {} });
   assert.deepEqual(projects.structuredContent.projects, [{
     id: 'indrolend/mcp-fixture', name: 'MCP Fixture', branch: 'main',
@@ -43,6 +75,18 @@ test('CommandHUD MCP exposes only typed project and agent lifecycle tools', asyn
     dirty: false, changedFileCount: 0,
   }]);
   assert.equal(JSON.stringify(projects.structuredContent).includes(root), false);
+  const agents = await client.callTool({ name: 'list_agents', arguments: { project: 'indrolend/mcp-fixture' } });
+  assert.deepEqual(Object.fromEntries(agents.structuredContent.agents.map((agent) => [agent.id, agent.dataBoundary])), {
+    'codex/local': 'external-provider',
+    'codex/ollama': 'local-machine',
+  });
+  const sessions = await client.callTool({ name: 'list_agent_sessions', arguments: { project: 'indrolend/mcp-fixture', limit: 25 } });
+  assert.deepEqual(sessions.structuredContent.sessions, []);
+  const startTool = listed.tools.find((tool) => tool.name === 'start_agent');
+  assert.equal(startTool.inputSchema.properties.agent.type, 'string');
+  assert.equal(startTool.inputSchema.properties.agent.default, 'codex/ollama');
+  assert.equal('const' in startTool.inputSchema.properties.agent, false);
+  assert.equal('enum' in startTool.inputSchema.properties.agent, false);
   const stale = await client.callTool({ name: 'start_agent', arguments: {
     project: 'indrolend/mcp-fixture', objective: 'must not launch', expected_head: '0'.repeat(40), agent: 'codex/local',
   } });

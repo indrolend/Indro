@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentSession, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -17,8 +17,28 @@ test('Make It rejects empty and oversized ideas before launching an agent', asyn
 test('local agent discovery is typed and grounded in the configured launcher', async () => {
   const agents = await discoverAgentHarnesses({ codexLauncher: [process.execPath, '--version'] });
   assert.equal(agents[0].id, 'codex/local');
+  assert.equal(agents[1].id, 'codex/ollama');
   assert.equal(agents[0].available, true);
   assert.equal(agents[0].capabilities.approvals, false);
+});
+
+test('agent routing is local-first and never spends paid capacity implicitly', () => {
+  assert.deepEqual(planAgentRoute(), {
+    policy: 'local-first-explicit-paid-escalation', allowPaid: false,
+    candidates: [{ agent: 'codex/ollama', reason: 'Prefer local execution to retain project data and avoid paid model usage.' }],
+    automaticPaidFallback: false,
+  });
+  const approved = planAgentRoute({ allowPaid: true });
+  assert.deepEqual(approved.candidates.map((entry) => entry.agent), ['codex/ollama', 'codex/local']);
+  assert.equal(agentHarnessSpec('codex/local').dataBoundary, 'external-provider');
+  assert.equal(agentHarnessSpec('codex/ollama', { env: { COMMANDHUD_OLLAMA_MODEL: 'qwen2.5:7b' } }).dataBoundary, 'local-machine');
+});
+
+test('free agent invocation is explicit, local, and disables unsupported reasoning requests', () => {
+  const invocation = buildAgentInvocation('codex/ollama', 'C:\\repo', null, { env: { COMMANDHUD_OLLAMA_MODEL: 'qwen2.5:7b' } });
+  assert.equal(invocation.reused, false);
+  assert.deepEqual(invocation.args.slice(0, 8), ['exec', '--oss', '--local-provider', 'ollama', '--model', 'qwen2.5:7b', '-c', 'model_reasoning_effort="none"']);
+  assert.match(invocation.args.join(' '), /--sandbox workspace-write/);
 });
 
 test('Windows Make It bypasses the stdin-hostile PowerShell shim when the npm Codex entry exists', () => {
@@ -59,6 +79,9 @@ test('Make It persists and resumes only its project agent session', async () => 
   const first = await runAgentRequest(project, 'make one', { expectedHead: head, codexLauncher: [process.execPath, fake] });
   assert.equal(first.operation.sessionReused, false);
   assert.equal(first.operation.agent, 'codex/local');
+  assert.equal(first.operation.provider, 'openai-codex');
+  assert.equal(first.operation.dataBoundary, 'external-provider');
+  assert.equal(first.operation.externalTransmission, true);
   assert.equal(first.operation.baseSha, head);
   assert.equal(first.operation.usage.uncachedInputTokens, 30);
   assert.equal(readProjectState(project).agentSession.id, first.operation.sessionId);

@@ -1886,13 +1886,75 @@ export function resolveCodexLauncher({ env = process.env, targetPlatform = proce
   return ['codex'];
 }
 
+function ollamaModel(env = process.env) {
+  const value = String(env.COMMANDHUD_OLLAMA_MODEL || 'qwen2.5:7b').trim();
+  if (!value || value.length > 200 || !/^[A-Za-z0-9._:/-]+$/.test(value)) {
+    throw new Error('COMMANDHUD_OLLAMA_MODEL must be a valid Ollama model name.');
+  }
+  return value;
+}
+
+export function agentHarnessSpec(agent, { env = process.env } = {}) {
+  const specs = {
+    'codex/local': {
+      id: 'codex/local', provider: 'openai-codex', runtime: 'codex-cli', transport: 'local-process',
+      costClass: 'account-metered', dataBoundary: 'external-provider', escalation: 'explicit-only',
+      model: null, fallbackFor: null,
+      capabilities: { edit: true, cancel: true, resume: true, questions: false, approvals: false },
+    },
+    'codex/ollama': {
+      id: 'codex/ollama', provider: 'ollama', runtime: 'codex-cli', transport: 'local-ollama',
+      costClass: 'local-free', dataBoundary: 'local-machine', escalation: 'not-applicable',
+      model: ollamaModel(env), fallbackFor: 'codex/local',
+      capabilities: { edit: true, cancel: true, resume: false, questions: false, approvals: false },
+    },
+  };
+  const spec = specs[agent];
+  if (!spec) throw new Error(`Unknown agent harness: ${agent}`);
+  return structuredClone(spec);
+}
+
+function requireAgentHarness(agent) {
+  return agentHarnessSpec(agent);
+}
+
+export function planAgentRoute({ allowPaid = false, localAvailable = true, paidAvailable = true } = {}) {
+  const candidates = [];
+  if (localAvailable) candidates.push({ agent: 'codex/ollama', reason: 'Prefer local execution to retain project data and avoid paid model usage.' });
+  if (allowPaid && paidAvailable) candidates.push({ agent: 'codex/local', reason: 'Use only as an explicitly approved quality escalation.' });
+  return {
+    policy: 'local-first-explicit-paid-escalation', allowPaid: Boolean(allowPaid), candidates,
+    automaticPaidFallback: false,
+  };
+}
+
+export function buildAgentInvocation(agent, executionRoot, savedSession = null, { env = process.env } = {}) {
+  const spec = agentHarnessSpec(agent, { env });
+  const reusable = spec.capabilities.resume && Boolean(savedSession?.id && /^[0-9a-f-]{36}$/i.test(savedSession.id));
+  if (reusable) return { reused: true, args: ['exec', 'resume', '--json', savedSession.id, '-'] };
+  const provider = spec.dataBoundary === 'local-machine'
+    ? ['--oss', '--local-provider', 'ollama', '--model', spec.model, '-c', 'model_reasoning_effort="none"']
+    : [];
+  return {
+    reused: false,
+    args: ['exec', ...provider, '--json', '--color', 'never', '--sandbox', 'workspace-write', '-C', executionRoot, '-'],
+  };
+}
+
 export async function discoverAgentHarnesses({ codexLauncher = null } = {}) {
   const launcher = Array.isArray(codexLauncher) && codexLauncher.length ? codexLauncher : resolveCodexLauncher();
   const capability = await discoverCapability('codex', launcher[0], { args: [...launcher.slice(1), '--version'] });
+  const ollama = await discoverCapability('ollama', 'ollama', { args: ['list'] });
+  const paid = agentHarnessSpec('codex/local');
+  const local = agentHarnessSpec('codex/ollama');
   return [{
-    id: 'codex/local', provider: 'codex', transport: 'local-process',
+    ...paid,
     available: capability.available, state: capability.state, version: capability.version,
-    capabilities: { edit: true, cancel: true, resume: true, questions: false, approvals: false },
+  }, {
+    ...local,
+    available: capability.available && ollama.available,
+    state: !capability.available ? capability.state : ollama.state,
+    version: capability.version,
   }];
 }
 
@@ -1903,8 +1965,13 @@ export function agentSession(project, runId) {
     const inflight = readJson(join(directory, 'inflight.json'));
     if (inflight?.operationIdentity?.type !== 'agent-request') return null;
     const operation = inflight.operationIdentity;
+    const harness = agentHarnessSpec(operation.agent);
     return {
       id: runId, status: 'WORKING', reason: null, agent: operation.agent,
+      provider: operation.provider || harness.provider, runtime: operation.runtime || harness.runtime,
+      costClass: operation.costClass || harness.costClass,
+      dataBoundary: operation.dataBoundary || harness.dataBoundary,
+      externalTransmission: operation.externalTransmission ?? harness.dataBoundary === 'external-provider',
       providerSessionId: null, processId: inflight.pid,
       project: project.identity.id, repoRoot: operation.sourceRoot,
       worktree: operation.worktree || inflight.root, baseSha: operation.baseSha,
@@ -1919,9 +1986,14 @@ export function agentSession(project, runId) {
   if (resolve(operation.sourceRoot || '') !== resolve(project.root)) return null;
   const status = record.status === 'pass' ? 'DONE'
     : record.status === 'cancelled' ? 'STOPPED' : 'FAILED';
+  const harness = agentHarnessSpec(operation.agent);
   return {
     id: record.id, status, reason: record.resultReason || null,
     agent: operation.agent, providerSessionId: operation.sessionId,
+    provider: operation.provider || harness.provider, runtime: operation.runtime || harness.runtime,
+    costClass: operation.costClass || harness.costClass,
+    dataBoundary: operation.dataBoundary || harness.dataBoundary,
+    externalTransmission: operation.externalTransmission ?? harness.dataBoundary === 'external-provider',
     project: project.identity.id, repoRoot: operation.sourceRoot || project.root,
     worktree: operation.worktree || record.root,
     baseSha: operation.baseSha, head: record.gitAfter?.head || null,
@@ -1982,7 +2054,7 @@ export async function runAgentRequest(project, prompt, {
 } = {}) {
   const idea = String(prompt || '').trim();
   if (!idea || idea.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Make It requires an idea between 1 and 131072 characters.');
-  if (agent !== 'codex/local') throw new Error(`Unknown agent harness: ${agent}`);
+  requireAgentHarness(agent);
   if (typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedHead)) throw new Error('Agent start requires an exact 40-character expected Git HEAD.');
   const before = await gitSnapshot(project.root);
   if (before.head.toLowerCase() !== expectedHead.toLowerCase()) {
@@ -2000,10 +2072,9 @@ export async function runAgentRequest(project, prompt, {
   }
   const projectState = readProjectState(project);
   const savedSession = projectState.agentSession;
-  const reused = !isolate && Boolean(savedSession?.id && /^[0-9a-f-]{36}$/i.test(savedSession.id));
-  const args = reused
-    ? ['exec', 'resume', '--json', savedSession.id, '-']
-    : ['exec', '--json', '--color', 'never', '--sandbox', 'workspace-write', '-C', executionProject.root, '-'];
+  const harness = agentHarnessSpec(agent);
+  const selected = buildAgentInvocation(agent, executionProject.root, isolate ? null : savedSession);
+  const { args, reused } = selected;
   const launcher = Array.isArray(codexLauncher) && codexLauncher.length ? codexLauncher : resolveCodexLauncher();
   const tokens = [...launcher, ...args];
   const record = await runCommand(executionProject, tokens, {
@@ -2014,12 +2085,18 @@ export async function runAgentRequest(project, prompt, {
     operationIdentity: {
       type: 'agent-request', agent, baseSha: before.head, sourceRoot: project.root,
       worktree: executionProject.root, isolated: isolate, prompt: idea,
+      provider: harness.provider, runtime: harness.runtime, costClass: harness.costClass,
+      dataBoundary: harness.dataBoundary,
+      externalTransmission: harness.dataBoundary === 'external-provider',
     },
     operationReducer: ({ stdout, exitCode, record: value }) => {
       const parsed = parseCodexJsonEvents(stdout);
       return {
         type: 'agent-request', agent, baseSha: before.head, sourceRoot: project.root,
         worktree: executionProject.root, isolated: isolate,
+        provider: harness.provider, runtime: harness.runtime, costClass: harness.costClass,
+        dataBoundary: harness.dataBoundary,
+        externalTransmission: harness.dataBoundary === 'external-provider',
         prompt: idea, command: `Make It: ${idea}`, exitCode,
         status: value.status, durationMs: value.durationMs, sessionId: parsed.sessionId || savedSession?.id || null,
         sessionReused: reused, usage: parsed.usage, message: parsed.message.slice(0, 4000),
@@ -2027,7 +2104,7 @@ export async function runAgentRequest(project, prompt, {
       };
     },
   });
-  if (record.operation.sessionId && !isolate) {
+  if (record.operation.sessionId && !isolate && agent === 'codex/local') {
     const current = readProjectState(project);
     current.agentSession = { id: record.operation.sessionId, updatedAt: record.endedAt };
     writeProjectState(project, current);
@@ -2038,7 +2115,7 @@ export async function runAgentRequest(project, prompt, {
 export async function startDetachedAgent(project, prompt, { agent = 'codex/local', expectedHead = null, codexLauncher = null } = {}) {
   const idea = String(prompt || '').trim();
   if (!idea || idea.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Make It requires an idea between 1 and 131072 characters.');
-  if (agent !== 'codex/local') throw new Error(`Unknown agent harness: ${agent}`);
+  requireAgentHarness(agent);
   if (typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedHead)) throw new Error('Agent start requires an exact 40-character expected Git HEAD.');
   const current = await gitSnapshot(project.root);
   if (current.head.toLowerCase() !== expectedHead.toLowerCase()) throw new Error(`Expected Git HEAD ${expectedHead} does not match current HEAD ${current.head}.`);

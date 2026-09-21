@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root { color-scheme: light dark; font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; --accent:#63d392; --danger:#ef6b73; --muted:#8b949e; --panel:color-mix(in srgb, Canvas 94%, CanvasText 6%); --line:color-mix(in srgb, CanvasText 17%, transparent); }
+    * { box-sizing:border-box } body { margin:0; color:CanvasText; background:Canvas; }
+    main { padding:14px; max-width:760px; margin:auto; } header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px }
+    h1 { font-size:18px; margin:0 } h2 { font-size:15px; margin:18px 0 8px } p { margin:5px 0 } .muted { color:var(--muted) } .badge { border:1px solid var(--line); border-radius:999px; padding:2px 8px; font-size:12px }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px } .card { border:1px solid var(--line); background:var(--panel); border-radius:12px; padding:11px; text-align:left }
+    button { font:inherit; color:inherit; border:1px solid var(--line); background:var(--panel); border-radius:9px; padding:8px 11px; cursor:pointer } button:hover { border-color:var(--accent) } button.primary { background:var(--accent); color:#07150d; border-color:transparent; font-weight:650 } button.danger { border-color:var(--danger); color:var(--danger) } button:disabled { opacity:.5; cursor:not-allowed }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center } .stack { display:grid; gap:8px } textarea { width:100%; min-height:120px; resize:vertical; padding:10px; border:1px solid var(--line); border-radius:10px; background:Canvas; color:CanvasText; font:inherit }
+    .review { border:1px solid var(--accent); border-radius:12px; padding:12px } dl { display:grid; grid-template-columns:max-content 1fr; gap:5px 10px; margin:8px 0 } dt { color:var(--muted) } dd { margin:0; overflow-wrap:anywhere } .status { min-height:20px; margin:8px 0; color:var(--muted) }
+  </style>
+</head>
+<body><main id="app"><p class="muted">Loading CommandHUD…</p></main>
+<script>
+(() => {
+  const app = document.getElementById('app');
+  const state = { data:null, project:null, recipe:null, agent:null, objective:'', review:false, sessions:[], busy:false, message:'' };
+  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const output = () => window.openai?.toolOutput || window.openai?.toolResponseMetadata?.structuredContent || null;
+  const unwrap = (value) => value?.structuredContent || value?.result?.structuredContent || value || {};
+  async function call(name,args={}) {
+    if (!window.openai?.callTool) throw new Error('This host does not expose widget tool calls.');
+    return unwrap(await window.openai.callTool(name,args));
+  }
+  function persist() { window.openai?.setWidgetState?.({ project:state.project?.id, recipe:state.recipe?.id, agent:state.agent, objective:state.objective, review:state.review }); }
+  function setMessage(message) { state.message=message; render(); }
+  async function refreshSessions() {
+    if (!state.project) return;
+    state.busy=true; render();
+    try { state.sessions=(await call('list_agent_sessions',{project:state.project.id,limit:25})).sessions||[]; state.message='Sessions refreshed.'; }
+    catch(e){ state.message=e.message; } finally { state.busy=false; render(); }
+  }
+  async function startAgent() {
+    state.busy=true; render();
+    try {
+      const session=await call('start_agent',{project:state.project.id,objective:state.objective.trim(),expected_head:state.project.head,agent:state.agent});
+      state.review=false; state.sessions=[session,...state.sessions.filter(s=>s.id!==session.id)]; state.message=`Started ${session.id}.`;
+    } catch(e){ state.message=e.message; } finally { state.busy=false; render(); }
+  }
+  async function sessionAction(name,session) {
+    const label=name==='stop_agent'?'Stop this running session?':'Discard this terminal workspace? Retained evidence will remain.';
+    if (!confirm(label)) return;
+    state.busy=true; render();
+    try { await call(name,{project:state.project.id,session_id:session.id}); state.message=name==='stop_agent'?'Stop requested.':'Workspace discarded.'; await refreshSessions(); }
+    catch(e){ state.busy=false; state.message=e.message; render(); }
+  }
+  function chooseProject(id) { state.project=state.data.projects.find(p=>p.id===id); state.recipe=null; state.review=false; state.sessions=[]; persist(); render(); }
+  function chooseRecipe(id) { state.recipe=state.data.recipes.find(r=>r.id===id); state.agent=state.recipe.recommendedAgent; state.objective=state.recipe.objective+'\n\nSpecific request:\n'; state.review=false; persist(); render(); }
+  function header() { return `<header><div><h1>CommandHUD</h1><p class="muted">Local-first, evidence-backed agent sessions</p></div><span class="badge">${state.data.routing.policy.replaceAll('-',' ')}</span></header>`; }
+  function projectView() { return header()+`<h2>Choose project</h2><div class="grid">${state.data.projects.map(p=>`<button class="card" data-project="${esc(p.id)}"><strong>${esc(p.name||p.id)}</strong><p class="muted">${esc(p.id)}</p><p>${esc(p.branch)} · ${esc(p.head.slice(0,8))}${p.dirty?' · dirty':''}</p></button>`).join('')}</div>`; }
+  function recipeView() { return header()+`<div class="row"><button data-back="projects">← Projects</button><strong>${esc(state.project.id)}</strong><span class="badge">${esc(state.project.head.slice(0,8))}</span></div><h2>Choose path</h2><div class="grid"><button class="card" data-sessions><strong>Sessions</strong><p class="muted">Inspect, refresh, stop, or discard retained agent work.</p></button>${state.data.recipes.map(r=>`<button class="card" data-recipe="${esc(r.id)}"><strong>${esc(r.label)}</strong><p class="muted">${esc(r.description)}</p><span class="badge">${esc(r.recommendedAgent)}</span></button>`).join('')}</div>`; }
+  function composeView() {
+    const harnesses=state.data.agents.filter(a=>a.available);
+    return header()+`<div class="row"><button data-back="recipes">← Paths</button><strong>${esc(state.recipe.label)}</strong></div><h2>Harness</h2><div class="grid">${harnesses.map(a=>`<button class="card" data-agent="${esc(a.id)}" style="border-color:${a.id===state.agent?'var(--accent)':'var(--line)'}"><strong>${esc(a.id)}</strong><p class="muted">${esc(a.costClass)} · ${esc(a.dataBoundary)}</p>${a.dataBoundary==='external-provider'?'<span class="badge">explicit paid escalation</span>':'<span class="badge">local-first</span>'}</button>`).join('')}</div><h2>Objective</h2><textarea id="objective">${esc(state.objective)}</textarea><div class="row"><button class="primary" data-review ${!state.objective.trim()?'disabled':''}>Review</button></div>`;
+  }
+  function reviewView() { const external=state.data.agents.find(a=>a.id===state.agent)?.dataBoundary==='external-provider'; return header()+`<div class="row"><button data-edit>← Edit</button><strong>Review start</strong></div><div class="review"><dl><dt>Project</dt><dd>${esc(state.project.id)}</dd><dt>HEAD</dt><dd>${esc(state.project.head)}</dd><dt>Harness</dt><dd>${esc(state.agent)}</dd><dt>Boundary</dt><dd>${external?'External provider transmission':'Local machine only'}</dd></dl><p>${esc(state.objective).replaceAll('\n','<br>')}</p></div><p class="muted">CommandHUD will create an isolated worktree at this exact HEAD. No paid fallback occurs automatically.</p><div class="row"><button class="primary" data-start ${state.busy?'disabled':''}>${state.busy?'Starting…':'Start agent'}</button></div>`; }
+  function sessionsView() { return header()+`<div class="row"><button data-back="recipes">← Paths</button><strong>${esc(state.project.id)}</strong><button data-refresh ${state.busy?'disabled':''}>Refresh</button></div><h2>Sessions</h2>${state.sessions.length?`<div class="stack">${state.sessions.map(s=>`<div class="card"><div class="row"><strong>${esc(s.id)}</strong><span class="badge">${esc(s.status)}</span><span class="badge">${esc(s.agent)}</span></div><p>${esc(s.objective)}</p><p class="muted">${esc(s.dataBoundary||'unknown boundary')} · ${esc(s.changedFiles?.length||0)} changed files</p><div class="row">${s.status==='WORKING'?`<button class="danger" data-stop="${esc(s.id)}">Stop</button>`:`<button class="danger" data-discard="${esc(s.id)}">Discard workspace</button>`}</div></div>`).join('')}</div>`:'<p class="muted">No retained sessions for this project.</p>'}`; }
+  function bind() {
+    app.querySelectorAll('[data-project]').forEach(el=>el.onclick=()=>chooseProject(el.dataset.project));
+    app.querySelectorAll('[data-recipe]').forEach(el=>el.onclick=()=>chooseRecipe(el.dataset.recipe));
+    app.querySelectorAll('[data-agent]').forEach(el=>el.onclick=()=>{state.agent=el.dataset.agent;persist();render();});
+    app.querySelector('[data-sessions]')?.addEventListener('click',async()=>{state.recipe='sessions';await refreshSessions();});
+    app.querySelector('[data-refresh]')?.addEventListener('click',refreshSessions);
+    app.querySelector('[data-review]')?.addEventListener('click',()=>{state.objective=app.querySelector('#objective').value;state.review=true;persist();render();});
+    app.querySelector('#objective')?.addEventListener('input',e=>{state.objective=e.target.value;});
+    app.querySelector('[data-edit]')?.addEventListener('click',()=>{state.review=false;persist();render();});
+    app.querySelector('[data-start]')?.addEventListener('click',startAgent);
+    app.querySelectorAll('[data-stop]').forEach(el=>el.onclick=()=>sessionAction('stop_agent',state.sessions.find(s=>s.id===el.dataset.stop)));
+    app.querySelectorAll('[data-discard]').forEach(el=>el.onclick=()=>sessionAction('discard_agent_workspace',state.sessions.find(s=>s.id===el.dataset.discard)));
+    app.querySelectorAll('[data-back]').forEach(el=>el.onclick=()=>{if(el.dataset.back==='projects')state.project=null;state.recipe=null;state.review=false;persist();render();});
+  }
+  function render() {
+    if(!state.data){app.innerHTML='<p class="muted">Loading CommandHUD…</p>';return;}
+    let html=!state.project?projectView():state.recipe==='sessions'?sessionsView():!state.recipe?recipeView():state.review?reviewView():composeView();
+    app.innerHTML=html+`<p class="status">${esc(state.message)}</p>`; bind();
+  }
+  const initial=output();
+  state.data=initial?.projects?initial:null;
+  if(state.data){ const saved=window.openai?.widgetState||{}; state.project=state.data.projects.find(p=>p.id===saved.project)||null; state.recipe=state.data.recipes.find(r=>r.id===saved.recipe)||null; state.agent=saved.agent||state.recipe?.recommendedAgent||null; state.objective=saved.objective||state.recipe?.objective||''; state.review=Boolean(saved.review); }
+  render();
+})();
+</script></body></html>

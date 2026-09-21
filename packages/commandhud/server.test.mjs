@@ -22,7 +22,7 @@ test('agent API discovers one bounded harness and fails closed on repository ide
   t.after(() => running.server.close());
   const base = `http://127.0.0.1:${running.port}`;
   const agents = await (await fetch(`${base}/agents`)).json();
-  assert.deepEqual(agents.agents.map((agent) => agent.id), ['codex/local']);
+  assert.deepEqual(agents.agents.map((agent) => agent.id), ['codex/local', 'codex/ollama']);
   assert.equal(agents.agents[0].available, true);
   const head = (await gitSnapshot(project.root)).head;
   const request = (body) => fetch(`${base}/operations/make`, {

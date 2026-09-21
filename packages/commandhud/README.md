@@ -70,10 +70,15 @@ hud update
 
 ## Local agent foundation
 
-CommandHUD exposes the installed Codex worker as the typed harness `codex/local`. Harness discovery is read-only (`hud agents --json` or `GET /agents`). Starting work requires a locally verified repository and the caller's exact expected 40-character HEAD; a stale HEAD fails before Codex launches:
+The normative harness, remote-boundary, widget, and acceptance contract is in `../../docs/COMMANDHUD-HARNESS-SPEC.md`.
+
+CommandHUD exposes two typed Codex harnesses: `codex/ollama` uses a local Ollama model without paid model usage, while `codex/local` uses the signed-in Codex provider as the explicit quality fallback. Harness discovery is read-only (`hud agents --json` or `GET /agents`). Set `COMMANDHUD_OLLAMA_MODEL` to an installed Ollama model name; the default is `qwen2.5:7b`. The local profile disables reasoning-mode requests for compatibility with ordinary Ollama models. Starting work requires a locally verified repository and the caller's exact expected 40-character HEAD; a stale HEAD fails before Codex launches:
+
+Harness metadata includes its provider, runtime, cost class, and data boundary. The routing contract is local-first and never silently falls back to paid capacity. An external-provider run is recorded as an external transmission in its immutable operation evidence; provider session identifiers remain non-authoritative metadata.
 
 ```text
 hud agent-start "Investigate the failing parser test" --agent codex/local --expected-head <full-sha> --json
+hud agent-start "Triage the failing parser test" --agent codex/ollama --expected-head <full-sha> --json
 hud agent-start "Investigate in background" --agent codex/local --expected-head <full-sha> --detach --json
 hud agent-ls --json
 hud agent-show <run-id> --json
@@ -89,7 +94,9 @@ This checkpoint deliberately does not yet claim structured questions/approvals, 
 
 ### ChatGPT MCP boundary
 
-`plugins/commandhud-remote` is the headless stdio MCP adapter for private ChatGPT/Codex use. It calls CommandHUD core directly and exposes only `list_projects`, `list_agents`, `start_agent`, `list_agent_sessions`, `get_agent`, `stop_agent`, and `discard_agent_workspace`. Project inputs are stable IDs returned by `list_projects`; repository roots are resolved and reverified locally and are omitted from remote results. There is no shell, executable, PID, cwd, or evidence-path input. The plugin is ready for local MCP testing but is not installed, published, or connected to an OpenAI Secure MCP Tunnel by repository setup.
+`plugins/commandhud-remote` is the headless stdio MCP adapter for private ChatGPT use. It exposes one read-only `open_commandhud` tool backed by an embedded MCP Apps control panel, plus the seven typed lifecycle tools `list_projects`, `list_agents`, `start_agent`, `list_agent_sessions`, `get_agent`, `stop_agent`, and `discard_agent_workspace`. The panel provides a simple project → common task → harness → review choice tree and retained-session controls; it remains a replaceable client over the same core. Project inputs are stable IDs returned by `list_projects`; repository roots are resolved and reverified locally and omitted from remote results. There is no shell, executable, PID, cwd, or evidence-path input.
+
+The default route is the local `codex/ollama` harness. The external `codex/local` harness is visible as an explicit escalation choice, and the routing response records `automaticPaidFallback: false`. Starting, stopping, and discarding work always require a deliberate tool call; the widget adds review and confirmation controls but does not become authority. The plugin can be carried through a private authenticated tunnel, which must remain live while ChatGPT uses it.
 
 `hud compare-files` is an immutable typed operation: it records both absolute identities, exact SHA-256 values, equality status, raw JSON, process outcome, and repository currency. Absolute paths allow source-to-built or source-to-installed comparisons; filenames, sizes, and timestamps never substitute for byte equality.
 
