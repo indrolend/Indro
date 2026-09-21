@@ -1341,7 +1341,7 @@ export async function runCommand(project, tokens, {
     exitCode, processExitCode: exitCode,
     status: timeoutRequested ? 'timeout' : cancellationRequested ? 'cancelled' : capturedFailure ? 'fail' : missingCommand ? 'blocked' : !accepted || !evidenceValidity.valid ? 'fail' : 'pass',
     resultClassification: timeoutRequested ? 'TIMEOUT' : cancellationRequested ? 'CANCELLED' : capturedFailure ? 'FAIL' : missingCommand ? 'BLOCKED' : !accepted || !evidenceValidity.valid ? 'FAIL' : 'PASS',
-    resultReason: timeoutRequested ? 'DEADLINE_EXCEEDED' : cancellationRequested ? 'USER_CANCELLED' : capturedFailure ? 'POWERSHELL_ERROR_RECORD' : missingCommand ? 'COMMAND_UNAVAILABLE' : !accepted ? 'NONZERO_EXIT' : !evidenceValidity.valid ? 'INVALID_OUTPUT' : 'ACCEPTED_EXIT_CODE',
+    resultReason: timeoutRequested ? 'DEADLINE_EXCEEDED' : cancellationRequested ? 'USER_CANCELLED' : capturedFailure ? (capturedFailure.reason || 'POWERSHELL_ERROR_RECORD') : missingCommand ? 'COMMAND_UNAVAILABLE' : !accepted ? 'NONZERO_EXIT' : !evidenceValidity.valid ? 'INVALID_OUTPUT' : 'ACCEPTED_EXIT_CODE',
     mode: policy.mode, timeoutMs: policy.timeoutMs, timedOut: timeoutRequested,
     capturedFailure,
     dirtyBefore: before.dirty, dirtyAfter: after.dirty,
@@ -1933,7 +1933,7 @@ export function buildAgentInvocation(agent, executionRoot, savedSession = null, 
   const reusable = spec.capabilities.resume && Boolean(savedSession?.id && /^[0-9a-f-]{36}$/i.test(savedSession.id));
   if (reusable) return { reused: true, args: ['exec', 'resume', '--json', savedSession.id, '-'] };
   const provider = spec.dataBoundary === 'local-machine'
-    ? ['--oss', '--local-provider', 'ollama', '--model', spec.model, '-c', 'model_reasoning_effort="none"']
+    ? ['--oss', '--local-provider', 'ollama', '--model', spec.model, '-c', 'model_reasoning_effort="none"', '-c', 'web_search="disabled"']
     : [];
   return {
     reused: false,
@@ -2082,6 +2082,13 @@ export async function runAgentRequest(project, prompt, {
     signal, onStart, onOutput, origin, displayCommand: `Make It: ${idea}`,
     stdin: idea,
     externalCancellation: isolate,
+    classifyCapturedFailure: ({ stdout, exitCode }) => {
+      if (exitCode !== 0 || parseCodexJsonEvents(stdout).message) return null;
+      return {
+        classification: 'agent', reason: 'AGENT_NO_FINAL_RESPONSE',
+        message: 'The agent process exited without a final response; no successful result can be claimed.',
+      };
+    },
     operationIdentity: {
       type: 'agent-request', agent, baseSha: before.head, sourceRoot: project.root,
       worktree: executionProject.root, isolated: isolate, prompt: idea,

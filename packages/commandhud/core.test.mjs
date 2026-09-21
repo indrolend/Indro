@@ -37,7 +37,7 @@ test('agent routing is local-first and never spends paid capacity implicitly', (
 test('free agent invocation is explicit, local, and disables unsupported reasoning requests', () => {
   const invocation = buildAgentInvocation('codex/ollama', 'C:\\repo', null, { env: { COMMANDHUD_OLLAMA_MODEL: 'qwen2.5:7b' } });
   assert.equal(invocation.reused, false);
-  assert.deepEqual(invocation.args.slice(0, 8), ['exec', '--oss', '--local-provider', 'ollama', '--model', 'qwen2.5:7b', '-c', 'model_reasoning_effort="none"']);
+  assert.deepEqual(invocation.args.slice(0, 10), ['exec', '--oss', '--local-provider', 'ollama', '--model', 'qwen2.5:7b', '-c', 'model_reasoning_effort="none"', '-c', 'web_search="disabled"']);
   assert.match(invocation.args.join(' '), /--sandbox workspace-write/);
 });
 
@@ -119,6 +119,22 @@ test('typed agent starts edit only an isolated worktree at the verified source S
   assert.equal(agentSession(project, record.id).worktree, record.root);
 });
 
+test('an agent process cannot claim success without a final response', async () => {
+  const project = await fixtureProject();
+  const directory = mkdtempSync(join(tmpdir(), 'commandhud-silent-agent-'));
+  const fake = join(directory, 'fake-codex.mjs');
+  writeFileSync(fake, [
+    `for await (const chunk of process.stdin) {}`,
+    `console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' }));`,
+    `console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 1 } }));`,
+  ].join('\n'));
+  const head = (await gitSnapshot(project.root)).head;
+  const record = await runAgentRequest(project, 'silent exit', { expectedHead: head, codexLauncher: [process.execPath, fake] });
+  assert.equal(record.status, 'fail');
+  assert.equal(record.resultReason, 'AGENT_NO_FINAL_RESPONSE');
+  assert.equal(agentSession(project, record.id).status, 'FAILED');
+});
+
 test('detached agent returns a journal-backed identity before finishing and survives its caller', async () => {
   const project = await fixtureProject();
   const directory = mkdtempSync(join(tmpdir(), 'commandhud-detached-agent-'));
@@ -129,6 +145,7 @@ test('detached agent returns a journal-backed identity before finishing and surv
     `await new Promise((resolve) => setTimeout(resolve, 600));`,
     `writeFileSync('detached-change.txt', 'detached change\\n');`,
     `console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' }));`,
+    `console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'detached' } }));`,
   ].join('\n'));
   const sourceBefore = await gitSnapshot(project.root);
   const started = await startDetachedAgent(project, 'detached edit', {
