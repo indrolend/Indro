@@ -37,7 +37,8 @@
   async function startAgent() {
     state.busy=true; render();
     try {
-      const session=await call('start_agent',{project:state.project.id,objective:state.objective.trim(),expected_head:state.project.head,agent:state.agent});
+      const harness=state.data.agents.find(candidate=>candidate.id===state.agent);
+      const session=await call('start_agent',{project:state.project.id,objective:state.objective.trim(),expected_head:state.project.head,agent:state.agent,allow_paid:harness?.dataBoundary==='external-provider'});
       state.review=false; state.sessions=[session,...state.sessions.filter(s=>s.id!==session.id)]; state.message=`Started ${session.id}.`;
     } catch(e){ state.message=e.message; } finally { state.busy=false; render(); }
   }

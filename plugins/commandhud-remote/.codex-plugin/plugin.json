@@ -1,6 +1,6 @@
 {
   "name": "commandhud-remote",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Typed remote control for verified local CommandHUD agent sessions.",
   "author": {
     "name": "Indro"
@@ -12,7 +12,9 @@
     "longDescription": "Discover verified Git projects and manage isolated, evidence-backed local CommandHUD agent sessions through narrow typed tools.",
     "developerName": "Indro",
     "category": "Productivity",
-    "capabilities": ["MCP tools"],
+    "capabilities": [
+      "MCP tools"
+    ],
     "defaultPrompt": "Use CommandHUD to inspect my verified local projects or dispatch an isolated coding agent."
   },
   "mcpServers": "./.mcp.json"

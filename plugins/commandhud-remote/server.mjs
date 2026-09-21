@@ -10,13 +10,15 @@ import {
 } from '../../packages/commandhud/core.mjs';
 import { commandHudRecipes } from './recipes.mjs';
 
-const server = new McpServer({ name: 'commandhud-remote', version: '0.1.0' });
-const widgetUri = 'ui://commandhud/control-panel-v1.html';
+const server = new McpServer({ name: 'commandhud-remote', version: '0.1.3' });
+const widgetUri = 'ui://commandhud/control-panel-v2.html';
 const widgetHtml = readFileSync(fileURLToPath(new URL('./widget/commandhud-widget.html', import.meta.url)), 'utf8');
 const projectId = z.string().min(1).max(300).describe('Exact project ID returned by list_projects');
 const sessionId = z.string().regex(/^\d{14}-[0-9a-f]{4}$/i).describe('Exact CommandHUD session ID');
 const agentId = z.string().min(1).max(100).default('codex/ollama')
   .describe('Exact available agent ID returned by list_agents; defaults to the local-free codex/ollama harness');
+const allowPaid = z.boolean().default(false)
+  .describe('Must be true to authorize an external-provider, account-metered harness; never enables automatic fallback');
 const result = (value) => ({
   content: [{ type: 'text', text: JSON.stringify(value) }],
   structuredContent: value,
@@ -76,14 +78,18 @@ server.registerTool('start_agent', {
     objective: z.string().min(1).max(128 * 1024),
     expected_head: z.string().regex(/^[0-9a-f]{40}$/i),
     agent: agentId,
+    allow_paid: allowPaid,
   },
   annotations: { title: 'Start isolated local agent', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-}, async ({ project, objective, expected_head, agent }) => {
+}, async ({ project, objective, expected_head, agent, allow_paid }) => {
   const selected = await resolveRegisteredProject(project);
   const harnesses = await discoverAgentHarnesses();
   const harness = harnesses.find((candidate) => candidate.id === agent);
   if (!harness) throw new Error(`Unknown agent harness: ${agent}. Use list_agents for trusted harness IDs.`);
   if (!harness.available) throw new Error(`Agent harness is not available: ${agent}. Use list_agents for current availability.`);
+  if (harness.dataBoundary === 'external-provider' && allow_paid !== true) {
+    throw new Error(`Paid external-provider harness requires explicit allow_paid=true authorization: ${agent}`);
+  }
   return result(remoteSession(await startDetachedAgent(selected, objective, { agent, expectedHead: expected_head })));
 });
 
@@ -127,3 +133,4 @@ server.registerTool('discard_agent_workspace', {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+

@@ -40,14 +40,14 @@ test('CommandHUD MCP exposes only its typed control panel and agent lifecycle to
   assert.equal(exposedInputNames.some((name) => /shell|exec|command|pid|cwd|root|path/i.test(name)), false);
   const panelTool = listed.tools.find((tool) => tool.name === 'open_commandhud');
   assert.equal(panelTool.annotations.readOnlyHint, true);
-  assert.equal(panelTool._meta.ui.resourceUri, 'ui://commandhud/control-panel-v1.html');
-  assert.equal(panelTool._meta['openai/outputTemplate'], 'ui://commandhud/control-panel-v1.html');
+  assert.equal(panelTool._meta.ui.resourceUri, 'ui://commandhud/control-panel-v2.html');
+  assert.equal(panelTool._meta['openai/outputTemplate'], 'ui://commandhud/control-panel-v2.html');
 
   const resources = await client.listResources();
   assert.deepEqual(resources.resources.map(({ uri, mimeType }) => ({ uri, mimeType })), [{
-    uri: 'ui://commandhud/control-panel-v1.html', mimeType: 'text/html;profile=mcp-app',
+    uri: 'ui://commandhud/control-panel-v2.html', mimeType: 'text/html;profile=mcp-app',
   }]);
-  const panelResource = await client.readResource({ uri: 'ui://commandhud/control-panel-v1.html' });
+  const panelResource = await client.readResource({ uri: 'ui://commandhud/control-panel-v2.html' });
   assert.equal(panelResource.contents[0].mimeType, 'text/html;profile=mcp-app');
   assert.match(panelResource.contents[0].text, /window\.openai\?\.callTool/);
   assert.match(panelResource.contents[0].text, /No paid fallback occurs automatically/);
@@ -87,8 +87,17 @@ test('CommandHUD MCP exposes only its typed control panel and agent lifecycle to
   assert.equal(startTool.inputSchema.properties.agent.default, 'codex/ollama');
   assert.equal('const' in startTool.inputSchema.properties.agent, false);
   assert.equal('enum' in startTool.inputSchema.properties.agent, false);
+  assert.equal(startTool.inputSchema.properties.allow_paid.default, false);
+  const paidWithoutAuthorization = await client.callTool({ name: 'start_agent', arguments: {
+    project: 'indrolend/mcp-fixture', objective: 'must not launch',
+    expected_head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+    agent: 'codex/local',
+  } });
+  assert.equal(paidWithoutAuthorization.isError, true);
+  assert.match(paidWithoutAuthorization.content[0].text, /requires explicit allow_paid=true authorization/);
   const stale = await client.callTool({ name: 'start_agent', arguments: {
-    project: 'indrolend/mcp-fixture', objective: 'must not launch', expected_head: '0'.repeat(40), agent: 'codex/local',
+    project: 'indrolend/mcp-fixture', objective: 'must not launch', expected_head: '0'.repeat(40),
+    agent: 'codex/local', allow_paid: true,
   } });
   assert.equal(stale.isError, true);
   assert.match(stale.content[0].text, /does not match current HEAD/);
