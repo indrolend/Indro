@@ -1,0 +1,1 @@
+import { discoverProjects } from "../../packages/commandhud/core.mjs"; const projects = (await discoverProjects()).map(({ root, ...project }) => project); console.log(JSON.stringify({ executor: "home-windows", capability: "commandhud.projects", projects }, null, 2));
