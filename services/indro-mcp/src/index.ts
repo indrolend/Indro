@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import OAuthProvider, { type AuthRequest, type OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import { createMcpHandler } from "agents/mcp/server";
+import { registerHomeTools } from "./home-tools";
 
 const SERVICE_NAME = "Indro CommandHUD";
 const SERVICE_VERSION = "0.1.0";
@@ -31,13 +32,14 @@ function createServer(env: AppEnv) {
 					version: SERVICE_VERSION,
 					status: "ready",
 					transport: "streamable-http",
-					execution: "read-only",
+					execution: "typed-home-control",
 					authority: "git",
+					capabilities: ["commandhud.lifecycle", "brokeman.result", "brokeman.packet"],
 				}, null, 2),
 			}],
 		}),
 	);
-server.registerTool("commandhud.home.status", { description: "Report whether the authenticated home Windows executor is reachable." }, async () => { const response = await fetch(env.HOME_EXECUTOR_URL + "/health", { headers: { Authorization: "Bearer " + env.HOME_EXECUTOR_TOKEN } }); if (!response.ok) throw new Error("Home executor returned HTTP " + response.status + "."); const result = await response.json(); return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] }; });
+	registerHomeTools(server, env);
 	return server;
 }
 

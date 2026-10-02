@@ -9,7 +9,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { resolveProject } from './core.mjs';
 
-test('CommandHUD MCP exposes only its typed control panel and agent lifecycle tools', async (t) => {
+test('CommandHUD MCP exposes only typed lifecycle and Brokeman continuity tools', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-mcp-project-'));
   const store = mkdtempSync(join(tmpdir(), 'commandhud-mcp-state-'));
   mkdirSync(join(root, 'distribution'));
@@ -33,7 +33,7 @@ test('CommandHUD MCP exposes only its typed control panel and agent lifecycle to
   await client.connect(transport);
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [
-    'discard_agent_workspace', 'get_agent', 'list_agent_sessions', 'list_agents',
+    'brokeman_packet', 'brokeman_result', 'discard_agent_workspace', 'get_agent', 'list_agent_sessions', 'list_agents',
     'list_projects', 'open_commandhud', 'start_agent', 'stop_agent',
   ]);
   const exposedInputNames = listed.tools.flatMap((tool) => Object.keys(tool.inputSchema?.properties || {}));

@@ -2,7 +2,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import * as z from 'zod/v4';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects,
@@ -31,6 +33,53 @@ const remoteSession = (value) => value && ({
   objective: value.objective, startedAt: value.startedAt, updatedAt: value.updatedAt,
   changedFiles: value.changedFiles, message: value.message, evidence: value.evidence,
 });
+
+const brokemanAuthority = async () => {
+  const project = (await discoverProjects()).find((candidate) => candidate.id === 'indrolend/brokeman');
+  const script = project?.root && join(project.root, 'brokeman.ps1');
+  if (!project?.root || !existsSync(script)) throw new Error('The registered Brokeman entrypoint is unavailable.');
+  return { root: project.root, script };
+};
+
+const invokeBrokeman = async (command, job) => {
+  const authority = await brokemanAuthority();
+  return new Promise((resolve, reject) => {
+    const child = spawn('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', authority.script, command, job, '-Json'], {
+      cwd: authority.root, windowsHide: true, shell: false, env: process.env,
+    });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', (chunk) => { if (stdout.length < 512 * 1024) stdout += chunk; });
+    child.stderr.on('data', (chunk) => { if (stderr.length < 64 * 1024) stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (code) => {
+      if (code !== 0) return reject(new Error(`Brokeman ${command} failed: ${(stderr || stdout).slice(-2000)}`));
+      try { resolve(JSON.parse(stdout)); } catch { reject(new Error(`Brokeman ${command} returned malformed JSON.`)); }
+    });
+  });
+};
+
+const publishBrokemanPacket = async (job) => {
+  const authority = await brokemanAuthority();
+  await new Promise((resolve, reject) => {
+    const child = spawn('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', authority.script, 'packet', job], {
+      cwd: authority.root, windowsHide: true, shell: false, stdio: 'ignore', env: process.env,
+    });
+    child.once('error', reject);
+    child.once('close', (code) => code === 0 ? resolve() : reject(new Error('Brokeman packet publication failed.')));
+  });
+  return invokeBrokeman('result', job);
+};
+
+const startBrokemanWatcher = async (job) => {
+  try {
+    const authority = await brokemanAuthority();
+    const child = spawn('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', authority.script, 'watch', job, '-NotifyStarted'], {
+      cwd: authority.root, detached: true, windowsHide: true, stdio: 'ignore', env: process.env,
+    });
+    child.unref();
+    return true;
+  } catch { return false; }
+};
 
 server.registerResource('CommandHUD control panel', widgetUri, {
   description: 'Interactive local-first CommandHUD project and agent-session controls.',
@@ -90,7 +139,8 @@ server.registerTool('start_agent', {
   if (harness.dataBoundary === 'external-provider' && allow_paid !== true) {
     throw new Error(`Paid external-provider harness requires explicit allow_paid=true authorization: ${agent}`);
   }
-  return result(remoteSession(await startDetachedAgent(selected, objective, { agent, expectedHead: expected_head })));
+  const session = await startDetachedAgent(selected, objective, { agent, expectedHead: expected_head });
+  return result({ ...remoteSession(session), continuityProjection: await startBrokemanWatcher(session.id) });
 });
 
 server.registerTool('list_agent_sessions', {
@@ -130,6 +180,18 @@ server.registerTool('discard_agent_workspace', {
   const selected = await resolveRegisteredProject(project);
   return result(await discardAgentWorkspace(selected, session_id));
 });
+
+server.registerTool('brokeman_result', {
+  description: 'Return compact Brokeman continuity and verified packet metadata for one CommandHUD job.',
+  inputSchema: { job: sessionId },
+  annotations: { title: 'Get Brokeman result', readOnlyHint: true, openWorldHint: false },
+}, async ({ job }) => result(await invokeBrokeman('result', job)));
+
+server.registerTool('brokeman_packet', {
+  description: 'Publish the allowlisted Brokeman packet locally and return only its verified descriptor.',
+  inputSchema: { job: sessionId },
+  annotations: { title: 'Publish Brokeman packet', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+}, async ({ job }) => result(await publishBrokemanPacket(job)));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
