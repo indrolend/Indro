@@ -30,3 +30,17 @@ not commands or artifacts.
 Termius remains the general escape hatch. Normal ChatGPT use should prefer the
 typed MCP tools, and normal iPhone supervision should use concise Brokeman
 PowerShell commands or future Shortcuts calling the same typed operations.
+
+## Home connector runtime
+
+`services/commandhud-home-worker/Invoke-CommandHudHomeWorker.ps1` keeps the
+existing loopback home executor and existing remotely-managed Cloudflare Tunnel
+together as one bounded Windows runtime. Both bearer values are read from
+Windows Credential Manager and inherited through child-process environment
+blocks; neither value is written to configuration, command lines, logs,
+packets, or repository state.
+
+`CommandHudHomeControl.ps1 status|start|stop|restart` is the operator surface.
+The scheduled task remains transport plumbing only: it does not own jobs,
+lifecycle, Git state, evidence, or provider selection. Those remain CommandHUD
+responsibilities.
