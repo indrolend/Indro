@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView } from './core.mjs';
+import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -193,6 +193,84 @@ test('agent lifecycle lists, stops, and discards only its evidence-owned workspa
   assert.equal((await discardAgentWorkspace(project, started.id)).alreadyAbsent, true);
   assert.deepEqual(await gitSnapshot(project.root), sourceBefore);
   await assert.rejects(() => discardAgentWorkspace(project, '20200101000000-dead'), /not found/);
+});
+
+test('CommandHUD independently validates Brokeman transitions without dispatching or transferring ownership', async () => {
+  const project = await fixtureProject();
+  const directory = mkdtempSync(join(tmpdir(), 'commandhud-transition-'));
+  const fake = join(directory, 'fake-codex.mjs');
+  writeFileSync(fake, [
+    `for await (const chunk of process.stdin) {}`,
+    `console.log(JSON.stringify({ type: 'thread.started', thread_id: '01a098a6-4b2a-71a3-a165-df5c3607037d' }));`,
+    `process.exitCode = 1;`,
+  ].join('\n'));
+  const sourceHead = (await gitSnapshot(project.root)).head;
+  const record = await runAgentRequest(project, 'preserve failed work', {
+    expectedHead: sourceHead, isolate: true, codexLauncher: [process.execPath, fake],
+  });
+  const session = agentSession(project, record.id);
+  assert.equal(session.status, 'FAILED');
+  const checkpoint = {
+    jobId: record.id, executionAuthority: 'CommandHUD', workspace: session.worktree,
+    currentHead: session.head, providerOutcome: { outcome: 'FAILED' },
+  };
+  const checkpointText = `${JSON.stringify(checkpoint, null, 2)}\n`;
+  const checkpointHash = createHash('sha256').update(checkpointText).digest('hex');
+  const request = {
+    schemaVersion: 1, requestType: 'provider-transition', requestId: 'a'.repeat(64),
+    decision: 'READY_FOR_AUTHORITY_VALIDATION', jobId: record.id, executionAuthority: 'CommandHUD',
+    source: {
+      provider: session.provider, sessionId: session.providerSessionId, outcome: 'FAILED',
+      workspace: session.worktree, currentHead: session.head,
+    },
+    target: {
+      provider: 'ollama', runtime: 'codex-cli', capabilities: ['workspace-write'],
+      costBoundary: 'local-free', dataBoundary: 'local-machine', registrationSource: 'CommandHUD agent registry',
+    },
+    checkpoint: { sha256: checkpointHash },
+    authorization: {
+      source: 'fixture-policy', evidence: 'approval-123',
+      provider: true, costBoundary: true, dataBoundary: true,
+    },
+    ownership: { activeWriterCount: 0, currentWriterReleased: true },
+    constraints: {
+      sameWorkspaceRequired: true, expectedWorkspace: session.worktree, expectedHead: session.head,
+      maximumActiveWriters: 1, checkpointMustStillMatch: true,
+    },
+    authorityValidationRequired: true, dispatchRequested: false,
+    writeOwnershipTransferred: false, executable: false,
+  };
+  const providers = [{
+    id: 'codex/ollama', provider: 'ollama', runtime: 'codex-cli', available: true,
+    costClass: 'local-free', dataBoundary: 'local-machine', capabilities: { edit: true, resume: false },
+  }];
+  const validated = await validateProviderTransitionRequest(project, request, { checkpointText, providers });
+  assert.equal(validated.decision, 'VALIDATED_NON_EXECUTING');
+  assert.equal(validated.target.agent, 'codex/ollama');
+  assert.equal(validated.checkpointSha256, checkpointHash);
+  assert.equal(validated.activeWriterCount, 0);
+  assert.equal(validated.authorityValidationComplete, true);
+  assert.equal(validated.dispatchRequested, false);
+  assert.equal(validated.writeOwnershipTransferred, false);
+  assert.equal(validated.executable, false);
+  assert.equal(existsSync(join(session.worktree, 'agent-change.txt')), false);
+
+  await assert.rejects(
+    () => validateProviderTransitionRequest(project, request, { checkpointText: `${checkpointText} `, providers }),
+    /checkpoint hash/,
+  );
+  await assert.rejects(
+    () => validateProviderTransitionRequest(project, { ...request, ownership: { activeWriterCount: 1, currentWriterReleased: false } }, { checkpointText, providers }),
+    /released-writer evidence/,
+  );
+  await assert.rejects(
+    () => validateProviderTransitionRequest(project, { ...request, target: { ...request.target, provider: 'copilot', runtime: 'copilot-cli' } }, { checkpointText, providers }),
+    /available CommandHUD provider registration/,
+  );
+  await assert.rejects(
+    () => validateProviderTransitionRequest(project, { ...request, source: { ...request.source, currentHead: '0'.repeat(40) } }, { checkpointText, providers }),
+    /expected HEAD is stale/,
+  );
 });
 
 test('probe execution times out and records the deadline as evidence', async () => {

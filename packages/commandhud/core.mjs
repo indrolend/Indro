@@ -2239,6 +2239,119 @@ export async function discardSandboxJob(project, sandboxId) {
   return { ...value, workspaceAvailable: false, alreadyAbsent: false };
 }
 
+function transitionProviderRegistration(target, providers) {
+  const matches = providers.filter((provider) => provider.available === true
+    && provider.provider === target.provider
+    && provider.runtime === target.runtime
+    && provider.costClass === target.costBoundary
+    && provider.dataBoundary === target.dataBoundary);
+  if (matches.length !== 1) {
+    throw new Error('Provider transition target does not match one available CommandHUD provider registration.');
+  }
+  const registration = matches[0];
+  if (registration.capabilities?.edit !== true) {
+    throw new Error('Provider transition target is not registered for workspace editing.');
+  }
+  const unsupported = (Array.isArray(target.capabilities) ? target.capabilities : []).filter((capability) => {
+    if (capability === 'workspace-write') return registration.capabilities.edit !== true;
+    if (capability === 'resume') return registration.capabilities.resume !== true;
+    return true;
+  });
+  if (unsupported.length) throw new Error(`Provider transition target has unsupported capabilities: ${unsupported.join(', ')}.`);
+  return registration;
+}
+
+export async function validateProviderTransitionRequest(project, request, {
+  checkpointText = null, providers = null,
+} = {}) {
+  if (!request || request.schemaVersion !== 1 || request.requestType !== 'provider-transition') {
+    throw new Error('Provider transition request schema is unsupported.');
+  }
+  if (request.executionAuthority !== 'CommandHUD' || request.decision !== 'READY_FOR_AUTHORITY_VALIDATION') {
+    throw new Error('Provider transition request is not addressed to CommandHUD authority validation.');
+  }
+  if (request.authorityValidationRequired !== true || request.dispatchRequested !== false
+    || request.writeOwnershipTransferred !== false || request.executable !== false) {
+    throw new Error('Provider transition request improperly claims execution or transferred authority.');
+  }
+  if (request.constraints?.sameWorkspaceRequired !== true || request.constraints?.checkpointMustStillMatch !== true
+    || request.constraints?.maximumActiveWriters !== 1) {
+    throw new Error('Provider transition request does not preserve checkpoint, workspace, and single-writer constraints.');
+  }
+  if (typeof request.requestId !== 'string' || !/^[0-9a-f]{64}$/.test(request.requestId)) {
+    throw new Error('Provider transition request identity is invalid.');
+  }
+  if (typeof checkpointText !== 'string' || checkpointText.length === 0) {
+    throw new Error('Provider transition validation requires exact checkpoint bytes.');
+  }
+  const checkpointHash = createHash('sha256').update(checkpointText).digest('hex');
+  if (request.checkpoint?.sha256 !== checkpointHash) throw new Error('Provider transition checkpoint hash does not match the supplied bytes.');
+  let checkpoint;
+  try { checkpoint = JSON.parse(checkpointText.replace(/^\uFEFF/, '')); } catch { throw new Error('Provider transition checkpoint is not valid JSON.'); }
+
+  const session = agentSession(project, request.jobId);
+  if (!session) throw new Error('Provider transition source is not a retained CommandHUD agent session.');
+  if (session.status === 'WORKING') throw new Error('Provider transition source still has an active writer.');
+  if (session.status === 'DONE') throw new Error('A completed provider session does not require replacement.');
+  if (!['BLOCKED', 'FAILED', 'EXHAUSTED', 'UNAVAILABLE', 'AUTH_FAILURE', 'USER_STOPPED', 'UNKNOWN_FAILURE'].includes(request.source?.outcome)) {
+    throw new Error('Provider transition source outcome is not a preservable terminal outcome.');
+  }
+  const workspace = resolve(session.worktree || '');
+  if (!workspace || resolve(request.source?.workspace || '') !== workspace) {
+    throw new Error('Provider transition workspace does not match retained CommandHUD evidence.');
+  }
+  const current = await gitSnapshot(workspace);
+  if (!current.head || current.head.toLowerCase() !== String(request.source?.currentHead || '').toLowerCase()) {
+    throw new Error('Provider transition expected HEAD is stale.');
+  }
+  if (resolve(request.constraints.expectedWorkspace || '') !== workspace
+    || String(request.constraints.expectedHead || '').toLowerCase() !== current.head.toLowerCase()) {
+    throw new Error('Provider transition constraints do not match the preserved workspace and HEAD.');
+  }
+  if (request.source?.provider !== session.provider || request.source?.sessionId !== session.providerSessionId) {
+    throw new Error('Provider transition source provider identity does not match retained CommandHUD evidence.');
+  }
+  if (checkpoint.jobId !== request.jobId || checkpoint.executionAuthority !== 'CommandHUD'
+    || resolve(checkpoint.workspace || '') !== workspace
+    || String(checkpoint.currentHead || '').toLowerCase() !== current.head.toLowerCase()
+    || checkpoint.providerOutcome?.outcome !== request.source?.outcome) {
+    throw new Error('Provider transition checkpoint does not match current CommandHUD authority state.');
+  }
+  if (request.ownership?.activeWriterCount !== 0 || request.ownership?.currentWriterReleased !== true) {
+    throw new Error('Provider transition request lacks released-writer evidence.');
+  }
+  if (!request.authorization?.source || !request.authorization?.evidence
+    || request.authorization?.provider !== true || request.authorization?.costBoundary !== true
+    || request.authorization?.dataBoundary !== true) {
+    throw new Error('Provider transition request lacks explicit provider and boundary authorization provenance.');
+  }
+  const activeWriters = runIdsNewest(project).ids
+    .map((id) => agentSession(project, id))
+    .filter((candidate) => candidate?.status === 'WORKING' && resolve(candidate.worktree || '') === workspace);
+  if (activeWriters.length) throw new Error('CommandHUD observes an active writer in the preserved workspace.');
+
+  const registrations = providers || await discoverAgentHarnesses();
+  const target = transitionProviderRegistration(request.target || {}, registrations);
+  return Object.freeze({
+    schemaVersion: 1,
+    validationType: 'provider-transition',
+    requestId: request.requestId,
+    decision: 'VALIDATED_NON_EXECUTING',
+    jobId: request.jobId,
+    executionAuthority: 'CommandHUD',
+    workspace,
+    currentHead: current.head,
+    checkpointSha256: checkpointHash,
+    source: { runId: session.id, provider: session.provider, status: session.status },
+    target: { agent: target.id, provider: target.provider, runtime: target.runtime },
+    activeWriterCount: 0,
+    authorityValidationComplete: true,
+    dispatchRequested: false,
+    writeOwnershipTransferred: false,
+    executable: false,
+  });
+}
+
 function agentRunDirectory(project, runId) {
   if (typeof runId !== 'string' || !/^\d{14}-[0-9a-f]{4}$/i.test(runId)) throw new Error('Agent action requires a valid session ID.');
   return join(project.store, 'runs', project.key, runId);
