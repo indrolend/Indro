@@ -19,10 +19,14 @@ function result(value: unknown) {
 
 const project = z.string().min(1).max(300).describe("Exact project ID returned by commandhud.projects");
 const job = z.string().regex(/^\d{14}-[0-9a-f]{4}$/i).describe("Exact durable CommandHUD job ID");
+const relativePath = z.string().min(1).max(4096).describe("Path relative to the isolated sandbox workspace; absolute and parent paths are rejected");
 
 export function registerHomeTools(server: McpServer, env: HomeEnv) {
   server.registerTool("commandhud.home.status", { description: "Report whether the authenticated home Windows executor is reachable." }, async () => result(await callHome(env, "/health")));
   server.registerTool("commandhud.projects", { description: "List verified projects known to the home CommandHUD authority." }, async () => result(await callHome(env, "/projects")));
+  server.registerTool("commandhud.project.state", {
+    description: "Measure current Git authority and active work for one verified project.", inputSchema: { project },
+  }, async ({ project: projectId }) => result(await callHome(env, `/project-state?project=${encodeURIComponent(projectId)}`)));
   server.registerTool("commandhud.agents", {
     description: "List trusted agent harnesses available for one verified project.", inputSchema: { project },
   }, async ({ project: projectId }) => result(await callHome(env, `/agents?project=${encodeURIComponent(projectId)}`)));
@@ -45,6 +49,42 @@ export function registerHomeTools(server: McpServer, env: HomeEnv) {
   server.registerTool("commandhud.agent.stop", {
     description: "Request bounded cancellation of one running CommandHUD agent job.", inputSchema: { project, job },
   }, async ({ project: projectId, job: jobId }) => result(await callHome(env, `/agents/${jobId}/actions`, { method: "POST", body: JSON.stringify({ project: projectId, action: "stop" }) })));
+  server.registerTool("commandhud.sandbox.create", {
+    description: "Create a persistent isolated Git worktree for an iterative ChatGPT development job without starting a model.",
+    inputSchema: { project, task: z.string().min(1).max(128 * 1024), expectedHead: z.string().regex(/^[0-9a-f]{40}$/i) },
+  }, async (input) => result(await callHome(env, "/sandboxes", { method: "POST", body: JSON.stringify(input) })));
+  server.registerTool("commandhud.sandbox.list", {
+    description: "List retained iterative sandbox jobs for one verified project.", inputSchema: { project, limit: z.number().int().min(1).max(100).default(25) },
+  }, async ({ project: projectId, limit }) => result(await callHome(env, `/sandboxes?project=${encodeURIComponent(projectId)}&limit=${limit}`)));
+  server.registerTool("commandhud.sandbox.status", {
+    description: "Measure current Git state for one retained sandbox job.", inputSchema: { project, job },
+  }, async ({ project: projectId, job: jobId }) => result(await callHome(env, `/sandboxes/${jobId}?project=${encodeURIComponent(projectId)}`)));
+  server.registerTool("commandhud.sandbox.exec", {
+    description: "Execute one bounded argv command inside a sandbox workspace and retain stdout, stderr, exit status, Git state, and operation delta.",
+    inputSchema: {
+      project, job,
+      argv: z.array(z.string().min(1).max(32768)).min(1).max(64),
+      cwd: relativePath.default("."), timeoutMs: z.number().int().min(1000).max(600000).default(120000),
+    },
+  }, async ({ project: projectId, job: jobId, argv, cwd, timeoutMs }) => result(await callHome(env, `/sandboxes/${jobId}/exec`, { method: "POST", body: JSON.stringify({ project: projectId, argv, cwd, timeoutMs }) })));
+  server.registerTool("commandhud.sandbox.read", {
+    description: "Read at most 400 lines from one contained text file in a sandbox.",
+    inputSchema: { project, job, path: relativePath, startLine: z.number().int().min(1).default(1), endLine: z.number().int().min(1).default(200) },
+  }, async ({ project: projectId, job: jobId, path, startLine, endLine }) => result(await callHome(env, `/sandboxes/${jobId}/read?project=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}&startLine=${startLine}&endLine=${endLine}`)));
+  server.registerTool("commandhud.sandbox.search", {
+    description: "Search a sandbox with retained ripgrep evidence and compact file/line matches.",
+    inputSchema: { project, job, query: z.string().min(1).max(8192), scope: relativePath.default(".") },
+  }, async ({ project: projectId, job: jobId, query, scope }) => result(await callHome(env, `/sandboxes/${jobId}/search`, { method: "POST", body: JSON.stringify({ project: projectId, query, scope }) })));
+  server.registerTool("commandhud.sandbox.patch", {
+    description: "Validate and apply a bounded unified diff only inside an isolated sandbox workspace.",
+    inputSchema: { project, job, patch: z.string().min(1).max(256 * 1024) },
+  }, async ({ project: projectId, job: jobId, patch }) => result(await callHome(env, `/sandboxes/${jobId}/patch`, { method: "POST", body: JSON.stringify({ project: projectId, patch }) })));
+  server.registerTool("commandhud.sandbox.diff", {
+    description: "Return the current Git diff and immutable evidence identity for a sandbox.", inputSchema: { project, job },
+  }, async ({ project: projectId, job: jobId }) => result(await callHome(env, `/sandboxes/${jobId}/diff`, { method: "POST", body: JSON.stringify({ project: projectId }) })));
+  server.registerTool("commandhud.sandbox.discard", {
+    description: "Explicitly remove a CommandHUD-owned sandbox worktree while retaining its historical job and operation evidence.", inputSchema: { project, job },
+  }, async ({ project: projectId, job: jobId }) => result(await callHome(env, `/sandboxes/${jobId}/actions`, { method: "POST", body: JSON.stringify({ project: projectId, action: "discard" }) })));
   server.registerTool("brokeman.result", {
     description: "Return compact Brokeman continuity and verified packet metadata for one CommandHUD job.", inputSchema: { job },
   }, async ({ job: jobId }) => result(await callHome(env, `/brokeman/result?job=${encodeURIComponent(jobId)}`)));

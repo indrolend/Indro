@@ -7,8 +7,10 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects,
-  listAgentSessions, planAgentRoute, resolveRegisteredProject, startDetachedAgent, stopAgentSession,
+  agentSession, applySandboxPatch, createSandboxJob, discardAgentWorkspace, discardSandboxJob,
+  discoverAgentHarnesses, discoverProjects, executeSandboxCommand, gitSnapshot, listAgentSessions,
+  listSandboxJobs, planAgentRoute, readSandboxFile, resolveRegisteredProject, sandboxDiff,
+  sandboxJobState, searchSandbox, startDetachedAgent, stopAgentSession,
 } from '../../packages/commandhud/core.mjs';
 import { commandHudRecipes } from './recipes.mjs';
 
@@ -25,6 +27,7 @@ const result = (value) => ({
   content: [{ type: 'text', text: JSON.stringify(value) }],
   structuredContent: value,
 });
+const relativePath = z.string().min(1).max(4096).describe('Path relative to the isolated sandbox workspace');
 const remoteSession = (value) => value && ({
   id: value.id, status: value.status, reason: value.reason, agent: value.agent,
   provider: value.provider, runtime: value.runtime, costClass: value.costClass,
@@ -33,6 +36,34 @@ const remoteSession = (value) => value && ({
   objective: value.objective, startedAt: value.startedAt, updatedAt: value.updatedAt,
   changedFiles: value.changedFiles, message: value.message, evidence: value.evidence,
 });
+const remoteSandbox = (value) => value && ({
+  id: value.id, project: value.project, task: value.task, status: value.status,
+  baseSha: value.baseSha, head: value.head ?? null, branch: value.branch ?? null,
+  dirty: value.dirty ?? null, changedFiles: value.changedFiles || [],
+  workspaceAvailable: value.workspaceAvailable, activeOperation: value.activeOperation ?? false,
+  createdAt: value.createdAt, updatedAt: value.updatedAt,
+  lastOperationId: value.lastOperationId, lastOperationKind: value.lastOperationKind,
+  discardedAt: value.discardedAt || null,
+});
+const boundedEvidence = (path, limit) => {
+  if (!path || !existsSync(path)) return { text: '', truncated: false };
+  const value = readFileSync(path, 'utf8');
+  return value.length <= limit ? { text: value, truncated: false } : { text: value.slice(-limit), truncated: true };
+};
+const remoteOperation = (value) => {
+  const stdout = boundedEvidence(value?.stdoutPath, 64 * 1024);
+  const stderr = boundedEvidence(value?.stderrPath, 32 * 1024);
+  return value && {
+    id: value.id, status: value.status, resultReason: value.resultReason,
+    exitCode: value.exitCode, durationMs: value.durationMs,
+    headBefore: value.headBefore, headAfter: value.headAfter,
+    dirtyBefore: value.dirtyBefore, dirtyAfter: value.dirtyAfter,
+    changedFiles: value.changedFiles || [], stdout: stdout.text, stderr: stderr.text,
+    stdoutTruncated: stdout.truncated || value.capture?.stdoutTruncated || false,
+    stderrTruncated: stderr.truncated || value.capture?.stderrTruncated || false,
+    evidence: value.evidence,
+  };
+};
 
 const brokemanAuthority = async () => {
   const project = (await discoverProjects()).find((candidate) => candidate.id === 'indrolend/brokeman');
@@ -111,6 +142,14 @@ server.registerTool('list_projects', {
   annotations: { title: 'List CommandHUD projects', readOnlyHint: true, openWorldHint: false },
 }, async () => result({ projects: (await discoverProjects()).map(({ root, ...project }) => project) }));
 
+server.registerTool('project_state', {
+  description: 'Measure current Git authority and active jobs for one verified project.',
+  inputSchema: { project: projectId }, annotations: { title: 'Inspect project state', readOnlyHint: true, openWorldHint: false },
+}, async ({ project }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result({ project, git: await gitSnapshot(selected.root), sandboxes: (await listSandboxJobs(selected)).map(remoteSandbox), agents: listAgentSessions(selected).map(remoteSession) });
+});
+
 server.registerTool('list_agents', {
   description: 'List trusted local agent harnesses available for a verified registered project.',
   inputSchema: { project: projectId },
@@ -179,6 +218,85 @@ server.registerTool('discard_agent_workspace', {
 }, async ({ project, session_id }) => {
   const selected = await resolveRegisteredProject(project);
   return result(await discardAgentWorkspace(selected, session_id));
+});
+
+server.registerTool('create_sandbox', {
+  description: 'Create a persistent isolated Git worktree for an iterative development job without starting a model.',
+  inputSchema: { project: projectId, task: z.string().min(1).max(128 * 1024), expected_head: z.string().regex(/^[0-9a-f]{40}$/i) },
+  annotations: { title: 'Create development sandbox', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+}, async ({ project, task, expected_head }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result(remoteSandbox(await createSandboxJob(selected, task, { expectedHead: expected_head })));
+});
+
+server.registerTool('list_sandboxes', {
+  description: 'List retained iterative sandbox jobs for one verified project.',
+  inputSchema: { project: projectId, limit: z.number().int().min(1).max(100).default(25) },
+  annotations: { title: 'List development sandboxes', readOnlyHint: true, openWorldHint: false },
+}, async ({ project, limit }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result({ sandboxes: (await listSandboxJobs(selected, limit)).map(remoteSandbox) });
+});
+
+server.registerTool('sandbox_status', {
+  description: 'Measure current Git state for one retained sandbox job.',
+  inputSchema: { project: projectId, job: sessionId }, annotations: { title: 'Inspect sandbox', readOnlyHint: true, openWorldHint: false },
+}, async ({ project, job }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result(remoteSandbox(await sandboxJobState(selected, job)));
+});
+
+server.registerTool('sandbox_exec', {
+  description: 'Execute one bounded argv command inside a sandbox and retain its complete evidence.',
+  inputSchema: { project: projectId, job: sessionId, argv: z.array(z.string().min(1).max(32768)).min(1).max(64), cwd: relativePath.default('.'), timeout_ms: z.number().int().min(1000).max(600000).default(120000) },
+  annotations: { title: 'Run sandbox command', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+}, async ({ project, job, argv, cwd, timeout_ms }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result(remoteOperation(await executeSandboxCommand(selected, job, argv, { cwd, timeoutMs: timeout_ms })));
+});
+
+server.registerTool('sandbox_read', {
+  description: 'Read at most 400 lines from one contained sandbox text file.',
+  inputSchema: { project: projectId, job: sessionId, path: relativePath, start_line: z.number().int().min(1).default(1), end_line: z.number().int().min(1).default(200) },
+  annotations: { title: 'Read sandbox source', readOnlyHint: true, openWorldHint: false },
+}, async ({ project, job, path, start_line, end_line }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result(readSandboxFile(selected, job, path, { startLine: start_line, endLine: end_line }));
+});
+
+server.registerTool('sandbox_search', {
+  description: 'Search a sandbox with retained ripgrep evidence and compact file/line matches.',
+  inputSchema: { project: projectId, job: sessionId, query: z.string().min(1).max(8192), scope: relativePath.default('.') },
+  annotations: { title: 'Search sandbox', readOnlyHint: true, openWorldHint: false },
+}, async ({ project, job, query, scope }) => {
+  const selected = await resolveRegisteredProject(project);
+  const value = await searchSandbox(selected, job, query, { scope });
+  return result({ operation: remoteOperation(value), matches: value.operation?.files || [] });
+});
+
+server.registerTool('sandbox_patch', {
+  description: 'Validate and apply a bounded unified diff only inside an isolated sandbox.',
+  inputSchema: { project: projectId, job: sessionId, patch: z.string().min(1).max(256 * 1024) },
+  annotations: { title: 'Patch sandbox source', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+}, async ({ project, job, patch }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result(remoteOperation(await applySandboxPatch(selected, job, patch)));
+});
+
+server.registerTool('sandbox_diff', {
+  description: 'Return the current Git diff and immutable evidence identity for a sandbox.',
+  inputSchema: { project: projectId, job: sessionId }, annotations: { title: 'Inspect sandbox diff', readOnlyHint: true, openWorldHint: false },
+}, async ({ project, job }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result(remoteOperation(await sandboxDiff(selected, job)));
+});
+
+server.registerTool('discard_sandbox', {
+  description: 'Explicitly remove a CommandHUD-owned sandbox worktree while retaining job and operation evidence.',
+  inputSchema: { project: projectId, job: sessionId }, annotations: { title: 'Discard sandbox', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+}, async ({ project, job }) => {
+  const selected = await resolveRegisteredProject(project);
+  return result(remoteSandbox(await discardSandboxJob(selected, job)));
 });
 
 server.registerTool('brokeman_result', {

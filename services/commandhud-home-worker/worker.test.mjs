@@ -25,5 +25,5 @@ test("home executor requires authentication and advertises bounded mobile capabi
   const authorized = await fetch(`http://127.0.0.1:${port}/health`, { headers: { Authorization: `Bearer ${token}` } });
   assert.equal(authorized.status, 200);
   const health = await authorized.json();
-  assert.deepEqual(health.capabilities, ["commandhud.lifecycle", "brokeman.result", "brokeman.packet"]);
+  assert.deepEqual(health.capabilities, ["commandhud.lifecycle", "commandhud.sandbox", "brokeman.result", "brokeman.packet"]);
 });

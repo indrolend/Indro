@@ -1,17 +1,19 @@
 import { timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import {
-  agentSession, discoverAgentHarnesses, discoverProjects, listAgentSessions,
-  resolveRegisteredProject, startDetachedAgent, stopAgentSession,
+  agentSession, applySandboxPatch, createSandboxJob, discardSandboxJob, discoverAgentHarnesses,
+  discoverProjects, executeSandboxCommand, gitSnapshot, listAgentSessions, listSandboxJobs,
+  readSandboxFile, resolveRegisteredProject, sandboxDiff, sandboxJobState, searchSandbox,
+  startDetachedAgent, stopAgentSession,
 } from "../../packages/commandhud/core.mjs";
 
 const host = "127.0.0.1";
 const port = Number(process.env.COMMANDHUD_HOME_PORT || 8788);
 const token = process.env.COMMANDHUD_HOME_TOKEN;
-const MAX_BODY = 128 * 1024;
+const MAX_BODY = 300 * 1024;
 const MAX_OUTPUT = 512 * 1024;
 const RUN_ID = /^\d{14}-[0-9a-f]{4}$/i;
 
@@ -48,6 +50,39 @@ function remoteSession(value) {
     project: value.project, baseSha: value.baseSha, head: value.head, dirty: value.dirty,
     objective: value.objective, startedAt: value.startedAt, updatedAt: value.updatedAt,
     changedFiles: value.changedFiles, message: value.message,
+  };
+}
+
+function remoteSandbox(value) {
+  return value && {
+    id: value.id, project: value.project, task: value.task, status: value.status,
+    baseSha: value.baseSha, head: value.head ?? null, branch: value.branch ?? null,
+    dirty: value.dirty ?? null, changedFiles: value.changedFiles || [],
+    workspaceAvailable: value.workspaceAvailable, activeOperation: value.activeOperation ?? false,
+    createdAt: value.createdAt, updatedAt: value.updatedAt,
+    lastOperationId: value.lastOperationId, lastOperationKind: value.lastOperationKind,
+    discardedAt: value.discardedAt || null,
+  };
+}
+
+function boundedEvidence(path, limit) {
+  if (!path || !existsSync(path)) return { text: "", truncated: false };
+  const value = readFileSync(path, "utf8");
+  return value.length <= limit ? { text: value, truncated: false } : { text: value.slice(-limit), truncated: true };
+}
+
+function remoteOperation(value) {
+  const stdout = boundedEvidence(value?.stdoutPath, 64 * 1024);
+  const stderr = boundedEvidence(value?.stderrPath, 32 * 1024);
+  return value && {
+    id: value.id, status: value.status, resultReason: value.resultReason,
+    exitCode: value.exitCode, durationMs: value.durationMs,
+    headBefore: value.headBefore, headAfter: value.headAfter,
+    dirtyBefore: value.dirtyBefore, dirtyAfter: value.dirtyAfter,
+    changedFiles: value.changedFiles || [], stdout: stdout.text, stderr: stderr.text,
+    stdoutTruncated: stdout.truncated || value.capture?.stdoutTruncated || false,
+    stderrTruncated: stderr.truncated || value.capture?.stderrTruncated || false,
+    evidence: value.evidence,
   };
 }
 
@@ -108,7 +143,7 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, "http://localhost");
     if (!authorized(request)) return send(response, 401, { error: "Unauthorized" });
-    if (request.method === "GET" && url.pathname === "/health") return send(response, 200, { executor: "home-windows", status: "ready", capabilities: ["commandhud.lifecycle", "brokeman.result", "brokeman.packet"] });
+    if (request.method === "GET" && url.pathname === "/health") return send(response, 200, { executor: "home-windows", status: "ready", capabilities: ["commandhud.lifecycle", "commandhud.sandbox", "brokeman.result", "brokeman.packet"] });
     if (request.method === "GET" && url.pathname === "/projects") {
       const projects = (await discoverProjects()).map(({ root, ...project }) => project);
       return send(response, 200, { executor: "home-windows", projects });
@@ -116,6 +151,11 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/agents") {
       await resolveRegisteredProject(url.searchParams.get("project"));
       return send(response, 200, { agents: await discoverAgentHarnesses() });
+    }
+    if (request.method === "GET" && url.pathname === "/project-state") {
+      const selected = await resolveRegisteredProject(url.searchParams.get("project"));
+      const git = await gitSnapshot(selected.root);
+      return send(response, 200, { project: selected.identity.id, git, sandboxes: (await listSandboxJobs(selected, 25)).map(remoteSandbox), agents: listAgentSessions(selected, 25).map(remoteSession) });
     }
     if (request.method === "POST" && url.pathname === "/agents/start") {
       const { project, objective, expectedHead, agent = "codex/ollama", allowPaid = false } = await bodyJson(request);
@@ -146,6 +186,60 @@ const server = createServer(async (request, response) => {
       if (action !== "stop") throw new Error("Only the stop action is supported.");
       const selected = await resolveRegisteredProject(String(project || ""));
       return send(response, 200, stopAgentSession(selected, actionMatch[1]));
+    }
+    if (request.method === "POST" && url.pathname === "/sandboxes") {
+      const { project, task, expectedHead } = await bodyJson(request);
+      const selected = await resolveRegisteredProject(String(project || ""));
+      return send(response, 201, remoteSandbox(await createSandboxJob(selected, task, { expectedHead: String(expectedHead || "") })));
+    }
+    if (request.method === "GET" && url.pathname === "/sandboxes") {
+      const selected = await resolveRegisteredProject(url.searchParams.get("project"));
+      const limit = Number(url.searchParams.get("limit") || 25);
+      return send(response, 200, { sandboxes: (await listSandboxJobs(selected, limit)).map(remoteSandbox) });
+    }
+    const sandboxMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})$/i);
+    if (request.method === "GET" && sandboxMatch) {
+      const selected = await resolveRegisteredProject(url.searchParams.get("project"));
+      return send(response, 200, remoteSandbox(await sandboxJobState(selected, sandboxMatch[1])));
+    }
+    const sandboxExecMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/exec$/i);
+    if (request.method === "POST" && sandboxExecMatch) {
+      const { project, argv, cwd = ".", timeoutMs = 120000 } = await bodyJson(request);
+      const selected = await resolveRegisteredProject(String(project || ""));
+      return send(response, 200, remoteOperation(await executeSandboxCommand(selected, sandboxExecMatch[1], argv, { cwd, timeoutMs })));
+    }
+    const sandboxReadMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/read$/i);
+    if (request.method === "GET" && sandboxReadMatch) {
+      const selected = await resolveRegisteredProject(url.searchParams.get("project"));
+      return send(response, 200, readSandboxFile(selected, sandboxReadMatch[1], url.searchParams.get("path"), {
+        startLine: Number(url.searchParams.get("startLine") || 1), endLine: Number(url.searchParams.get("endLine") || 200),
+      }));
+    }
+    const sandboxSearchMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/search$/i);
+    if (request.method === "POST" && sandboxSearchMatch) {
+      const { project, query, scope = "." } = await bodyJson(request);
+      const selected = await resolveRegisteredProject(String(project || ""));
+      const value = await searchSandbox(selected, sandboxSearchMatch[1], query, { scope });
+      return send(response, 200, { operation: remoteOperation(value), matches: value.operation?.files || [] });
+    }
+    const sandboxPatchMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/patch$/i);
+    if (request.method === "POST" && sandboxPatchMatch) {
+      const { project, patch } = await bodyJson(request);
+      const selected = await resolveRegisteredProject(String(project || ""));
+      return send(response, 200, remoteOperation(await applySandboxPatch(selected, sandboxPatchMatch[1], patch)));
+    }
+    const sandboxDiffMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/diff$/i);
+    if (request.method === "POST" && sandboxDiffMatch) {
+      const { project } = await bodyJson(request);
+      const selected = await resolveRegisteredProject(String(project || ""));
+      return send(response, 200, remoteOperation(await sandboxDiff(selected, sandboxDiffMatch[1])));
+    }
+    const sandboxActionMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/actions$/i);
+    if (request.method === "POST" && sandboxActionMatch) {
+      const { project, action } = await bodyJson(request);
+      if (action !== "discard") throw new Error("Only the discard sandbox action is supported.");
+      const selected = await resolveRegisteredProject(String(project || ""));
+      return send(response, 200, remoteSandbox(await discardSandboxJob(selected, sandboxActionMatch[1])));
     }
     if (request.method === "GET" && url.pathname === "/brokeman/result") return send(response, 200, await invokeBrokeman("result", url.searchParams.get("job")));
     if (request.method === "POST" && url.pathname === "/brokeman/packet") {

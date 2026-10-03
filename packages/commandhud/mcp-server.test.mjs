@@ -9,7 +9,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { resolveProject } from './core.mjs';
 
-test('CommandHUD MCP exposes only typed lifecycle and Brokeman continuity tools', async (t) => {
+test('CommandHUD MCP exposes typed lifecycle, sandbox, and Brokeman continuity tools', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-mcp-project-'));
   const store = mkdtempSync(join(tmpdir(), 'commandhud-mcp-state-'));
   mkdirSync(join(root, 'distribution'));
@@ -33,11 +33,15 @@ test('CommandHUD MCP exposes only typed lifecycle and Brokeman continuity tools'
   await client.connect(transport);
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [
-    'brokeman_packet', 'brokeman_result', 'discard_agent_workspace', 'get_agent', 'list_agent_sessions', 'list_agents',
-    'list_projects', 'open_commandhud', 'start_agent', 'stop_agent',
+    'brokeman_packet', 'brokeman_result', 'create_sandbox', 'discard_agent_workspace', 'discard_sandbox', 'get_agent',
+    'list_agent_sessions', 'list_agents', 'list_projects', 'list_sandboxes', 'open_commandhud', 'project_state',
+    'sandbox_diff', 'sandbox_exec', 'sandbox_patch', 'sandbox_read', 'sandbox_search', 'sandbox_status', 'start_agent', 'stop_agent',
   ]);
-  const exposedInputNames = listed.tools.flatMap((tool) => Object.keys(tool.inputSchema?.properties || {}));
-  assert.equal(exposedInputNames.some((name) => /shell|exec|command|pid|cwd|root|path/i.test(name)), false);
+  const unsafeMachineInputs = listed.tools.flatMap((tool) => Object.keys(tool.inputSchema?.properties || {}));
+  assert.equal(unsafeMachineInputs.some((name) => /shell|command|pid|root/i.test(name)), false);
+  assert.deepEqual(Object.keys(listed.tools.find((tool) => tool.name === 'sandbox_exec').inputSchema.properties).sort(), [
+    'argv', 'cwd', 'job', 'project', 'timeout_ms',
+  ]);
   const panelTool = listed.tools.find((tool) => tool.name === 'open_commandhud');
   assert.equal(panelTool.annotations.readOnlyHint, true);
   assert.equal(panelTool._meta.ui.resourceUri, 'ui://commandhud/control-panel-v2.html');

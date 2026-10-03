@@ -2010,6 +2010,206 @@ export function listAgentSessions(project, limit = 25) {
   return ids.map((id) => agentSession(project, id)).filter(Boolean).slice(0, limit);
 }
 
+const activeSandboxOperations = new Set();
+
+function sandboxRunDirectory(project, sandboxId) {
+  if (typeof sandboxId !== 'string' || !/^\d{14}-[0-9a-f]{4}$/i.test(sandboxId)) {
+    throw new Error('Sandbox action requires a valid job ID.');
+  }
+  return join(project.store, 'runs', project.key, sandboxId);
+}
+
+function sandboxRecordPath(project, sandboxId) {
+  return join(sandboxRunDirectory(project, sandboxId), 'sandbox.json');
+}
+
+function readSandboxRecord(project, sandboxId) {
+  const record = readJson(sandboxRecordPath(project, sandboxId));
+  if (!record || record.id !== sandboxId || record.type !== 'sandbox-job' || record.project !== project.identity.id) {
+    throw new Error(`Sandbox job was not found: ${sandboxId}`);
+  }
+  if (resolve(record.sourceRoot || '') !== resolve(project.root)) throw new Error('Sandbox source authority no longer matches the registered project.');
+  const worktreesRoot = resolve(project.store, 'worktrees', project.key);
+  const workspace = resolve(record.workspace || '');
+  const within = relative(worktreesRoot, workspace);
+  if (!within || within.startsWith('..') || isAbsolute(within)) throw new Error('Sandbox workspace escapes the CommandHUD worktree authority.');
+  return { record, workspace };
+}
+
+function writeSandboxRecord(project, value) {
+  atomicWriteJson(sandboxRecordPath(project, value.id), { ...value, schemaVersion: SCHEMA_VERSION, updatedAt: new Date().toISOString() });
+}
+
+function sandboxExecutionProject(project, sandboxId) {
+  const { record, workspace } = readSandboxRecord(project, sandboxId);
+  if (record.status === 'DISCARDED' || !existsSync(workspace)) throw new Error(`Sandbox workspace is unavailable: ${sandboxId}`);
+  return { record, workspace, executionProject: { ...project, root: workspace } };
+}
+
+function containedSandboxPath(workspace, requested, { requireFile = false, requireDirectory = false } = {}) {
+  const value = String(requested || '.').replaceAll('\\', '/');
+  if (isAbsolute(value) || value.split('/').includes('..') || /[\0\r\n]/.test(value)) throw new Error('Sandbox path must be a contained relative path.');
+  const target = resolve(workspace, value);
+  const within = relative(resolve(workspace), target);
+  if (within.startsWith('..') || isAbsolute(within)) throw new Error('Sandbox path escapes the job workspace.');
+  if (requireFile && (!existsSync(target) || !statSync(target).isFile())) throw new Error(`Sandbox file was not found: ${value}`);
+  if (requireDirectory && (!existsSync(target) || !statSync(target).isDirectory())) throw new Error(`Sandbox directory was not found: ${value}`);
+  return { target, relativePath: within.replaceAll('\\', '/') || '.' };
+}
+
+async function withSandboxOperation(project, sandboxId, kind, operation) {
+  if (activeSandboxOperations.has(sandboxId)) throw new Error(`Sandbox job already has an active operation: ${sandboxId}`);
+  activeSandboxOperations.add(sandboxId);
+  try {
+    const value = await operation();
+    const { record } = readSandboxRecord(project, sandboxId);
+    writeSandboxRecord(project, { ...record, lastOperationId: value?.id || record.lastOperationId, lastOperationKind: kind });
+    return value;
+  } finally {
+    activeSandboxOperations.delete(sandboxId);
+  }
+}
+
+export async function createSandboxJob(project, task, { expectedHead } = {}) {
+  const objective = String(task || '').trim();
+  if (!objective || objective.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Sandbox task must contain between 1 and 131072 characters.');
+  if (typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedHead)) throw new Error('Sandbox creation requires an exact 40-character expected Git HEAD.');
+  const authority = await gitSnapshot(project.root);
+  if (authority.head.toLowerCase() !== expectedHead.toLowerCase()) throw new Error(`Expected Git HEAD ${expectedHead} does not match current HEAD ${authority.head}.`);
+  const id = createRunId();
+  const workspace = join(project.store, 'worktrees', project.key, id);
+  const directory = sandboxRunDirectory(project, id);
+  mkdirSync(dirname(workspace), { recursive: true });
+  mkdirSync(dirname(directory), { recursive: true });
+  mkdirSync(directory, { recursive: false });
+  const created = await exec('git', ['worktree', 'add', '--detach', workspace, authority.head], project.root);
+  if (!created.ok) {
+    rmSync(directory, { recursive: true, force: true });
+    throw new Error(`Unable to create isolated sandbox worktree: ${created.stderr}`);
+  }
+  const createdAt = new Date().toISOString();
+  const record = {
+    schemaVersion: SCHEMA_VERSION, type: 'sandbox-job', id, project: project.identity.id,
+    sourceRoot: project.root, workspace, baseSha: authority.head, task: objective,
+    status: 'ACTIVE', createdAt, updatedAt: createdAt, lastOperationId: null, lastOperationKind: null,
+  };
+  atomicWriteJson(sandboxRecordPath(project, id), record, { exclusive: true });
+  return sandboxJobState(project, id);
+}
+
+export async function sandboxJobState(project, sandboxId) {
+  const { record, workspace } = readSandboxRecord(project, sandboxId);
+  if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, workspaceAvailable: false };
+  const git = await gitSnapshot(workspace);
+  return {
+    ...record, workspaceAvailable: true, head: git.head, branch: git.branch, dirty: git.dirty,
+    changedFiles: git.changedFiles, activeOperation: activeSandboxOperations.has(sandboxId),
+  };
+}
+
+export async function listSandboxJobs(project, limit = 25) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Sandbox job limit must be from 1 to 100.');
+  const root = join(project.store, 'runs', project.key);
+  if (!existsSync(root)) return [];
+  const ids = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().reverse();
+  const values = [];
+  for (const id of ids) {
+    if (!existsSync(join(root, id, 'sandbox.json'))) continue;
+    values.push(await sandboxJobState(project, id));
+    if (values.length >= limit) break;
+  }
+  return values;
+}
+
+export async function executeSandboxCommand(project, sandboxId, argv, { cwd = '.', timeoutMs = 120000 } = {}) {
+  if (!Array.isArray(argv) || argv.length < 1 || argv.length > 64 || argv.some((value) => typeof value !== 'string' || !value || value.length > 32768 || /[\0\r\n]/.test(value))) {
+    throw new Error('Sandbox exec requires 1 to 64 bounded argument strings.');
+  }
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 600000) throw new Error('Sandbox timeout must be from 1000 to 600000 milliseconds.');
+  const { executionProject, workspace } = sandboxExecutionProject(project, sandboxId);
+  const selected = containedSandboxPath(workspace, cwd, { requireDirectory: true });
+  return withSandboxOperation(project, sandboxId, 'exec', () => runCommand(executionProject, argv, {
+    shell: false, stream: false, captureDelta: true, cwd: selected.target, timeoutMs,
+    origin: 'local-server', request: `sandbox ${sandboxId} exec`,
+    operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'exec' },
+  }));
+}
+
+export function readSandboxFile(project, sandboxId, path, { startLine = 1, endLine = 200 } = {}) {
+  const { workspace } = sandboxExecutionProject(project, sandboxId);
+  if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine || endLine - startLine > 399) {
+    throw new Error('Sandbox read range must contain at most 400 lines.');
+  }
+  const selected = containedSandboxPath(workspace, path, { requireFile: true });
+  const size = statSync(selected.target).size;
+  if (size > 2 * 1024 * 1024) throw new Error('Sandbox read supports text files up to 2 MiB.');
+  const lines = readFileSync(selected.target, 'utf8').split(/\r?\n/);
+  const slice = lines.slice(startLine - 1, endLine);
+  return { job: sandboxId, path: selected.relativePath, startLine, endLine: startLine + slice.length - 1, totalLines: lines.length, content: slice.join('\n') };
+}
+
+export async function searchSandbox(project, sandboxId, query, { scope = '.' } = {}) {
+  const { executionProject, workspace } = sandboxExecutionProject(project, sandboxId);
+  containedSandboxPath(workspace, scope, { requireDirectory: true });
+  return withSandboxOperation(project, sandboxId, 'search', () => searchRepository(executionProject, query, scope, { stream: false, origin: 'local-server' }));
+}
+
+function validateSandboxPatch(patch) {
+  const value = String(patch || '');
+  if (!value || Buffer.byteLength(value) > 256 * 1024) throw new Error('Sandbox patch must contain at most 256 KiB.');
+  for (const match of value.matchAll(/^(?:---|\+\+\+)\s+([^\t\r\n ]+)/gm)) {
+    const raw = match[1];
+    if (raw === '/dev/null') continue;
+    const path = raw.replace(/^[ab]\//, '');
+    if (!path || isAbsolute(path) || path.split('/').includes('..') || path.includes('\\')) throw new Error(`Sandbox patch contains an unsafe path: ${raw}`);
+  }
+  return value;
+}
+
+export async function applySandboxPatch(project, sandboxId, patch) {
+  const { executionProject } = sandboxExecutionProject(project, sandboxId);
+  const value = validateSandboxPatch(patch);
+  return withSandboxOperation(project, sandboxId, 'patch', async () => {
+    const checked = await runCommand(executionProject, ['git', 'apply', '--check', '-'], {
+      shell: false, stream: false, stdin: value, timeoutMs: 120000, origin: 'local-server',
+      request: `sandbox ${sandboxId} patch check`, operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'patch-check' },
+    });
+    if (checked.status !== 'pass') return checked;
+    return runCommand(executionProject, ['git', 'apply', '--whitespace=nowarn', '-'], {
+      shell: false, stream: false, stdin: value, captureDelta: true, timeoutMs: 120000, origin: 'local-server',
+      request: `sandbox ${sandboxId} patch`, operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'patch' },
+    });
+  });
+}
+
+export async function sandboxDiff(project, sandboxId) {
+  const { executionProject } = sandboxExecutionProject(project, sandboxId);
+  return withSandboxOperation(project, sandboxId, 'diff', async () => {
+    const tree = await worktreeTree(executionProject.root);
+    return runCommand(executionProject, ['git', 'diff', '--no-ext-diff', '--binary', 'HEAD', tree], {
+      shell: false, stream: false, timeoutMs: 120000, captureLimitCharacters: 256 * 1024,
+      origin: 'local-server', request: `sandbox ${sandboxId} diff`,
+      operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'diff' },
+    });
+  });
+}
+
+export async function discardSandboxJob(project, sandboxId) {
+  if (activeSandboxOperations.has(sandboxId)) throw new Error('A sandbox with an active operation cannot be discarded.');
+  const { record, workspace } = readSandboxRecord(project, sandboxId);
+  if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, status: 'DISCARDED', alreadyAbsent: true };
+  const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
+  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === workspace)) {
+    throw new Error('Sandbox workspace is not a registered worktree of the verified source repository.');
+  }
+  const removed = await exec('git', ['worktree', 'remove', '--force', workspace], project.root);
+  if (!removed.ok) throw new Error(`Unable to discard sandbox workspace: ${removed.stderr}`);
+  const discardedAt = new Date().toISOString();
+  const value = { ...record, status: 'DISCARDED', discardedAt, updatedAt: discardedAt };
+  writeSandboxRecord(project, value);
+  return { ...value, workspaceAvailable: false, alreadyAbsent: false };
+}
+
 function agentRunDirectory(project, runId) {
   if (typeof runId !== 'string' || !/^\d{14}-[0-9a-f]{4}$/i.test(runId)) throw new Error('Agent action requires a valid session ID.');
   return join(project.store, 'runs', project.key, runId);

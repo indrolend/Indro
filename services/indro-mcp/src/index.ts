@@ -34,7 +34,7 @@ function createServer(env: AppEnv) {
 					transport: "streamable-http",
 					execution: "typed-home-control",
 					authority: "git",
-					capabilities: ["commandhud.lifecycle", "brokeman.result", "brokeman.packet"],
+					capabilities: ["commandhud.lifecycle", "commandhud.sandbox", "brokeman.result", "brokeman.packet"],
 				}, null, 2),
 			}],
 		}),
