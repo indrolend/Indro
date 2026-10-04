@@ -1554,6 +1554,13 @@ export async function recoverInterruptedRuns(project) {
         cwdAfter: inflight.cwd || project.root, cwdPersistence: 'unknown',
         summary: [...reduction.summary],
       };
+    } else if (inflight.operationIdentity?.type === 'argv-command') {
+      record.operation = {
+        ...inflight.operationIdentity, displayCommand: inflight.command,
+        command: inflight.command, exitCode: null, status: 'interrupted',
+        durationMs: record.durationMs, cwd: inflight.cwd || project.root,
+        summary: [...reduction.summary],
+      };
     }
     if (record.operation) record.operation.provenance = record.provenance;
     record.presentation = buildPresentation(record);
@@ -2607,6 +2614,17 @@ export function buildOperationContext(project, record, { currentCurrency = null 
       if (operation.diagnosticCount > 100) lines.push(`... ${operation.diagnosticCount - 100} additional diagnostics in raw evidence`);
     }
     if (operation.detailsTruncated) lines.push('DETAILS BOUNDED · inspect raw evidence for omitted diagnostics');
+  } else if (operation.type === 'argv-command') {
+    lines.push(`COMMAND ${operation.displayCommand || operation.command}`);
+    lines.push(`ARGV ${JSON.stringify(operation.argv)}`);
+    lines.push(operation.status === 'interrupted'
+      ? `RESULT INTERRUPTED completion-not-observed duration=${operation.durationMs}ms`
+      : `RESULT ${operation.status.toUpperCase()} exit=${operation.exitCode} duration=${operation.durationMs}ms`);
+    if (operation.status !== 'interrupted' && operation.summary?.length) lines.push(`SUMMARY ${operation.summary.join('; ')}`);
+    const stdout = compactContextEvidenceFile(record.stdoutPath, { maxLines: operation.summary?.length ? 12 : 40, maxChars: 6000 });
+    const stderr = compactContextEvidenceFile(record.stderrPath);
+    if (stdout.text) lines.push('', `STDOUT_EXCERPT${stdout.omitted ? ' (tail, bounded)' : ''}`, stdout.text);
+    if (stderr.text) lines.push('', `STDERR_EXCERPT${stderr.omitted ? ' (tail, bounded)' : ''}`, stderr.text);
   } else if (operation.type === 'terminal-command') {
     lines.push(`SHELL ${operation.shellLabel || operation.shell}`);
     lines.push(`COMMAND ${operation.displayCommand || operation.command}`);
