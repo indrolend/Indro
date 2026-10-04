@@ -2149,6 +2149,31 @@ export function readSandboxFile(project, sandboxId, path, { startLine = 1, endLi
   return { job: sandboxId, path: selected.relativePath, startLine, endLine: startLine + slice.length - 1, totalLines: lines.length, content: slice.join('\n') };
 }
 
+const SANDBOX_MEDIA_TYPES = new Map([
+  ['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'], ['.gif', 'image/gif'],
+]);
+
+export async function sandboxMediaArtifact(project, sandboxId, path) {
+  const { record, workspace } = sandboxExecutionProject(project, sandboxId);
+  const selected = containedSandboxPath(workspace, path, { requireFile: true });
+  const extension = selected.relativePath.slice(selected.relativePath.lastIndexOf('.')).toLowerCase();
+  const mediaType = SANDBOX_MEDIA_TYPES.get(extension);
+  if (!mediaType) throw new Error('Sandbox media supports PNG, JPEG, WebP, and GIF files only.');
+  const byteLength = statSync(selected.target).size;
+  if (byteLength < 1 || byteLength > 5 * 1024 * 1024) throw new Error('Sandbox media must contain from 1 byte to 5 MiB.');
+  const bytes = readFileSync(selected.target);
+  if (bytes.length !== byteLength) throw new Error('Sandbox media changed while it was being read.');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const git = await gitSnapshot(workspace);
+  const id = createHash('sha256').update(`${record.id}\0${selected.relativePath}\0${sha256}`).digest('hex');
+  return {
+    id, name: basename(selected.relativePath), mediaType, byteLength, sha256,
+    jobId: record.id, project: record.project, head: git.head, path: selected.relativePath,
+    bytes,
+  };
+}
+
 export async function searchSandbox(project, sandboxId, query, { scope = '.' } = {}) {
   const { executionProject, workspace } = sandboxExecutionProject(project, sandboxId);
   containedSandboxPath(workspace, scope, { requireDirectory: true });

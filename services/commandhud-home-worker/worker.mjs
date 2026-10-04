@@ -6,7 +6,7 @@ import { join } from "node:path";
 import {
   agentSession, applySandboxPatch, createSandboxJob, discardSandboxJob, discoverAgentHarnesses,
   discoverProjects, executeSandboxCommand, gitSnapshot, listAgentSessions, listSandboxJobs,
-  readSandboxFile, resolveRegisteredProject, sandboxDiff, sandboxJobState, searchSandbox,
+  readSandboxFile, resolveRegisteredProject, sandboxDiff, sandboxJobState, sandboxMediaArtifact, searchSandbox,
   startDetachedAgent, stopAgentSession,
 } from "../../packages/commandhud/core.mjs";
 
@@ -29,6 +29,22 @@ function send(response, status, value) {
   const body = JSON.stringify(value);
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store" });
   response.end(body);
+}
+
+function sendMedia(response, artifact) {
+  response.writeHead(200, {
+    "Content-Type": artifact.mediaType,
+    "Content-Length": artifact.byteLength,
+    "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(artifact.name)}`,
+    "Cache-Control": "no-store",
+    "X-CommandHUD-Artifact-Id": artifact.id,
+    "X-CommandHUD-Artifact-Sha256": artifact.sha256,
+    "X-CommandHUD-Job-Id": artifact.jobId,
+    "X-CommandHUD-Source-Head": artifact.head,
+    "X-CommandHUD-Project": encodeURIComponent(artifact.project),
+    "X-CommandHUD-Path": encodeURIComponent(artifact.path),
+  });
+  response.end(artifact.bytes);
 }
 
 async function bodyJson(request) {
@@ -144,7 +160,7 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, "http://localhost");
     if (!authorized(request)) return send(response, 401, { error: "Unauthorized" });
-    if (request.method === "GET" && url.pathname === "/health") return send(response, 200, { executor: "home-windows", status: "ready", capabilities: ["commandhud.lifecycle", "commandhud.sandbox", "brokeman.result", "brokeman.packet"] });
+    if (request.method === "GET" && url.pathname === "/health") return send(response, 200, { executor: "home-windows", status: "ready", capabilities: ["commandhud.lifecycle", "commandhud.sandbox", "commandhud.media", "brokeman.result", "brokeman.packet"] });
     if (request.method === "GET" && url.pathname === "/projects") {
       const projects = (await discoverProjects()).map(({ root, ...project }) => project);
       return send(response, 200, { executor: "home-windows", projects });
@@ -215,6 +231,12 @@ const server = createServer(async (request, response) => {
       return send(response, 200, readSandboxFile(selected, sandboxReadMatch[1], url.searchParams.get("path"), {
         startLine: Number(url.searchParams.get("startLine") || 1), endLine: Number(url.searchParams.get("endLine") || 200),
       }));
+    }
+    const sandboxMediaMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/media$/i);
+    if (request.method === "GET" && sandboxMediaMatch) {
+      const selected = await resolveRegisteredProject(url.searchParams.get("project"));
+      const artifact = await sandboxMediaArtifact(selected, sandboxMediaMatch[1], url.searchParams.get("path"));
+      return sendMedia(response, artifact);
     }
     const sandboxSearchMatch = url.pathname.match(/^\/sandboxes\/(\d{14}-[0-9a-f]{4})\/search$/i);
     if (request.method === "POST" && sandboxSearchMatch) {

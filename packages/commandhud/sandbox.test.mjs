@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   applySandboxPatch, createSandboxJob, discardSandboxJob, executeSandboxCommand,
-  listSandboxJobs, readSandboxFile, resolveProject, sandboxDiff, sandboxJobState, searchSandbox,
+  listSandboxJobs, readSandboxFile, resolveProject, sandboxDiff, sandboxJobState, sandboxMediaArtifact, searchSandbox,
 } from './core.mjs';
 
 test('one CommandHUD sandbox supports iterative local development without touching authority', async (t) => {
@@ -66,6 +66,21 @@ test('one CommandHUD sandbox supports iterative local development without touchi
   const state = await sandboxJobState(project, created.id);
   assert.equal(state.dirty, true);
   assert.equal(readFileSync(join(root, 'file.txt'), 'utf8'), 'alpha\n');
+
+  const mediaPath = join(created.workspace, 'frame.png');
+  const mediaBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  writeFileSync(mediaPath, mediaBytes);
+  const artifact = await sandboxMediaArtifact(project, created.id, 'frame.png');
+  assert.equal(artifact.name, 'frame.png');
+  assert.equal(artifact.mediaType, 'image/png');
+  assert.equal(artifact.byteLength, mediaBytes.length);
+  assert.equal(artifact.sha256, '4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6');
+  assert.equal(artifact.jobId, created.id);
+  assert.equal(artifact.head, head);
+  assert.deepEqual(artifact.bytes, mediaBytes);
+  await assert.rejects(() => sandboxMediaArtifact(project, created.id, '../frame.png'), /contained relative path/);
+  writeFileSync(join(created.workspace, 'not-media.txt'), 'not media');
+  await assert.rejects(() => sandboxMediaArtifact(project, created.id, 'not-media.txt'), /supports PNG/);
 
   const recordPath = join(store, 'runs', project.key, created.id, 'sandbox.json');
   const record = JSON.parse(readFileSync(recordPath, 'utf8'));

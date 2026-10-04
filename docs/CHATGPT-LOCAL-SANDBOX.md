@@ -12,9 +12,13 @@ The typed loop is:
 3. `commandhud.sandbox.read` and `.search` provide narrow observation.
 4. `commandhud.sandbox.patch` validates and applies a bounded unified diff.
 5. `commandhud.sandbox.exec` runs a bounded argv command without a command shell.
-6. `commandhud.sandbox.diff` derives tracked and untracked changes from Git.
-7. `brokeman.result` or `brokeman.packet` projects continuity from the same job.
-8. `commandhud.sandbox.discard` explicitly removes only the CommandHUD-owned
+6. `commandhud.sandbox.media` returns one contained PNG, JPEG, WebP, or GIF as
+   a renderable image after independently verified byte-length and SHA-256
+   transport checks. Generated evidence can remain in a repository-ignored
+   directory without becoming a source change.
+7. `commandhud.sandbox.diff` derives tracked and untracked changes from Git.
+8. `brokeman.result` or `brokeman.packet` projects continuity from the same job.
+9. `commandhud.sandbox.discard` explicitly removes only the CommandHUD-owned
    worktree while retaining job and operation evidence.
 
 Every command is rooted by CommandHUD inside the sandbox. File paths must be

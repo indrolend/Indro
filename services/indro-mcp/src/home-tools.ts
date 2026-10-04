@@ -13,6 +13,32 @@ async function callHome(env: HomeEnv, path: string, init?: RequestInit) {
   return text ? JSON.parse(text) : null;
 }
 
+async function callHomeMedia(env: HomeEnv, path: string) {
+  const response = await fetch(env.HOME_EXECUTOR_URL + path, { headers: { Authorization: "Bearer " + env.HOME_EXECUTOR_TOKEN } });
+  const error = !response.ok ? await response.text() : null;
+  if (!response.ok) throw new Error(`Home executor returned HTTP ${response.status}: ${error?.slice(0, 500)}`);
+  const mediaType = response.headers.get("content-type") || "application/octet-stream";
+  const byteLength = Number(response.headers.get("content-length") || 0);
+  const disposition = response.headers.get("content-disposition") || "";
+  const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1] || "artifact";
+  const bytes = await response.arrayBuffer();
+  const receivedSha256 = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const expectedSha256 = response.headers.get("x-commandhud-artifact-sha256");
+  if (byteLength !== bytes.byteLength) throw new Error(`Home media length mismatch: expected ${byteLength}, received ${bytes.byteLength}.`);
+  if (!expectedSha256 || receivedSha256 !== expectedSha256) throw new Error("Home media SHA-256 verification failed.");
+  const descriptor = {
+    id: response.headers.get("x-commandhud-artifact-id"),
+    name: decodeURIComponent(encodedName), mediaType, byteLength,
+    sha256: receivedSha256,
+    jobId: response.headers.get("x-commandhud-job-id"),
+    head: response.headers.get("x-commandhud-source-head"),
+    project: decodeURIComponent(response.headers.get("x-commandhud-project") || ""),
+    path: decodeURIComponent(response.headers.get("x-commandhud-path") || ""),
+  };
+  return { descriptor, data: Buffer.from(bytes).toString("base64") };
+}
+
 function result(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], structuredContent: value as Record<string, unknown> };
 }
@@ -71,6 +97,19 @@ export function registerHomeTools(server: McpServer, env: HomeEnv) {
     description: "Read at most 400 lines from one contained text file in a sandbox.",
     inputSchema: { project, job, path: relativePath, startLine: z.number().int().min(1).default(1), endLine: z.number().int().min(1).default(200) },
   }, async ({ project: projectId, job: jobId, path, startLine, endLine }) => result(await callHome(env, `/sandboxes/${jobId}/read?project=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}&startLine=${startLine}&endLine=${endLine}`)));
+  server.registerTool("commandhud.sandbox.media", {
+    description: "Return one hash-verified image from a contained sandbox as a renderable MCP image plus its transport-independent descriptor.",
+    inputSchema: { project, job, path: relativePath },
+  }, async ({ project: projectId, job: jobId, path }) => {
+    const artifact = await callHomeMedia(env, `/sandboxes/${jobId}/media?project=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`);
+    return {
+      content: [
+        { type: "image" as const, data: artifact.data, mimeType: artifact.descriptor.mediaType },
+        { type: "text" as const, text: JSON.stringify(artifact.descriptor, null, 2) },
+      ],
+      structuredContent: artifact.descriptor,
+    };
+  });
   server.registerTool("commandhud.sandbox.search", {
     description: "Search a sandbox with retained ripgrep evidence and compact file/line matches.",
     inputSchema: { project, job, query: z.string().min(1).max(8192), scope: relativePath.default(".") },
