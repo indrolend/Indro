@@ -58,6 +58,7 @@ function remoteSandbox(value) {
     id: value.id, project: value.project, task: value.task, status: value.status,
     baseSha: value.baseSha, head: value.head ?? null, branch: value.branch ?? null,
     dirty: value.dirty ?? null, changedFiles: value.changedFiles || [],
+    sourceAuthorityCurrent: value.sourceAuthorityCurrent ?? null,
     workspaceAvailable: value.workspaceAvailable, activeOperation: value.activeOperation ?? false,
     createdAt: value.createdAt, updatedAt: value.updatedAt,
     lastOperationId: value.lastOperationId, lastOperationKind: value.lastOperationKind,

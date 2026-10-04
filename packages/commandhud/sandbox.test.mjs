@@ -67,6 +67,15 @@ test('one CommandHUD sandbox supports iterative local development without touchi
   assert.equal(state.dirty, true);
   assert.equal(readFileSync(join(root, 'file.txt'), 'utf8'), 'alpha\n');
 
+  const recordPath = join(store, 'runs', project.key, created.id, 'sandbox.json');
+  const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+  writeFileSync(recordPath, `${JSON.stringify({ ...record, sourceRoot: join(root, 'historical-authority') }, null, 2)}\n`);
+  const historical = await sandboxJobState(project, created.id);
+  assert.equal(historical.sourceAuthorityCurrent, false);
+  assert.equal((await listSandboxJobs(project))[0].sourceAuthorityCurrent, false);
+  await assert.rejects(() => executeSandboxCommand(project, created.id, [process.execPath, '-e', 'process.exit(0)']), /source authority no longer matches/);
+  writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`);
+
   const discarded = await discardSandboxJob(project, created.id);
   assert.equal(discarded.status, 'DISCARDED');
   assert.equal((await sandboxJobState(project, created.id)).workspaceAvailable, false);

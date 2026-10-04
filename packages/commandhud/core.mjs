@@ -2023,17 +2023,18 @@ function sandboxRecordPath(project, sandboxId) {
   return join(sandboxRunDirectory(project, sandboxId), 'sandbox.json');
 }
 
-function readSandboxRecord(project, sandboxId) {
+function readSandboxRecord(project, sandboxId, { requireCurrentSource = true } = {}) {
   const record = readJson(sandboxRecordPath(project, sandboxId));
   if (!record || record.id !== sandboxId || record.type !== 'sandbox-job' || record.project !== project.identity.id) {
     throw new Error(`Sandbox job was not found: ${sandboxId}`);
   }
-  if (resolve(record.sourceRoot || '') !== resolve(project.root)) throw new Error('Sandbox source authority no longer matches the registered project.');
+  const sourceAuthorityCurrent = resolve(record.sourceRoot || '') === resolve(project.root);
+  if (requireCurrentSource && !sourceAuthorityCurrent) throw new Error('Sandbox source authority no longer matches the registered project.');
   const worktreesRoot = resolve(project.store, 'worktrees', project.key);
   const workspace = resolve(record.workspace || '');
   const within = relative(worktreesRoot, workspace);
   if (!within || within.startsWith('..') || isAbsolute(within)) throw new Error('Sandbox workspace escapes the CommandHUD worktree authority.');
-  return { record, workspace };
+  return { record, workspace, sourceAuthorityCurrent };
 }
 
 function writeSandboxRecord(project, value) {
@@ -2098,11 +2099,11 @@ export async function createSandboxJob(project, task, { expectedHead } = {}) {
 }
 
 export async function sandboxJobState(project, sandboxId) {
-  const { record, workspace } = readSandboxRecord(project, sandboxId);
-  if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, workspaceAvailable: false };
+  const { record, workspace, sourceAuthorityCurrent } = readSandboxRecord(project, sandboxId, { requireCurrentSource: false });
+  if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, sourceAuthorityCurrent, workspaceAvailable: false };
   const git = await gitSnapshot(workspace);
   return {
-    ...record, workspaceAvailable: true, head: git.head, branch: git.branch, dirty: git.dirty,
+    ...record, sourceAuthorityCurrent, workspaceAvailable: true, head: git.head, branch: git.branch, dirty: git.dirty,
     changedFiles: git.changedFiles, activeOperation: activeSandboxOperations.has(sandboxId),
   };
 }
