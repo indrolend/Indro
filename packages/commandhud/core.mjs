@@ -2042,7 +2042,10 @@ function writeSandboxRecord(project, value) {
 }
 
 function sandboxExecutionProject(project, sandboxId) {
-  const { record, workspace } = readSandboxRecord(project, sandboxId);
+  // The immutable project identity and CommandHUD-owned workspace remain the
+  // authority when a registered checkout moves. The original source path is
+  // provenance, not a lifetime dependency of the retained sandbox.
+  const { record, workspace } = readSandboxRecord(project, sandboxId, { requireCurrentSource: false });
   if (record.status === 'DISCARDED' || !existsSync(workspace)) throw new Error(`Sandbox workspace is unavailable: ${sandboxId}`);
   return { record, workspace, executionProject: { ...project, root: workspace } };
 }
@@ -2063,7 +2066,7 @@ async function withSandboxOperation(project, sandboxId, kind, operation) {
   activeSandboxOperations.add(sandboxId);
   try {
     const value = await operation();
-    const { record } = readSandboxRecord(project, sandboxId);
+    const { record } = readSandboxRecord(project, sandboxId, { requireCurrentSource: false });
     writeSandboxRecord(project, { ...record, lastOperationId: value?.id || record.lastOperationId, lastOperationKind: kind });
     return value;
   } finally {
