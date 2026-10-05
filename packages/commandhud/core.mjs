@@ -1554,6 +1554,13 @@ export async function recoverInterruptedRuns(project) {
         cwdAfter: inflight.cwd || project.root, cwdPersistence: 'unknown',
         summary: [...reduction.summary],
       };
+    } else if (inflight.operationIdentity?.type === 'argv-command') {
+      record.operation = {
+        ...inflight.operationIdentity, displayCommand: inflight.command,
+        command: inflight.command, exitCode: null, status: 'interrupted',
+        durationMs: record.durationMs, cwd: inflight.cwd || project.root,
+        summary: [...reduction.summary],
+      };
     }
     if (record.operation) record.operation.provenance = record.provenance;
     record.presentation = buildPresentation(record);
@@ -2010,6 +2017,348 @@ export function listAgentSessions(project, limit = 25) {
   return ids.map((id) => agentSession(project, id)).filter(Boolean).slice(0, limit);
 }
 
+const activeSandboxOperations = new Set();
+
+function sandboxRunDirectory(project, sandboxId) {
+  if (typeof sandboxId !== 'string' || !/^\d{14}-[0-9a-f]{4}$/i.test(sandboxId)) {
+    throw new Error('Sandbox action requires a valid job ID.');
+  }
+  return join(project.store, 'runs', project.key, sandboxId);
+}
+
+function sandboxRecordPath(project, sandboxId) {
+  return join(sandboxRunDirectory(project, sandboxId), 'sandbox.json');
+}
+
+function readSandboxRecord(project, sandboxId, { requireCurrentSource = true } = {}) {
+  const record = readJson(sandboxRecordPath(project, sandboxId));
+  if (!record || record.id !== sandboxId || record.type !== 'sandbox-job' || record.project !== project.identity.id) {
+    throw new Error(`Sandbox job was not found: ${sandboxId}`);
+  }
+  const sourceAuthorityCurrent = resolve(record.sourceRoot || '') === resolve(project.root);
+  if (requireCurrentSource && !sourceAuthorityCurrent) throw new Error('Sandbox source authority no longer matches the registered project.');
+  const worktreesRoot = resolve(project.store, 'worktrees', project.key);
+  const workspace = resolve(record.workspace || '');
+  const within = relative(worktreesRoot, workspace);
+  if (!within || within.startsWith('..') || isAbsolute(within)) throw new Error('Sandbox workspace escapes the CommandHUD worktree authority.');
+  return { record, workspace, sourceAuthorityCurrent };
+}
+
+function writeSandboxRecord(project, value) {
+  atomicWriteJson(sandboxRecordPath(project, value.id), { ...value, schemaVersion: SCHEMA_VERSION, updatedAt: new Date().toISOString() });
+}
+
+function sandboxExecutionProject(project, sandboxId) {
+  // The immutable project identity and CommandHUD-owned workspace remain the
+  // authority when a registered checkout moves. The original source path is
+  // provenance, not a lifetime dependency of the retained sandbox.
+  const { record, workspace } = readSandboxRecord(project, sandboxId, { requireCurrentSource: false });
+  if (record.status === 'DISCARDED' || !existsSync(workspace)) throw new Error(`Sandbox workspace is unavailable: ${sandboxId}`);
+  return { record, workspace, executionProject: { ...project, root: workspace } };
+}
+
+function containedSandboxPath(workspace, requested, { requireFile = false, requireDirectory = false } = {}) {
+  const value = String(requested || '.').replaceAll('\\', '/');
+  if (isAbsolute(value) || value.split('/').includes('..') || /[\0\r\n]/.test(value)) throw new Error('Sandbox path must be a contained relative path.');
+  const target = resolve(workspace, value);
+  const within = relative(resolve(workspace), target);
+  if (within.startsWith('..') || isAbsolute(within)) throw new Error('Sandbox path escapes the job workspace.');
+  if (requireFile && (!existsSync(target) || !statSync(target).isFile())) throw new Error(`Sandbox file was not found: ${value}`);
+  if (requireDirectory && (!existsSync(target) || !statSync(target).isDirectory())) throw new Error(`Sandbox directory was not found: ${value}`);
+  return { target, relativePath: within.replaceAll('\\', '/') || '.' };
+}
+
+async function withSandboxOperation(project, sandboxId, kind, operation) {
+  if (activeSandboxOperations.has(sandboxId)) throw new Error(`Sandbox job already has an active operation: ${sandboxId}`);
+  activeSandboxOperations.add(sandboxId);
+  try {
+    const value = await operation();
+    const { record } = readSandboxRecord(project, sandboxId, { requireCurrentSource: false });
+    writeSandboxRecord(project, { ...record, lastOperationId: value?.id || record.lastOperationId, lastOperationKind: kind });
+    return value;
+  } finally {
+    activeSandboxOperations.delete(sandboxId);
+  }
+}
+
+export async function createSandboxJob(project, task, { expectedHead } = {}) {
+  const objective = String(task || '').trim();
+  if (!objective || objective.length > MAX_AGENT_PROMPT_CHARACTERS) throw new Error('Sandbox task must contain between 1 and 131072 characters.');
+  if (typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedHead)) throw new Error('Sandbox creation requires an exact 40-character expected Git HEAD.');
+  const authority = await gitSnapshot(project.root);
+  if (authority.head.toLowerCase() !== expectedHead.toLowerCase()) throw new Error(`Expected Git HEAD ${expectedHead} does not match current HEAD ${authority.head}.`);
+  const id = createRunId();
+  const workspace = join(project.store, 'worktrees', project.key, id);
+  const directory = sandboxRunDirectory(project, id);
+  mkdirSync(dirname(workspace), { recursive: true });
+  mkdirSync(dirname(directory), { recursive: true });
+  mkdirSync(directory, { recursive: false });
+  const created = await exec('git', ['worktree', 'add', '--detach', workspace, authority.head], project.root);
+  if (!created.ok) {
+    rmSync(directory, { recursive: true, force: true });
+    throw new Error(`Unable to create isolated sandbox worktree: ${created.stderr}`);
+  }
+  const createdAt = new Date().toISOString();
+  const record = {
+    schemaVersion: SCHEMA_VERSION, type: 'sandbox-job', id, project: project.identity.id,
+    sourceRoot: project.root, workspace, baseSha: authority.head, task: objective,
+    status: 'ACTIVE', createdAt, updatedAt: createdAt, lastOperationId: null, lastOperationKind: null,
+  };
+  atomicWriteJson(sandboxRecordPath(project, id), record, { exclusive: true });
+  return sandboxJobState(project, id);
+}
+
+export async function sandboxJobState(project, sandboxId) {
+  const { record, workspace, sourceAuthorityCurrent } = readSandboxRecord(project, sandboxId, { requireCurrentSource: false });
+  if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, sourceAuthorityCurrent, workspaceAvailable: false };
+  const git = await gitSnapshot(workspace);
+  return {
+    ...record, sourceAuthorityCurrent, workspaceAvailable: true, head: git.head, branch: git.branch, dirty: git.dirty,
+    changedFiles: git.changedFiles, activeOperation: activeSandboxOperations.has(sandboxId),
+  };
+}
+
+export async function listSandboxJobs(project, limit = 25) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Sandbox job limit must be from 1 to 100.');
+  const root = join(project.store, 'runs', project.key);
+  if (!existsSync(root)) return [];
+  const ids = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().reverse();
+  const values = [];
+  for (const id of ids) {
+    if (!existsSync(join(root, id, 'sandbox.json'))) continue;
+    values.push(await sandboxJobState(project, id));
+    if (values.length >= limit) break;
+  }
+  return values;
+}
+
+export async function executeSandboxCommand(project, sandboxId, argv, { cwd = '.', timeoutMs = 120000 } = {}) {
+  if (!Array.isArray(argv) || argv.length < 1 || argv.length > 64 || argv.some((value) => typeof value !== 'string' || !value || value.length > 32768 || /[\0\r\n]/.test(value))) {
+    throw new Error('Sandbox exec requires 1 to 64 bounded argument strings.');
+  }
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 600000) throw new Error('Sandbox timeout must be from 1000 to 600000 milliseconds.');
+  const { executionProject, workspace } = sandboxExecutionProject(project, sandboxId);
+  const selected = containedSandboxPath(workspace, cwd, { requireDirectory: true });
+  return withSandboxOperation(project, sandboxId, 'exec', () => runCommand(executionProject, argv, {
+    shell: false, stream: false, captureDelta: true, cwd: selected.target, timeoutMs,
+    origin: 'local-server', request: `sandbox ${sandboxId} exec`,
+    operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'exec' },
+  }));
+}
+
+export function readSandboxFile(project, sandboxId, path, { startLine = 1, endLine = 200 } = {}) {
+  const { workspace } = sandboxExecutionProject(project, sandboxId);
+  if (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine || endLine - startLine > 399) {
+    throw new Error('Sandbox read range must contain at most 400 lines.');
+  }
+  const selected = containedSandboxPath(workspace, path, { requireFile: true });
+  const size = statSync(selected.target).size;
+  if (size > 2 * 1024 * 1024) throw new Error('Sandbox read supports text files up to 2 MiB.');
+  const lines = readFileSync(selected.target, 'utf8').split(/\r?\n/);
+  const slice = lines.slice(startLine - 1, endLine);
+  return { job: sandboxId, path: selected.relativePath, startLine, endLine: startLine + slice.length - 1, totalLines: lines.length, content: slice.join('\n') };
+}
+
+const SANDBOX_MEDIA_TYPES = new Map([
+  ['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'], ['.gif', 'image/gif'],
+]);
+
+export async function sandboxMediaArtifact(project, sandboxId, path) {
+  const { record, workspace } = sandboxExecutionProject(project, sandboxId);
+  const selected = containedSandboxPath(workspace, path, { requireFile: true });
+  const extension = selected.relativePath.slice(selected.relativePath.lastIndexOf('.')).toLowerCase();
+  const mediaType = SANDBOX_MEDIA_TYPES.get(extension);
+  if (!mediaType) throw new Error('Sandbox media supports PNG, JPEG, WebP, and GIF files only.');
+  const byteLength = statSync(selected.target).size;
+  if (byteLength < 1 || byteLength > 5 * 1024 * 1024) throw new Error('Sandbox media must contain from 1 byte to 5 MiB.');
+  const bytes = readFileSync(selected.target);
+  if (bytes.length !== byteLength) throw new Error('Sandbox media changed while it was being read.');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const git = await gitSnapshot(workspace);
+  const id = createHash('sha256').update(`${record.id}\0${selected.relativePath}\0${sha256}`).digest('hex');
+  return {
+    id, name: basename(selected.relativePath), mediaType, byteLength, sha256,
+    jobId: record.id, project: record.project, head: git.head, path: selected.relativePath,
+    bytes,
+  };
+}
+
+export async function searchSandbox(project, sandboxId, query, { scope = '.' } = {}) {
+  const { executionProject, workspace } = sandboxExecutionProject(project, sandboxId);
+  containedSandboxPath(workspace, scope, { requireDirectory: true });
+  return withSandboxOperation(project, sandboxId, 'search', () => searchRepository(executionProject, query, scope, { stream: false, origin: 'local-server' }));
+}
+
+function validateSandboxPatch(patch) {
+  const value = String(patch || '');
+  if (!value || Buffer.byteLength(value) > 256 * 1024) throw new Error('Sandbox patch must contain at most 256 KiB.');
+  for (const match of value.matchAll(/^(?:---|\+\+\+)\s+([^\t\r\n ]+)/gm)) {
+    const raw = match[1];
+    if (raw === '/dev/null') continue;
+    const path = raw.replace(/^[ab]\//, '');
+    if (!path || isAbsolute(path) || path.split('/').includes('..') || path.includes('\\')) throw new Error(`Sandbox patch contains an unsafe path: ${raw}`);
+  }
+  return value;
+}
+
+export async function applySandboxPatch(project, sandboxId, patch) {
+  const { executionProject } = sandboxExecutionProject(project, sandboxId);
+  const value = validateSandboxPatch(patch);
+  return withSandboxOperation(project, sandboxId, 'patch', async () => {
+    const checked = await runCommand(executionProject, ['git', 'apply', '--check', '-'], {
+      shell: false, stream: false, stdin: value, timeoutMs: 120000, origin: 'local-server',
+      request: `sandbox ${sandboxId} patch check`, operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'patch-check' },
+    });
+    if (checked.status !== 'pass') return checked;
+    return runCommand(executionProject, ['git', 'apply', '--whitespace=nowarn', '-'], {
+      shell: false, stream: false, stdin: value, captureDelta: true, timeoutMs: 120000, origin: 'local-server',
+      request: `sandbox ${sandboxId} patch`, operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'patch' },
+    });
+  });
+}
+
+export async function sandboxDiff(project, sandboxId) {
+  const { executionProject } = sandboxExecutionProject(project, sandboxId);
+  return withSandboxOperation(project, sandboxId, 'diff', async () => {
+    const tree = await worktreeTree(executionProject.root);
+    return runCommand(executionProject, ['git', 'diff', '--no-ext-diff', '--binary', 'HEAD', tree], {
+      shell: false, stream: false, timeoutMs: 120000, captureLimitCharacters: 256 * 1024,
+      origin: 'local-server', request: `sandbox ${sandboxId} diff`,
+      operationIdentity: { type: 'sandbox-operation', sandboxId, kind: 'diff' },
+    });
+  });
+}
+
+export async function discardSandboxJob(project, sandboxId) {
+  if (activeSandboxOperations.has(sandboxId)) throw new Error('A sandbox with an active operation cannot be discarded.');
+  const { record, workspace } = readSandboxRecord(project, sandboxId);
+  if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, status: 'DISCARDED', alreadyAbsent: true };
+  const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
+  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === workspace)) {
+    throw new Error('Sandbox workspace is not a registered worktree of the verified source repository.');
+  }
+  const removed = await exec('git', ['worktree', 'remove', '--force', workspace], project.root);
+  if (!removed.ok) throw new Error(`Unable to discard sandbox workspace: ${removed.stderr}`);
+  const discardedAt = new Date().toISOString();
+  const value = { ...record, status: 'DISCARDED', discardedAt, updatedAt: discardedAt };
+  writeSandboxRecord(project, value);
+  return { ...value, workspaceAvailable: false, alreadyAbsent: false };
+}
+
+function transitionProviderRegistration(target, providers) {
+  const matches = providers.filter((provider) => provider.available === true
+    && provider.provider === target.provider
+    && provider.runtime === target.runtime
+    && provider.costClass === target.costBoundary
+    && provider.dataBoundary === target.dataBoundary);
+  if (matches.length !== 1) {
+    throw new Error('Provider transition target does not match one available CommandHUD provider registration.');
+  }
+  const registration = matches[0];
+  if (registration.capabilities?.edit !== true) {
+    throw new Error('Provider transition target is not registered for workspace editing.');
+  }
+  const unsupported = (Array.isArray(target.capabilities) ? target.capabilities : []).filter((capability) => {
+    if (capability === 'workspace-write') return registration.capabilities.edit !== true;
+    if (capability === 'resume') return registration.capabilities.resume !== true;
+    return true;
+  });
+  if (unsupported.length) throw new Error(`Provider transition target has unsupported capabilities: ${unsupported.join(', ')}.`);
+  return registration;
+}
+
+export async function validateProviderTransitionRequest(project, request, {
+  checkpointText = null, providers = null,
+} = {}) {
+  if (!request || request.schemaVersion !== 1 || request.requestType !== 'provider-transition') {
+    throw new Error('Provider transition request schema is unsupported.');
+  }
+  if (request.executionAuthority !== 'CommandHUD' || request.decision !== 'READY_FOR_AUTHORITY_VALIDATION') {
+    throw new Error('Provider transition request is not addressed to CommandHUD authority validation.');
+  }
+  if (request.authorityValidationRequired !== true || request.dispatchRequested !== false
+    || request.writeOwnershipTransferred !== false || request.executable !== false) {
+    throw new Error('Provider transition request improperly claims execution or transferred authority.');
+  }
+  if (request.constraints?.sameWorkspaceRequired !== true || request.constraints?.checkpointMustStillMatch !== true
+    || request.constraints?.maximumActiveWriters !== 1) {
+    throw new Error('Provider transition request does not preserve checkpoint, workspace, and single-writer constraints.');
+  }
+  if (typeof request.requestId !== 'string' || !/^[0-9a-f]{64}$/.test(request.requestId)) {
+    throw new Error('Provider transition request identity is invalid.');
+  }
+  if (typeof checkpointText !== 'string' || checkpointText.length === 0) {
+    throw new Error('Provider transition validation requires exact checkpoint bytes.');
+  }
+  const checkpointHash = createHash('sha256').update(checkpointText).digest('hex');
+  if (request.checkpoint?.sha256 !== checkpointHash) throw new Error('Provider transition checkpoint hash does not match the supplied bytes.');
+  let checkpoint;
+  try { checkpoint = JSON.parse(checkpointText.replace(/^\uFEFF/, '')); } catch { throw new Error('Provider transition checkpoint is not valid JSON.'); }
+
+  const session = agentSession(project, request.jobId);
+  if (!session) throw new Error('Provider transition source is not a retained CommandHUD agent session.');
+  if (session.status === 'WORKING') throw new Error('Provider transition source still has an active writer.');
+  if (session.status === 'DONE') throw new Error('A completed provider session does not require replacement.');
+  if (!['BLOCKED', 'FAILED', 'EXHAUSTED', 'UNAVAILABLE', 'AUTH_FAILURE', 'USER_STOPPED', 'UNKNOWN_FAILURE'].includes(request.source?.outcome)) {
+    throw new Error('Provider transition source outcome is not a preservable terminal outcome.');
+  }
+  const workspace = resolve(session.worktree || '');
+  if (!workspace || resolve(request.source?.workspace || '') !== workspace) {
+    throw new Error('Provider transition workspace does not match retained CommandHUD evidence.');
+  }
+  const current = await gitSnapshot(workspace);
+  if (!current.head || current.head.toLowerCase() !== String(request.source?.currentHead || '').toLowerCase()) {
+    throw new Error('Provider transition expected HEAD is stale.');
+  }
+  if (resolve(request.constraints.expectedWorkspace || '') !== workspace
+    || String(request.constraints.expectedHead || '').toLowerCase() !== current.head.toLowerCase()) {
+    throw new Error('Provider transition constraints do not match the preserved workspace and HEAD.');
+  }
+  if (request.source?.provider !== session.provider || request.source?.sessionId !== session.providerSessionId) {
+    throw new Error('Provider transition source provider identity does not match retained CommandHUD evidence.');
+  }
+  if (checkpoint.jobId !== request.jobId || checkpoint.executionAuthority !== 'CommandHUD'
+    || resolve(checkpoint.workspace || '') !== workspace
+    || String(checkpoint.currentHead || '').toLowerCase() !== current.head.toLowerCase()
+    || checkpoint.providerOutcome?.outcome !== request.source?.outcome) {
+    throw new Error('Provider transition checkpoint does not match current CommandHUD authority state.');
+  }
+  if (request.ownership?.activeWriterCount !== 0 || request.ownership?.currentWriterReleased !== true) {
+    throw new Error('Provider transition request lacks released-writer evidence.');
+  }
+  if (!request.authorization?.source || !request.authorization?.evidence
+    || request.authorization?.provider !== true || request.authorization?.costBoundary !== true
+    || request.authorization?.dataBoundary !== true) {
+    throw new Error('Provider transition request lacks explicit provider and boundary authorization provenance.');
+  }
+  const activeWriters = runIdsNewest(project).ids
+    .map((id) => agentSession(project, id))
+    .filter((candidate) => candidate?.status === 'WORKING' && resolve(candidate.worktree || '') === workspace);
+  if (activeWriters.length) throw new Error('CommandHUD observes an active writer in the preserved workspace.');
+
+  const registrations = providers || await discoverAgentHarnesses();
+  const target = transitionProviderRegistration(request.target || {}, registrations);
+  return Object.freeze({
+    schemaVersion: 1,
+    validationType: 'provider-transition',
+    requestId: request.requestId,
+    decision: 'VALIDATED_NON_EXECUTING',
+    jobId: request.jobId,
+    executionAuthority: 'CommandHUD',
+    workspace,
+    currentHead: current.head,
+    checkpointSha256: checkpointHash,
+    source: { runId: session.id, provider: session.provider, status: session.status },
+    target: { agent: target.id, provider: target.provider, runtime: target.runtime },
+    activeWriterCount: 0,
+    authorityValidationComplete: true,
+    dispatchRequested: false,
+    writeOwnershipTransferred: false,
+    executable: false,
+  });
+}
+
 function agentRunDirectory(project, runId) {
   if (typeof runId !== 'string' || !/^\d{14}-[0-9a-f]{4}$/i.test(runId)) throw new Error('Agent action requires a valid session ID.');
   return join(project.store, 'runs', project.key, runId);
@@ -2265,6 +2614,17 @@ export function buildOperationContext(project, record, { currentCurrency = null 
       if (operation.diagnosticCount > 100) lines.push(`... ${operation.diagnosticCount - 100} additional diagnostics in raw evidence`);
     }
     if (operation.detailsTruncated) lines.push('DETAILS BOUNDED · inspect raw evidence for omitted diagnostics');
+  } else if (operation.type === 'argv-command') {
+    lines.push(`COMMAND ${operation.displayCommand || operation.command}`);
+    lines.push(`ARGV ${JSON.stringify(operation.argv)}`);
+    lines.push(operation.status === 'interrupted'
+      ? `RESULT INTERRUPTED completion-not-observed duration=${operation.durationMs}ms`
+      : `RESULT ${operation.status.toUpperCase()} exit=${operation.exitCode} duration=${operation.durationMs}ms`);
+    if (operation.status !== 'interrupted' && operation.summary?.length) lines.push(`SUMMARY ${operation.summary.join('; ')}`);
+    const stdout = compactContextEvidenceFile(record.stdoutPath, { maxLines: operation.summary?.length ? 12 : 40, maxChars: 6000 });
+    const stderr = compactContextEvidenceFile(record.stderrPath);
+    if (stdout.text) lines.push('', `STDOUT_EXCERPT${stdout.omitted ? ' (tail, bounded)' : ''}`, stdout.text);
+    if (stderr.text) lines.push('', `STDERR_EXCERPT${stderr.omitted ? ' (tail, bounded)' : ''}`, stderr.text);
   } else if (operation.type === 'terminal-command') {
     lines.push(`SHELL ${operation.shellLabel || operation.shell}`);
     lines.push(`COMMAND ${operation.displayCommand || operation.command}`);

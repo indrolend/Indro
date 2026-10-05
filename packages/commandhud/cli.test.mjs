@@ -154,6 +154,50 @@ test('hud run preserves argv metacharacters instead of invoking a command shell'
   }
 });
 
+test('hud run argv operation is immediately handoff-capable', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-run-handoff-'));
+  const state = join(root, '.state');
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: state };
+    const argvValue = 'left|right&still-data';
+    const passing = spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', 'console.log(process.argv[1])', argvValue], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(passing.status, 0, passing.stderr || passing.stdout);
+    const run = JSON.parse(passing.stdout);
+    assert.equal(run.operation.type, 'argv-command');
+    assert.deepEqual(run.operation.argv, [process.execPath, '-e', 'console.log(process.argv[1])', argvValue]);
+    assert.equal(run.operation.status, 'pass');
+    assert.equal(readFileSync(run.stdoutPath, 'utf8').trim(), argvValue);
+
+    const handoffResult = spawnSync(process.execPath, [cli, 'handoff', '--json'], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(handoffResult.status, 0, handoffResult.stderr || handoffResult.stdout);
+    const handoff = JSON.parse(handoffResult.stdout);
+    assert.equal(handoff.runId, run.runId);
+    assert.match(handoff.handoff, /OPERATION ARGV-COMMAND/);
+    assert.match(handoff.handoff, /ARGV /);
+    assert.match(handoff.handoff, /left\|right&still-data/);
+
+    const failing = spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', 'process.exit(7)', argvValue], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(failing.status, 1, failing.stderr || failing.stdout);
+    const failedRun = JSON.parse(failing.stdout);
+    assert.equal(failedRun.operation.type, 'argv-command');
+    assert.deepEqual(failedRun.operation.argv, [process.execPath, '-e', 'process.exit(7)', argvValue]);
+    assert.equal(failedRun.operation.exitCode, 7);
+    assert.equal(failedRun.operation.status, 'fail');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('hud search reports a missing rg capability without attempting execution', () => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-search-capability-'));
   try {

@@ -592,7 +592,16 @@ async function main() {
       index: Number.isInteger(options.stageIndex) ? options.stageIndex : null,
       count: Number.isInteger(options.stageCount) ? options.stageCount : null,
     } : null;
-    const record = await runCommand(project, args, { objective: options.objective, request, workflow, stream: !options.quiet && !options.json, origin: 'cli-argv', shell: false });
+    const record = await runCommand(project, args, {
+      objective: options.objective, request, workflow,
+      stream: !options.quiet && !options.json, origin: 'cli-argv', shell: false,
+      operationIdentity: { type: 'argv-command', argv: [...args], cwd: project.root },
+      operationReducer: ({ exitCode, command, record: value }) => ({
+        type: 'argv-command', argv: [...args], displayCommand: command, command,
+        exitCode, status: value.status, durationMs: value.durationMs, cwd: value.cwd,
+        summary: [...value.reduction.summary],
+      }),
+    });
     if (options.json) {
       console.log(JSON.stringify({
         runId: record.id, status: record.status, operation: record.operation,
