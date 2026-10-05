@@ -77,8 +77,20 @@ test('one CommandHUD sandbox supports iterative local development without touchi
   assert.equal(artifact.sha256, '4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6');
   assert.equal(artifact.jobId, created.id);
   assert.equal(artifact.head, head);
+  assert.equal(artifact.sourceArtifact.sha256, artifact.sha256);
   assert.deepEqual(artifact.bytes, mediaBytes);
   await assert.rejects(() => sandboxMediaArtifact(project, created.id, '../frame.png'), /contained relative path/);
+  const ppmBytes = Buffer.concat([Buffer.from('P6\n2 1\n255\n'), Buffer.from([255, 0, 0, 0, 128, 255])]);
+  writeFileSync(join(created.workspace, 'agent-frame.ppm'), ppmBytes);
+  const ppmArtifact = await sandboxMediaArtifact(project, created.id, 'agent-frame.ppm');
+  assert.equal(ppmArtifact.name, 'agent-frame.png');
+  assert.equal(ppmArtifact.mediaType, 'image/png');
+  assert.equal(ppmArtifact.width, 2);
+  assert.equal(ppmArtifact.height, 1);
+  assert.equal(ppmArtifact.sourceArtifact.mediaType, 'image/x-portable-pixmap');
+  assert.equal(ppmArtifact.sourceArtifact.byteLength, ppmBytes.length);
+  assert.equal(ppmArtifact.sourceArtifact.sha256, 'ae192a73c30fb24d7be8a083ed6c811b48f7acbfb88034f48668d0d9ae9da5fa');
+  assert.deepEqual([...ppmArtifact.bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   writeFileSync(join(created.workspace, 'not-media.txt'), 'not media');
   await assert.rejects(() => sandboxMediaArtifact(project, created.id, 'not-media.txt'), /supports PNG/);
 

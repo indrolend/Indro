@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { StringDecoder } from 'node:string_decoder';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { deflateSync } from 'node:zlib';
 import { operationPolicy, validateOperationEvidence } from './operation-kernel.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -2164,22 +2165,78 @@ const SANDBOX_MEDIA_TYPES = new Map([
   ['.webp', 'image/webp'], ['.gif', 'image/gif'],
 ]);
 
+function pngCrc(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const kind = Buffer.from(type, 'ascii');
+  const chunk = Buffer.allocUnsafe(12 + data.length);
+  chunk.writeUInt32BE(data.length, 0); kind.copy(chunk, 4); data.copy(chunk, 8);
+  chunk.writeUInt32BE(pngCrc(Buffer.concat([kind, data])), 8 + data.length);
+  return chunk;
+}
+
+function ppmToPng(source) {
+  let offset = 0;
+  const token = () => {
+    while (offset < source.length) {
+      if (source[offset] === 0x23) while (offset < source.length && source[offset] !== 0x0a) offset += 1;
+      else if (source[offset] === 0x20 || source[offset] === 0x09 || source[offset] === 0x0a || source[offset] === 0x0d) offset += 1;
+      else break;
+    }
+    const start = offset;
+    while (offset < source.length && source[offset] > 0x20 && source[offset] !== 0x23) offset += 1;
+    return source.subarray(start, offset).toString('ascii');
+  };
+  if (token() !== 'P6') throw new Error('Sandbox PPM media must use binary P6 encoding.');
+  const width = Number(token()), height = Number(token()), maximum = Number(token());
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || width > 4096 || height > 4096 || maximum !== 255) {
+    throw new Error('Sandbox PPM media has unsupported dimensions or color depth.');
+  }
+  if (source[offset] === 0x0d && source[offset + 1] === 0x0a) offset += 2;
+  else if (source[offset] === 0x20 || source[offset] === 0x09 || source[offset] === 0x0a || source[offset] === 0x0d) offset += 1;
+  else throw new Error('Sandbox PPM media is missing its pixel-data separator.');
+  const pixels = source.subarray(offset), rowBytes = width * 3;
+  if (pixels.length !== rowBytes * height) throw new Error('Sandbox PPM media pixel length does not match its dimensions.');
+  const scanlines = Buffer.allocUnsafe((rowBytes + 1) * height);
+  for (let row = 0; row < height; row += 1) {
+    const target = row * (rowBytes + 1); scanlines[target] = 0;
+    pixels.copy(scanlines, target + 1, row * rowBytes, (row + 1) * rowBytes);
+  }
+  const header = Buffer.alloc(13); header.writeUInt32BE(width, 0); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = 2;
+  return { bytes: Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(scanlines)), pngChunk('IEND', Buffer.alloc(0))]), width, height };
+}
+
 export async function sandboxMediaArtifact(project, sandboxId, path) {
   const { record, workspace } = sandboxExecutionProject(project, sandboxId);
   const selected = containedSandboxPath(workspace, path, { requireFile: true });
   const extension = selected.relativePath.slice(selected.relativePath.lastIndexOf('.')).toLowerCase();
-  const mediaType = SANDBOX_MEDIA_TYPES.get(extension);
-  if (!mediaType) throw new Error('Sandbox media supports PNG, JPEG, WebP, and GIF files only.');
-  const byteLength = statSync(selected.target).size;
-  if (byteLength < 1 || byteLength > 5 * 1024 * 1024) throw new Error('Sandbox media must contain from 1 byte to 5 MiB.');
-  const bytes = readFileSync(selected.target);
-  if (bytes.length !== byteLength) throw new Error('Sandbox media changed while it was being read.');
+  const sourceMediaType = SANDBOX_MEDIA_TYPES.get(extension) || (extension === '.ppm' ? 'image/x-portable-pixmap' : null);
+  if (!sourceMediaType) throw new Error('Sandbox media supports PNG, JPEG, WebP, GIF, and binary PPM files only.');
+  const sourceByteLength = statSync(selected.target).size;
+  if (sourceByteLength < 1 || sourceByteLength > 5 * 1024 * 1024) throw new Error('Sandbox media must contain from 1 byte to 5 MiB.');
+  const sourceBytes = readFileSync(selected.target);
+  if (sourceBytes.length !== sourceByteLength) throw new Error('Sandbox media changed while it was being read.');
+  const sourceSha256 = createHash('sha256').update(sourceBytes).digest('hex');
+  const converted = extension === '.ppm' ? ppmToPng(sourceBytes) : null;
+  const bytes = converted?.bytes || sourceBytes;
+  if (bytes.length > 5 * 1024 * 1024) throw new Error('Sandbox media representation exceeds 5 MiB.');
+  const mediaType = converted ? 'image/png' : sourceMediaType;
+  const byteLength = bytes.length;
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const git = await gitSnapshot(workspace);
-  const id = createHash('sha256').update(`${record.id}\0${selected.relativePath}\0${sha256}`).digest('hex');
+  const id = createHash('sha256').update(`${record.id}\0${selected.relativePath}\0${sourceSha256}`).digest('hex');
   return {
-    id, name: basename(selected.relativePath), mediaType, byteLength, sha256,
+    id, name: converted ? `${basename(selected.relativePath, extension)}.png` : basename(selected.relativePath), mediaType, byteLength, sha256,
     jobId: record.id, project: record.project, head: git.head, path: selected.relativePath,
+    width: converted?.width, height: converted?.height,
+    sourceArtifact: { name: basename(selected.relativePath), mediaType: sourceMediaType, byteLength: sourceByteLength, sha256: sourceSha256 },
     bytes,
   };
 }

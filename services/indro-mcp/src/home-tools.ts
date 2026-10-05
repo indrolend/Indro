@@ -35,6 +35,14 @@ async function callHomeMedia(env: HomeEnv, path: string) {
     head: response.headers.get("x-commandhud-source-head"),
     project: decodeURIComponent(response.headers.get("x-commandhud-project") || ""),
     path: decodeURIComponent(response.headers.get("x-commandhud-path") || ""),
+    width: Number(response.headers.get("x-commandhud-media-width") || 0) || undefined,
+    height: Number(response.headers.get("x-commandhud-media-height") || 0) || undefined,
+    sourceArtifact: {
+      name: decodeURIComponent(response.headers.get("x-commandhud-source-artifact-name") || ""),
+      mediaType: response.headers.get("x-commandhud-source-artifact-type"),
+      byteLength: Number(response.headers.get("x-commandhud-source-artifact-length") || 0),
+      sha256: response.headers.get("x-commandhud-source-artifact-sha256"),
+    },
   };
   return { descriptor, data: Buffer.from(bytes).toString("base64") };
 }

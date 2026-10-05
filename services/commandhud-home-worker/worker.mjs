@@ -32,7 +32,7 @@ function send(response, status, value) {
 }
 
 function sendMedia(response, artifact) {
-  response.writeHead(200, {
+  const headers = {
     "Content-Type": artifact.mediaType,
     "Content-Length": artifact.byteLength,
     "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(artifact.name)}`,
@@ -43,7 +43,14 @@ function sendMedia(response, artifact) {
     "X-CommandHUD-Source-Head": artifact.head,
     "X-CommandHUD-Project": encodeURIComponent(artifact.project),
     "X-CommandHUD-Path": encodeURIComponent(artifact.path),
-  });
+    "X-CommandHUD-Source-Artifact-Name": encodeURIComponent(artifact.sourceArtifact.name),
+    "X-CommandHUD-Source-Artifact-Type": artifact.sourceArtifact.mediaType,
+    "X-CommandHUD-Source-Artifact-Length": artifact.sourceArtifact.byteLength,
+    "X-CommandHUD-Source-Artifact-Sha256": artifact.sourceArtifact.sha256,
+  };
+  if (artifact.width) headers["X-CommandHUD-Media-Width"] = artifact.width;
+  if (artifact.height) headers["X-CommandHUD-Media-Height"] = artifact.height;
+  response.writeHead(200, headers);
   response.end(artifact.bytes);
 }
 
