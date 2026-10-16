@@ -108,6 +108,10 @@ On Windows, `hud service <name>` performs a validated read-only service probe an
 
 ## Terminal-only HUD
 
+For a copy-friendly two-terminal SSH workflow, run `hud input --root <repository>` in the command terminal and `hud output --follow --root <repository>` in the observation terminal. `hud input` retains the same immutable evidence as `hud shell` but prints only a compact completion line; command stdout and stderr stay in the evidence store and appear in the follower. The follower prints completed runs in observed stdout/stderr arrival order, marks outputless and failed runs explicitly, escapes terminal control characters, and never reruns a command. Use the same pair from macOS Terminal or an iPhone SSH client after connecting to the machine that owns the repository and evidence store.
+
+Before relying on the global launcher, run `hud runtime --root <repository>` and require `COMMANDHUD_RUNTIME CURRENT`. A stale result means the installed launcher is not byte-identical to the selected source checkout; update the one repository-root installation rather than creating another CLI authority.
+
 Run `hud shell` for a persistent terminal interface over the same immutable evidence and reduction system as the desktop command bar. Paste ordinary commands directly; CommandHUD executes them in the selected shell, displays the shortened result, and automatically copies that identical ChatGPT-ready context to the clipboard while retaining complete stdout and stderr.
 
 On Windows, `CommandHUD-TUI.cmd` provides the fixed terminal UI and `CommandHUD-Desktop.cmd` provides the Repository Map desktop client. `CommandHUD.cmd` forwards the complete CLI and therefore behaves like the installed `commandhud` compatibility alias, including context output when no command is supplied. The historical spaced filename `CommandHUD Shell.cmd` remains a compatibility alias for `CommandHUD.cmd shell` and forwards all arguments. Quote that legacy path in PowerShell. Desktop `.lnk` files are intentionally machine-specific; point one at an explicit repository-owned launcher in each clone.

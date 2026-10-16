@@ -361,6 +361,17 @@ test('storage inventory reports factual retained usage and integrity without cre
   assert.equal(listRuns(project, 100).length, countBefore);
 });
 
+test('shell-free runs execute Windows command shims without losing argv', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const project = await fixtureProject();
+  const shim = join(project.root, 'command-hud-fixture.cmd');
+  writeFileSync(shim, '@echo off\r\necho shim:%~1\r\n');
+  const record = await runCommand(project, [shim, 'two words'], { stream: false, shell: false });
+  assert.equal(record.exitCode, 0);
+  assert.match(readFileSync(record.stdoutPath, 'utf8'), /shim:two words/);
+});
+
 async function proofFixtureProject() {
   const root = fixture();
   mkdirSync(join(root, 'src'));

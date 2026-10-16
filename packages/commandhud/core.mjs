@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform, tmpdir } from 'node:os';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -1128,6 +1128,41 @@ async function recordBlockedOperation(project, {
   return record;
 }
 
+function windowsScriptShim(tokens, env = process.env) {
+  if (platform() !== 'win32') return null;
+  const executable = String(tokens[0] || '');
+  const executableExtension = extname(executable).toLowerCase();
+  let isScriptShim = executableExtension === '.cmd' || executableExtension === '.bat';
+  if (!isScriptShim && !executableExtension && !/[\\/]/.test(executable)) {
+    const pathValue = env.Path || env.PATH || '';
+    const extensions = (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+    for (const directory of pathValue.split(delimiter).filter(Boolean)) {
+      const cleanDirectory = directory.replace(/^"|"$/g, '');
+      const match = extensions.find((extension) => existsSync(join(cleanDirectory, `${executable}${extension.toLowerCase()}`))
+        || existsSync(join(cleanDirectory, `${executable}${extension.toUpperCase()}`)));
+      if (!match) continue;
+      isScriptShim = ['.cmd', '.bat'].includes(match.toLowerCase());
+      break;
+    }
+  }
+  if (!isScriptShim) return null;
+  const invocation = Buffer.from(JSON.stringify({ command: tokens[0], arguments: tokens.slice(1) }), 'utf8').toString('base64');
+  const script = [
+    "$ProgressPreference = 'SilentlyContinue'",
+    `$commandHudJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${invocation}'))`,
+    '$commandHudInvocation = $commandHudJson | ConvertFrom-Json',
+    '& ([string]$commandHudInvocation.command) @($commandHudInvocation.arguments)',
+    '$commandHudSuccess = $?',
+    '$commandHudExitCode = $LASTEXITCODE',
+    'if (-not $commandHudSuccess) { exit 1 }',
+    'if ($null -eq $commandHudExitCode) { exit 0 } else { exit $commandHudExitCode }',
+  ].join('; ');
+  return {
+    command: 'powershell.exe',
+    args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-InputFormat', 'None', '-OutputFormat', 'Text', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+  };
+}
+
 export async function runCommand(project, tokens, {
   objective, stream = true, request = null, workflow = null,
   acceptedExitCodes = [0], operationReducer = null, shell = true, captureDelta = false,
@@ -1162,14 +1197,26 @@ export async function runCommand(project, tokens, {
   mkdirSync(runDirectory, { recursive: false });
   const stdoutPath = join(runDirectory, 'stdout.log');
   const stderrPath = join(runDirectory, 'stderr.log');
+  const outputPath = join(runDirectory, 'output.ndjson');
   const stdoutFile = createWriteStream(stdoutPath, { flags: 'wx' });
   const stderrFile = createWriteStream(stderrPath, { flags: 'wx' });
+  const outputFile = createWriteStream(outputPath, { flags: 'wx' });
   const stdoutCapture = { chunks: [], start: 0, characters: 0, truncated: false };
   const stderrCapture = { chunks: [], start: 0, characters: 0, truncated: false };
   let stdoutBytes = 0;
   let stderrBytes = 0;
   const stdoutHash = createHash('sha256');
   const stderrHash = createHash('sha256');
+  const outputHash = createHash('sha256');
+  let outputBytes = 0;
+  let outputSequence = 0;
+  const writeOutputEvent = (streamName, chunk) => {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    const line = `${JSON.stringify({ sequence: ++outputSequence, stream: streamName, data: bytes.toString('base64') })}\n`;
+    outputBytes += Buffer.byteLength(line);
+    outputHash.update(line);
+    outputFile.write(line);
+  };
   const markerCollector = createResultMarkerCollector(resultMarkers);
   const capture = (state, value) => {
     state.chunks.push(value);
@@ -1204,11 +1251,14 @@ export async function runCommand(project, tokens, {
   let deadlineTimer = null;
   let externalCancellationTimer = null;
   try {
+    const windowsShim = !shell ? windowsScriptShim(tokens) : null;
     child = shell
       ? spawn(transportCommand, { cwd, shell: true, windowsHide: true, env: process.env })
-      : spawn(tokens[0], tokens.slice(1), { cwd, shell: false, windowsHide: true, env: process.env });
+      : windowsShim
+        ? spawn(windowsShim.command, windowsShim.args, { cwd, shell: false, windowsHide: true, env: process.env })
+        : spawn(tokens[0], tokens.slice(1), { cwd, shell: false, windowsHide: true, env: process.env });
   } catch (error) {
-    stdoutFile.end(); stderrFile.end();
+    stdoutFile.end(); stderrFile.end(); outputFile.end();
     throw new Error(`Unable to spawn command: ${error.message}`);
   }
   const terminate = async (force = false) => {
@@ -1227,7 +1277,7 @@ export async function runCommand(project, tokens, {
       operationId: id, inputText: command,
       request: request || null, command, transportCommand, argv: tokens, cwd, objective: objective || null,
       startedAt: started.toISOString(), pid: child.pid, captureDelta, treeBefore,
-      gitBefore: before, currencyBefore, stdoutPath, stderrPath, operationIdentity, resultMarkers,
+      gitBefore: before, currencyBefore, stdoutPath, stderrPath, outputPath, operationIdentity, resultMarkers,
       captureOutput, captureLimitCharacters,
       stdin: stdinEvidence,
       operationPolicy: policy,
@@ -1235,7 +1285,7 @@ export async function runCommand(project, tokens, {
     }, { exclusive: true });
   } catch (error) {
     await terminate(true);
-    stdoutFile.end(); stderrFile.end();
+    stdoutFile.end(); stderrFile.end(); outputFile.end();
     throw new Error(`Unable to journal running command: ${error.message}`);
   }
   const cancel = () => {
@@ -1276,6 +1326,7 @@ export async function runCommand(project, tokens, {
     // high-water mark: Node waits for the pipes before emitting `close`, while
     // the paused pipe waits for code after `close` to finish the file stream.
     stdoutFile.write(chunk);
+    writeOutputEvent('stdout', chunk);
     onOutput?.('stdout', value);
     if (stream) process.stdout.write(chunk);
   });
@@ -1287,6 +1338,7 @@ export async function runCommand(project, tokens, {
     markerCollector.observe('stderr', value);
     outputObserver?.observe?.('stderr', value);
     stderrFile.write(chunk);
+    writeOutputEvent('stderr', chunk);
     onOutput?.('stderr', value);
     if (stream) process.stderr.write(chunk);
   });
@@ -1299,6 +1351,7 @@ export async function runCommand(project, tokens, {
       markerCollector.observe('stderr', value);
       outputObserver?.observe?.('stderr', value);
       stderrFile.write(value);
+      writeOutputEvent('stderr', value);
     });
     child.once('close', (code) => resolveCode(code ?? 1));
   });
@@ -1306,7 +1359,11 @@ export async function runCommand(project, tokens, {
   if (deadlineTimer) clearTimeout(deadlineTimer);
   if (externalCancellationTimer) clearInterval(externalCancellationTimer);
   signal?.removeEventListener?.('abort', cancel);
-  await Promise.all([new Promise((r) => stdoutFile.end(r)), new Promise((r) => stderrFile.end(r))]);
+  await Promise.all([
+    new Promise((r) => stdoutFile.end(r)),
+    new Promise((r) => stderrFile.end(r)),
+    new Promise((r) => outputFile.end(r)),
+  ]);
   const stdout = stdoutCapture.chunks.slice(stdoutCapture.start).join('');
   const stderr = stderrCapture.chunks.slice(stderrCapture.start).join('');
   const ended = new Date();
@@ -1348,11 +1405,12 @@ export async function runCommand(project, tokens, {
     dirtyBefore: before.dirty, dirtyAfter: after.dirty,
     changedFiles: after.changedFiles, gitBefore: before, gitAfter: after,
     currencyBefore, currencyAfter,
-    stdoutPath, stderrPath, reducer: reduction.reducer, reduction,
+    stdoutPath, stderrPath, outputPath, reducer: reduction.reducer, reduction,
     evidence: {
       stdin: stdinEvidence,
       stdout: { bytes: stdoutBytes, sha256: `sha256:${stdoutHash.digest('hex')}` },
       stderr: { bytes: stderrBytes, sha256: `sha256:${stderrHash.digest('hex')}` },
+      output: { bytes: outputBytes, sha256: `sha256:${outputHash.digest('hex')}`, format: 'ndjson-base64-v1' },
       validity: evidenceValidity,
     },
     capture: {
@@ -2964,6 +3022,12 @@ export function classifyRunEvidenceIntegrity(project, record) {
     const path = join(runDirectory, `${stream}.log`);
     if (statSync(path).size !== record.evidence[stream].bytes || fileSha256(path) !== record.evidence[stream].sha256) return 'CORRUPT';
   }
+  if (record.outputPath || record.evidence?.output) {
+    const outputPath = join(runDirectory, 'output.ndjson');
+    if (resolve(record.outputPath || '') !== resolve(outputPath) || !existsSync(outputPath)) return 'MISSING';
+    if (!record.evidence?.output?.sha256) return 'UNKNOWN';
+    if (statSync(outputPath).size !== record.evidence.output.bytes || fileSha256(outputPath) !== record.evidence.output.sha256) return 'CORRUPT';
+  }
   return 'VERIFIED';
 }
 
@@ -3493,6 +3557,50 @@ export function projectRunEvidence(project, id, { mode = 'raw', count, pattern, 
     count: lineCount,
     context: contextCount,
     streams,
+  };
+}
+
+export function projectRunOutput(project, id) {
+  const { record, expected } = validatedRunEvidence(project, id);
+  const expectedOutputPath = join(project.store, 'runs', project.key, record.id, 'output.ndjson');
+  if (!record.outputPath) {
+    return {
+      runId: record.id,
+      command: record.command,
+      status: record.status,
+      exitCode: record.exitCode,
+      ordered: false,
+      chunks: ['stdout', 'stderr'].flatMap((stream) => {
+        const content = readFileSync(expected[stream], 'utf8');
+        return content ? [{ sequence: null, stream, content }] : [];
+      }),
+    };
+  }
+  if (resolve(record.outputPath) !== resolve(expectedOutputPath) || !existsSync(expectedOutputPath)) {
+    throw new Error(`Recorded chronological output is missing or invalid for ${record.id}.`);
+  }
+  if (record.evidence?.output?.bytes !== statSync(expectedOutputPath).size || record.evidence?.output?.sha256 !== fileSha256(expectedOutputPath)) {
+    throw new Error(`Recorded chronological output failed integrity verification for ${record.id}.`);
+  }
+  const raw = readFileSync(expectedOutputPath, 'utf8');
+  const chunks = raw.split(/\r?\n/).filter(Boolean).map((line, index) => {
+    let event;
+    try { event = JSON.parse(line); }
+    catch { throw new Error(`Recorded chronological output is corrupt for ${record.id}.`); }
+    if (event.sequence !== index + 1 || !['stdout', 'stderr'].includes(event.stream) || typeof event.data !== 'string') {
+      throw new Error(`Recorded chronological output is corrupt for ${record.id}.`);
+    }
+    const decoded = Buffer.from(event.data, 'base64');
+    if (decoded.toString('base64') !== event.data) throw new Error(`Recorded chronological output is corrupt for ${record.id}.`);
+    return { sequence: event.sequence, stream: event.stream, content: decoded.toString('utf8') };
+  });
+  return {
+    runId: record.id,
+    command: record.command,
+    status: record.status,
+    exitCode: record.exitCode,
+    ordered: true,
+    chunks,
   };
 }
 

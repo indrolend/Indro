@@ -220,6 +220,7 @@ export async function startHudShell(project, {
   clipboardWriter = clipboard,
   visual = true,
   tui = false,
+  inputOnly = false,
 } = {}) {
   let restoreOutputTrace = () => {};
   if (process.env.COMMANDHUD_TRACE_WRITES === '1') {
@@ -258,8 +259,11 @@ export async function startHudShell(project, {
   let pendingLine = null;
   if (layout.active === false && interactive && tui) layout.start();
   if (!layout.active) {
-    output.write(`${IDLE_FACE} Indro · semantic development system\n`);
-    output.write(`Repository: ${basename(project.root)} · Shell: ${session.shell.label} · /help for controls\n\n`);
+    if (inputOnly) output.write(`CommandHUD input · ${basename(project.root)} · ${session.shell.label}\n`);
+    else {
+      output.write(`${IDLE_FACE} Indro · semantic development system\n`);
+      output.write(`Repository: ${basename(project.root)} · Shell: ${session.shell.label} · /help for controls\n\n`);
+    }
   }
 
   const show = (value) => layout.active ? layout.renderOutput(String(value).trimEnd()) : output.write(value);
@@ -372,7 +376,7 @@ export async function startHudShell(project, {
         continue;
       }
       const visualStatus = createShellVisualStatus(output, {
-        enabled: layout.active || motion, animated: motion,
+        enabled: !inputOnly && (layout.active || motion), animated: !inputOnly && motion,
         morph: process.env.COMMANDHUD_PARTICLE_MORPH === '1',
         row: layout.active ? 2 : null, showFace: !layout.active,
       });
@@ -381,7 +385,9 @@ export async function startHudShell(project, {
         const record = await session.execute(command, { stream: false, source: 'terminal-ui' });
         await visualStatus.finish(record.status);
         if (layout.active) layout.setFace(record.status);
-        if (layout.active) {
+        if (inputOnly) {
+          show(`${record.status.toUpperCase()} exit=${record.exitCode ?? 'none'} · run:${record.id}\n`);
+        } else if (layout.active) {
           const currentContext = await buildCurrentOperationContext(project, record);
           const context = currentContext.handoff;
           let copyState;
