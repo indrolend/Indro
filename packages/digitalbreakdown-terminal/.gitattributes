@@ -1,0 +1,3 @@
+# Keep browser and Node sources portable across the Windows PTY host and CI.
+* text=auto eol=lf
+*.ttf binary
