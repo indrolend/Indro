@@ -57,7 +57,12 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   };
 
   socket.send(JSON.stringify({ type: "resize", cols: 120, rows: 35 }));
-  await waitFor(value => /> $/.test(value));
+  const promptVisible = value => /(?:> |❯ )$/.test(value);
+  await waitFor(promptVisible);
+  send("Write-Output $env:TERM\r");
+  await waitFor(value => value.includes("xterm-256color"));
+  send("Get-Command dbt-evidence -ErrorAction Stop | Select-Object -ExpandProperty CommandType\r");
+  await waitFor(value => value.includes("Function"));
   send("Write-Outp\t \"DB_BASELINE_α\"\r");
   await waitFor(value => value.includes("DB_BASELINE_α"));
   send("Write-Output \"BAD\x7f\x7f\x7fDB_EDIT_GOOD\"\r");
@@ -68,7 +73,7 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   send("Start-Sleep -Seconds 20\r");
   await delay(400);
   send("\x03");
-  await waitFor(value => /> $/.test(value.slice(-300)));
+  await waitFor(value => promptVisible(value.slice(-300)));
   send("Write-Output \"RECOVERED\"\r");
   await waitFor(value => value.includes("RECOVERED"));
 });

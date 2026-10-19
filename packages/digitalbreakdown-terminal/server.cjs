@@ -4,6 +4,7 @@ const WebSocket = require("ws");
 const pty = require("node-pty");
 const path = require("path");
 const { createCommandHudReader } = require("./commandhud-adapter.cjs");
+const { terminalEnvironment } = require("./terminal-environment.cjs");
 
 const app = express();
 const server = http.createServer(app);
@@ -46,12 +47,12 @@ wss.on("connection", (socket, request) => {
     return;
   }
 
-  const shell = pty.spawn("pwsh.exe", ["-NoLogo"], {
+  const shell = pty.spawn("pwsh.exe", ["-NoLogo", "-NoExit", "-File", path.join(__dirname, "shell-init.ps1")], {
     name: "xterm-256color",
     cols: 100,
     rows: 30,
     cwd: process.env.USERPROFILE || process.cwd(),
-    env: process.env,
+    env: terminalEnvironment(process.env),
     useConpty: true
   });
 

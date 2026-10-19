@@ -13,7 +13,7 @@
 2. Measure animation frame time, xterm input latency, selection, clipboard, IME/Unicode width, and full-screen program compatibility.
 4. Add server-side session/PTY lifecycle observations without inferring command lifecycle.
 5. Prototype glyph animation only through a documented xterm renderer/addon seam; preserve an instant fallback.
-6. Add explicit compact, expanded, structured, and handoff copy modes for retained evidence; bounded evidence expansion is implemented.
+6. Add explicit compact, expanded, structured, and handoff copy modes for retained evidence; bounded evidence expansion and terminal-native `dbt-evidence list`/`tail` are implemented.
 7. Map Indro plans and Brokeman checkpoints through adapters.
 8. Reuse MonumentWorld schema/geometry lessons for an optional viewer; do not import its state store or shell.
 
@@ -24,3 +24,5 @@ Held Backspace was represented by repeated delete bytes in the PTY integration t
 ## Functional/visual independence contract
 
 Every future terminal integration must provide a required functional/text path before adding a visual projection. Optional visual modules are dynamically loaded after xterm initialization and may be disabled with `?visuals=off`. Observation and animation failures are caught after the relevant terminal I/O or evidence rendering action; they cannot throw through the PTY/WebSocket/xterm path. Evidence currency remains distinct from verification: the current browser projection labels all retained operations `unverified` until an authority supplies a distinct verification result.
+
+`dbt-evidence list [limit]` and `dbt-evidence tail <run-id> [count]` are explicit PowerShell functions loaded into the terminal session. They invoke the same read-only adapter as the evidence panel, accept no raw mode, and never execute a retained command. This is the baseline text path that future visual evidence features must preserve.
