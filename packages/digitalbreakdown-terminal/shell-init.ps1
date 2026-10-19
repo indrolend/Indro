@@ -1,5 +1,7 @@
-$script:dbTerminalEvidence = Join-Path $PSScriptRoot 'terminal-evidence.cjs'
+$script:commandHudCli = Join-Path $PSScriptRoot '..\commandhud\cli.mjs'
 
-function global:dbt-evidence {
-    & node $script:dbTerminalEvidence @args
+if (-not (Get-Command hud -ErrorAction SilentlyContinue)) {
+    function global:hud {
+        & node $script:commandHudCli @args
+    }
 }

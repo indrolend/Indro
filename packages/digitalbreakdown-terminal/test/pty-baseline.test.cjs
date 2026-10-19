@@ -61,7 +61,7 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   await waitFor(promptVisible);
   send("Write-Output $env:TERM\r");
   await waitFor(value => value.includes("xterm-256color"));
-  send("Get-Command dbt-evidence -ErrorAction Stop | Select-Object -ExpandProperty CommandType\r");
+  send("Get-Command hud -ErrorAction Stop | Select-Object -ExpandProperty CommandType\r");
   await waitFor(value => value.includes("Function"));
   send("Write-Outp\t \"DB_BASELINE_α\"\r");
   await waitFor(value => value.includes("DB_BASELINE_α"));
