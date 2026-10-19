@@ -1,16 +1,44 @@
 import { Terminal } from "/node_modules/@xterm/xterm/lib/xterm.mjs";
 import { FitAddon } from "/node_modules/@xterm/addon-fit/lib/addon-fit.mjs";
 import { createObservationStream, classifyInput } from "/observation-model.mjs";
-import { createBuoyantCanvas } from "/buoyant-canvas.mjs";
 import { createClipboardProjection, clipboardObservedState } from "/clipboard-projection.mjs";
-import { createSemanticMorph } from "/semantic-morph.mjs";
+import { runFunctionalThenObserve, safeVisualCall } from "/functional-boundary.mjs";
 
 const sessionIdentity = crypto.randomUUID();
-const buoyantCanvas = createBuoyantCanvas(document.getElementById("buoyant-field"));
+const visualsEnabled = new URLSearchParams(location.search).get("visuals") !== "off";
+let visualObserver = () => {};
+let semanticMorph = Object.freeze({ play() {}, stop() {} });
 const observations = createObservationStream({
   sessionIdentity,
-  onEvent: event => buoyantCanvas.observe(event)
+  onEvent: event => visualObserver(event)
 });
+
+function observeOptional(eventType, observedState, options) {
+  try {
+    return observations.observe(eventType, observedState, options);
+  } catch {
+    return null;
+  }
+}
+
+function enableOptionalVisuals() {
+  if (!visualsEnabled) return;
+  void import("/buoyant-canvas.mjs").then(({ createBuoyantCanvas }) => {
+    try {
+      const canvas = createBuoyantCanvas(document.getElementById("buoyant-field"));
+      visualObserver = event => safeVisualCall(canvas, "observe", event);
+    } catch {
+      visualObserver = () => {};
+    }
+  }).catch(() => {});
+  void import("/semantic-morph.mjs").then(({ createSemanticMorph }) => {
+    try {
+      semanticMorph = createSemanticMorph(document.getElementById("semantic-morph-layer"));
+    } catch {
+      semanticMorph = Object.freeze({ play() {}, stop() {} });
+    }
+  }).catch(() => {});
+}
 
 const terminal = new Terminal({
   cursorBlink: true,
@@ -47,7 +75,6 @@ const evidenceDetail = document.getElementById("evidence-detail");
 const evidenceDetailTitle = document.getElementById("evidence-detail-title");
 const evidenceDetailBody = document.getElementById("evidence-detail-body");
 const evidenceDetailClose = document.getElementById("evidence-detail-close");
-const semanticMorph = createSemanticMorph(document.getElementById("semantic-morph-layer"));
 
 function selectedText() {
   return terminal.hasSelection() ? terminal.getSelection() : "";
@@ -62,7 +89,7 @@ terminal.onSelectionChange(() => {
   copyRaw.disabled = !text;
   copyFenced.disabled = !text;
   reportClipboardStatus(text ? `${text.length} CH SELECTED` : "NO SELECTION");
-  observations.observe("clipboard.selection", { length: text.length });
+  observeOptional("clipboard.selection", { length: text.length });
 });
 
 async function copySelection(mode) {
@@ -71,7 +98,7 @@ async function copySelection(mode) {
   const projection = createClipboardProjection(text, mode);
   try {
     await navigator.clipboard.writeText(projection);
-    observations.observe("clipboard.copy", clipboardObservedState(mode, projection));
+    observeOptional("clipboard.copy", clipboardObservedState(mode, projection));
     reportClipboardStatus(`${mode.toUpperCase()} COPIED`);
     terminal.focus();
   } catch {
@@ -84,8 +111,8 @@ copyFenced.addEventListener("click", () => copySelection("fenced"));
 paste.addEventListener("click", async () => {
   try {
     const text = await navigator.clipboard.readText();
-    observations.observe("clipboard.paste", clipboardObservedState("raw", text));
     terminal.paste(text);
+    observeOptional("clipboard.paste", clipboardObservedState("raw", text));
     reportClipboardStatus(`${text.length} CH PASTED`);
     terminal.focus();
   } catch {
@@ -102,14 +129,14 @@ function renderEvidence(snapshot) {
   const repository = snapshot.repository;
   evidenceRepository.textContent = `${repository.name} · ${repository.branch ?? "branch unknown"} · ${repository.head?.slice(0, 12) ?? "HEAD unknown"}`;
   for (const operation of snapshot.operations ?? []) {
-    observations.observe("commandhud.operation", {
+    observeOptional("commandhud.operation", {
       type: operation.type ?? null,
       status: operation.status ?? null,
       evidence: operation.evidence ?? null,
       durationMs: operation.durationMs ?? null
     }, {
       sourceRecordIdentity: operation.runId ?? null,
-      verificationStatus: operation.evidence === "CURRENT" ? "verified" : "unverified",
+      verificationStatus: "unverified",
       historicalReplay: true
     });
     const item = document.createElement("li");
@@ -150,10 +177,10 @@ async function expandEvidence(operation, source, trigger) {
     evidenceDetailTitle.textContent = `${operation.type ?? "OPERATION"} · ${operation.runId}`;
     renderEvidenceText(projection);
     const expanded = `${projection.streams?.reduce((sum, stream) => sum + (stream.totalLines || 0), 0) ?? 0} retained lines`;
-    semanticMorph.play({ from: `${operation.type ?? "operation"} · ${operation.status ?? "unknown"}`, to: expanded, source, target: evidenceDetail });
-    observations.observe("commandhud.evidence.expanded", { mode: projection.mode, count: projection.count }, {
+    safeVisualCall(semanticMorph, "play", { from: `${operation.type ?? "operation"} · ${operation.status ?? "unknown"}`, to: expanded, source, target: evidenceDetail });
+    observeOptional("commandhud.evidence.expanded", { mode: projection.mode, count: projection.count }, {
       sourceRecordIdentity: projection.runId,
-      verificationStatus: operation.evidence === "CURRENT" ? "verified" : "unverified",
+      verificationStatus: "unverified",
       historicalReplay: true
     });
   } catch {
@@ -185,7 +212,7 @@ function setEvidenceOpen(open) {
 evidenceToggle.addEventListener("click", () => setEvidenceOpen(evidencePanel.hidden));
 evidenceClose.addEventListener("click", () => setEvidenceOpen(false));
 evidenceDetailClose.addEventListener("click", () => {
-  semanticMorph.stop();
+  safeVisualCall(semanticMorph, "stop");
   evidenceDetail.hidden = true;
 });
 
@@ -193,37 +220,37 @@ const protocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${protocol}//${location.host}/terminal`);
 
 socket.addEventListener("open", () => {
-  observations.observe("session.connected", { transport: "websocket" });
   socket.send(JSON.stringify({
     type: "resize",
     cols: terminal.cols,
     rows: terminal.rows
   }));
+  observeOptional("session.connected", { transport: "websocket" });
 });
 
 socket.addEventListener("message", event => {
-  observations.observe("terminal.output", { length: String(event.data).length });
-  terminal.write(event.data);
+  runFunctionalThenObserve(
+    () => terminal.write(event.data),
+    () => observeOptional("terminal.output", { length: String(event.data).length })
+  );
 });
 
 socket.addEventListener("close", () => {
-  observations.observe("session.disconnected", { transport: "websocket" });
   terminal.writeln("\r\n[SESSION DISCONNECTED]");
+  observeOptional("session.disconnected", { transport: "websocket" });
 });
 
 terminal.onData(data => {
-  observations.observe("terminal.input", {
-    kind: classifyInput(data),
-    length: data.length
-  });
   if (socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "input", data }));
+    runFunctionalThenObserve(
+      () => socket.send(JSON.stringify({ type: "input", data })),
+      () => observeOptional("terminal.input", { kind: classifyInput(data), length: data.length })
+    );
   }
 });
 
 function resize() {
   fit.fit();
-  observations.observe("terminal.resize", { cols: terminal.cols, rows: terminal.rows });
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({
       type: "resize",
@@ -231,7 +258,9 @@ function resize() {
       rows: terminal.rows
     }));
   }
+  observeOptional("terminal.resize", { cols: terminal.cols, rows: terminal.rows });
 }
 
 new ResizeObserver(resize).observe(document.getElementById("terminal"));
 window.addEventListener("resize", resize);
+enableOptionalVisuals();
