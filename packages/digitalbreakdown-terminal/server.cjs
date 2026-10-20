@@ -5,6 +5,7 @@ const pty = require("node-pty");
 const path = require("path");
 const { createCommandHudReader } = require("./commandhud-adapter.cjs");
 const { terminalEnvironment } = require("./terminal-environment.cjs");
+const { terminalShell } = require("./terminal-shell.cjs");
 
 const app = express();
 const server = http.createServer(app);
@@ -47,13 +48,14 @@ wss.on("connection", (socket, request) => {
     return;
   }
 
-  const shell = pty.spawn("pwsh.exe", ["-NoLogo", "-NoExit", "-File", path.join(__dirname, "shell-init.ps1")], {
+  const shellSpec = terminalShell();
+  const shell = pty.spawn(shellSpec.executable, shellSpec.args, {
     name: "xterm-256color",
     cols: 100,
     rows: 30,
     cwd: process.env.USERPROFILE || process.cwd(),
     env: terminalEnvironment(process.env),
-    useConpty: true
+    ...shellSpec.options
   });
 
   const subscription = shell.onData(data => {

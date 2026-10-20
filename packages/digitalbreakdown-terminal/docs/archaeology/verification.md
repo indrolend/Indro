@@ -7,7 +7,7 @@ Date: 2026-10-19 (America/Chicago).
 | SOURCE INSPECTED | Terminal source/manifests/Git; CommandHUD/Indro core, architecture, retirement audit; Brokeman contracts; Jelly code; MonumentWorld code/history; Big Bang handoff; named archives and Codex concept search | Passed for available local sources; scope/limitations in `source-inventory.md` |
 | ARCHIVE SEARCHED | Local OpenAI export: 150 conversations / 26,808 messages through 2026-08-12; connected Google Drive exact and synonymous searches; Indro Git provenance | Recovered three direct user statements and the exact Indro laws; later named concepts remain unrecovered |
 | STATIC CHECK PASSED | ES modules loaded by Node test runner; package test command | Passed |
-| UNIT TEST PASSED | `npm test`: observation identity/nulls, input classification, clipboard projections, bounded CommandHUD adapter utilities, deterministic field, replay suppression, particle endpoint morph, functional/visual failure boundary, ConPTY environment | 18/18 |
+| UNIT TEST PASSED | `npm test`: observation identity/nulls, input classification, clipboard projections, bounded CommandHUD adapter utilities, deterministic field, replay suppression, particle endpoint morph, functional/visual failure boundary, ConPTY environment, platform shell selection | 19/19 |
 | INTEGRATION TEST PASSED | `npm test`: actual server on isolated ephemeral port, CommandHUD read-only endpoint, WebSocket, node-pty ConPTY, PowerShell | 1/1 |
 | PTY BEHAVIOR VERIFIED | 120x35 resize, `TERM=xterm-256color`, canonical `hud` fallback function, Tab completing `Write-Outp`, repeated Backspace edit, Up history replay, Unicode alpha, Ctrl+C, post-interrupt command | Passed in automated integration test |
 | GRAPHICAL RUNTIME LAUNCHED | Existing loopback server opened in in-app browser | Passed |
@@ -17,7 +17,7 @@ Date: 2026-10-19 (America/Chicago).
 | COPY DOCK INSPECTED | Live xterm selection enabled Raw/Fenced actions and displayed `34 CH SELECTED`; Fenced reported copied; explicit Paste reported its length and did not submit | Passed in in-app browser; OS clipboard byte round-trip UNVERIFIED because the automation clipboard is isolated |
 | VISUAL PARITY VERIFIED | Comparison against historical Jelly/MonumentWorld target | UNVERIFIED |
 
-Command: `npm test` — 18 tests passed, 0 failed. The functional-boundary test deliberately throws from observation/animation after a simulated PTY write and verifies the write remains completed. The ConPTY integration test verifies the canonical `hud` fallback rather than a terminal-specific evidence command.
+Command: `npm test` — 19 tests passed, 0 failed. The functional-boundary test deliberately throws from observation/animation after a simulated PTY write and verifies the write remains completed. The ConPTY integration test verifies the canonical `hud` fallback rather than a terminal-specific evidence command. Platform selection has unit coverage; a real macOS PTY launch remains unverified on this Windows host.
 
 Browser inspection reported no warning/error console entries. Read-only DOM inspection measured both canvas and terminal at 1280x672 CSS content extent, with the canvas at z-index 0 and `pointer-events: none`; reduced motion was false for this capture.
 

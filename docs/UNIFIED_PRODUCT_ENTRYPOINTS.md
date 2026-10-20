@@ -32,6 +32,10 @@ The terminal session defines a `hud` PowerShell function only when no installed 
 
 The server's read-only evidence panel remains an adapter over the same CommandHUD core. It is a graphical projection, not a separate capability.
 
+## Platform shell transport
+
+The graphic terminal uses PowerShell 7 (`pwsh`) on every supported host. On Windows it starts `pwsh.exe` through ConPTY; on macOS and Linux it starts `pwsh` through the native PTY path. This is transport selection only: the CLI/core authority and terminal command contract stay identical. A host must have PowerShell 7 available on `PATH`; the server fails visibly if it is unavailable.
+
 ## Migration rule
 
 New terminal features start by extending the owning CLI/core contract. The terminal then consumes that source identity and structured output. A terminal-only feature is permitted only for shell presentation mechanics that have no independent operational meaning, such as cell alignment, glyph motion, field damping, or selection affordances.
