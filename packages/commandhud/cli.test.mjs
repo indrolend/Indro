@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -149,6 +149,120 @@ test('hud run preserves argv metacharacters instead of invoking a command shell'
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const value = JSON.parse(result.stdout);
     assert.equal(readFileSync(value.stdoutPath, 'utf8').trim(), 'left|right');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hud output renders chronological safe output and terminal status', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: join(root, '.state') };
+    const script = "process.stdout.write('first\\n'); setTimeout(() => { process.stderr.write('\\x1b[31msecond\\x07\\r\\x9b\\n'); setTimeout(() => process.stdout.write('third\\n'), 20); }, 20)";
+    const run = spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', script], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    const result = spawnSync(process.execPath, [cli, 'output'], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.ok(result.stdout.indexOf('first') < result.stdout.indexOf('second'));
+    assert.ok(result.stdout.indexOf('second') < result.stdout.indexOf('third'));
+    assert.doesNotMatch(result.stdout, /\x1b\[31m/);
+    assert.match(result.stdout, /␛\[31msecond\\x07\\r\\x9b/);
+    assert.match(result.stdout, /— PASS exit=0 · run:/);
+    assert.doesNotMatch(result.stdout, /legacy stream order/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hud output reports the latest outputless run instead of ghosting older output', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-empty-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: join(root, '.state') };
+    const execute = (script) => spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', script], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(execute("console.log('older-output')").status, 0);
+    assert.equal(execute('').status, 0);
+    const result = spawnSync(process.execPath, [cli, 'output'], { cwd: root, encoding: 'utf8', timeout: 10_000, env });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /^\(no output\)$/m);
+    assert.doesNotMatch(result.stdout, /older-output/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hud output --follow observes commands from an independent process', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-follow-'));
+  let follower;
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: join(root, '.state') };
+    follower = spawn(process.execPath, [cli, 'output', '--follow'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    follower.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    follower.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const execute = (script) => spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', script], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(execute("console.log('cross-process-one')").status, 0);
+    assert.equal(execute('').status, 0);
+    assert.equal(execute("console.error('cross-process-fail'); process.exit(7)").status, 1);
+    const deadline = Date.now() + 8_000;
+    while ((stdout.match(/— (?:PASS|FAIL) exit=/g) || []).length < 3 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(stderr, '');
+    assert.match(stdout, /cross-process-one/);
+    assert.match(stdout, /\(no output\)/);
+    assert.match(stdout, /cross-process-fail/);
+    assert.equal((stdout.match(/— (?:PASS|FAIL) exit=/g) || []).length, 3, stdout);
+  } finally {
+    if (follower && follower.exitCode === null) {
+      const exited = new Promise((resolve) => follower.once('exit', resolve));
+      follower.kill();
+      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hud input keeps command output in evidence and prints only compact completion', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-input-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: join(root, '.state') };
+    const command = process.platform === 'win32' ? 'Write-Output evidence-only' : 'printf "evidence-only\\n"';
+    const result = spawnSync(process.execPath, [cli, 'input'], {
+      cwd: root, encoding: 'utf8', timeout: 15_000, env, input: `${command}\n/exit\n`,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /CommandHUD input/);
+    assert.match(result.stdout, /PASS exit=0 · run:/);
+    assert.doesNotMatch(result.stdout, /^evidence-only$/m);
+    assert.doesNotMatch(result.stdout, /packet ready|STATUS=PASS|SHORTENED OUTPUT/);
+    const output = spawnSync(process.execPath, [cli, 'output'], { cwd: root, encoding: 'utf8', timeout: 10_000, env });
+    assert.match(output.stdout, /evidence-only/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -2,12 +2,12 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, projectRunOutput, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 
 Run from any Git repository:
-  hud shell                         plain terminal + compact clipboard result
+  hud shell|input                   full or quiet persistent command entry
   hud tui                           fixed terminal UI + compact clipboard result
   hud run -- <command>              record one command and print a compact packet
   hud state [--json]                current repository and last-operation state
@@ -23,8 +23,8 @@ Run from any Git repository:
 
 Retained evidence (never reruns the command):
   hud storage [--json]              read-only evidence usage and integrity inventory
-  hud history [count]
-  hud sequences [history-count]     report repeated adjacent operations; never executes
+  hud output [--follow]             plain latest command output
+  hud history|sequences [count]     inspect recent or repeated operations
   hud handoff [--copy]
   hud raw|head|tail <run> [count]
   hud find <run> <pattern>
@@ -46,7 +46,7 @@ Use --root <path> to select an explicit Git repository.`;
 
 function parse(argv) {
   const args = [...argv];
-  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false };
+  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false, follow: false };
   const command = args.shift() || 'context';
   const positionals = [];
   const usedOptions = new Set();
@@ -63,6 +63,7 @@ function parse(argv) {
     else if (value === '--plain') { options.tui = false; usedOptions.add('tui'); }
     else if (value === '--tui') { options.tui = true; usedOptions.add('tui'); }
     else if (value === '--quiet') { options.quiet = true; usedOptions.add('quiet'); }
+    else if (value === '--follow') { options.follow = true; usedOptions.add('follow'); }
     else if (value === '--detach') { options.detach = true; usedOptions.add('detach'); }
     else if (value === '--json') { options.json = true; usedOptions.add('json'); }
     else if (value === '--lan') { options.host = '0.0.0.0'; usedOptions.add('host'); }
@@ -100,7 +101,9 @@ function validateCommandOptions(command, args, options, usedOptions) {
     desktop: new Set(['root']),
     serve: new Set(['root', 'host', 'port']),
     shell: new Set(['root', 'shell', 'animation', 'tui']),
+    input: new Set(['root', 'shell']),
     tui: new Set(['root', 'shell', 'animation']),
+    output: new Set(['root', 'follow']),
     'repository-command': new Set(['root', 'quiet', 'json']),
     lint: new Set(['root', 'quiet', 'json']),
     undo: new Set(['root', 'quiet', 'json']),
@@ -118,7 +121,7 @@ function validateCommandOptions(command, args, options, usedOptions) {
   const argumentLimits = {
     runtime: [0, 0], storage: [0, 0], context: [0, 0], status: [0, 0], state: [0, 0], doctor: [0, 0],
     tree: [0, 0], 'file-identity': [1, 1], 'compare-files': [2, 2], service: [1, 1],
-    'service-reset-plan': [1, 1], desktop: [0, 0], serve: [0, 0], shell: [0, 0], tui: [0, 0],
+    'service-reset-plan': [1, 1], desktop: [0, 0], serve: [0, 0], shell: [0, 0], input: [0, 0], tui: [0, 0], output: [0, 0],
     search: [1, 2], 'repository-command': [1, 1], proof: [1, 1], impact: [1, 1], lint: [0, 0],
     'undo-plan': [1, 1], undo: [1, 1], handoff: [0, 0], continue: [0, 0], tools: [0, 0],
     run: [1, Infinity], last: [0, 0], packet: [0, 0], workflow: [1, 1], history: [0, 1],
@@ -425,9 +428,14 @@ async function main() {
     }
     return;
   }
-  if (command === 'shell' || command === 'tui') {
+  if (command === 'shell' || command === 'input' || command === 'tui') {
     const { startHudShell } = await import('./shell.mjs');
-    await startHudShell(project, { shell: options.shell || undefined, visual: options.animation, tui: command === 'tui' ? true : options.tui });
+    await startHudShell(project, {
+      shell: options.shell || undefined,
+      visual: options.animation,
+      tui: command === 'tui' ? true : options.tui,
+      inputOnly: command === 'input',
+    });
     return;
   }
   if (command === 'serve') {
@@ -630,6 +638,54 @@ async function main() {
     if (command === 'last' && options.json) console.log(JSON.stringify(record, null, 2));
     else if (command === 'last') printObject({ id: record.id, status: record.status, command: record.command, exit_code: record.exitCode, stdout: record.stdoutPath, stderr: record.stderrPath });
     else { const packet = formatPacket(record.packet); console.log(packet); if (options.copy) copy(packet); }
+    return;
+  }
+  if (command === 'output') {
+    let lastDisplayedId = null;
+    let displayed = false;
+    const seenRunIds = new Set();
+    const safe = (value) => String(value)
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\\r')
+      .replaceAll('\x1b', '␛')
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, (character) => `\\x${character.charCodeAt(0).toString(16).padStart(2, '0')}`);
+    const showRun = (run) => {
+      const projection = projectRunOutput(project, run.id);
+      const content = projection.chunks.map((chunk) => safe(chunk.content)).join('');
+      const status = `${projection.status.toUpperCase()} exit=${projection.exitCode ?? 'none'} · run:${projection.runId}`;
+      if (displayed) process.stdout.write('\n');
+      if (content) process.stdout.write(content.endsWith('\n') ? content : `${content}\n`);
+      else process.stdout.write('(no output)\n');
+      process.stdout.write(`— ${status}${projection.ordered ? '' : ' · legacy stream order'}\n`);
+      lastDisplayedId = run.id;
+      displayed = true;
+    };
+    const showLatest = () => {
+      const runs = listRuns(project, options.follow ? 100 : 1);
+      if (!runs.length) return;
+      if (!lastDisplayedId) {
+        for (const run of runs) seenRunIds.add(run.id);
+        return showRun(runs[0]);
+      }
+      if (!runs.some((run) => run.id === lastDisplayedId)) {
+        process.stdout.write('\n— OUTPUT GAP · more than 100 completed runs arrived before polling\n');
+      }
+      const unseen = runs.filter((run) => !seenRunIds.has(run.id)).sort((left, right) => {
+        const time = Date.parse(left.endedAt || left.startedAt || '') - Date.parse(right.endedAt || right.startedAt || '');
+        return time || left.id.localeCompare(right.id, 'en');
+      });
+      for (const run of unseen) {
+        seenRunIds.add(run.id);
+        showRun(run);
+      }
+    };
+    showLatest();
+    if (options.follow) {
+      const timer = setInterval(showLatest, 250);
+      const stop = () => { clearInterval(timer); process.exitCode = 0; };
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
+    }
     return;
   }
   if (command === 'workflow') {
