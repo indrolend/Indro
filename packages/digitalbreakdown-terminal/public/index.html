@@ -30,15 +30,26 @@ body {
 }
 
 header {
-  padding: 14px 22px;
+  padding: 10px 16px;
   border-bottom: 1px solid #23575a;
   letter-spacing: 2px;
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 16px;
 }
+
+.identity { flex: none; font-family: "Digital Breakdown Grid V3", Consolas, monospace; font-size: 14px; color: #a2f9e2; white-space: nowrap; }
+.header-context { display: grid; grid-template-columns: minmax(140px, 1fr) auto auto auto; align-items: center; gap: 7px; min-width: 0; flex: 1; }
+.marker { border: 1px solid rgba(40,102,109,.72); border-radius: 3px; padding: 4px 7px; color: #72aeb0; font: 10px/1.1 Consolas, monospace; letter-spacing: .7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#context-location { color: #d9fff4; }
+#context-branch { color: #f1c86a; }
+#context-dirty[data-state="dirty"] { color: #ff8b9b; border-color: rgba(255,101,122,.52); }
+#context-dirty[data-state="clean"] { color: #74ffbd; }
+.status-cluster { display: flex; gap: 7px; align-items: center; flex: none; }
+.status[data-state="active"], .status[data-state="success"] { color: #74ffbd; }
+.status[data-state="lost"], .status[data-state="error"] { color: #ff657a; }
 
 #copy-dock {
   display: flex;
@@ -100,8 +111,27 @@ header {
   inset: 0;
   z-index: 1;
   min-height: 0;
-  padding: 12px;
+  padding: 14px 16px;
   box-sizing: border-box;
+}
+
+footer { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 16px; border-top: 1px solid #23575a; background: rgba(0,19,23,.9); }
+footer .spacer { flex: 1; min-width: 8px; }
+
+@media (max-width: 900px) {
+  header { flex-wrap: wrap; gap: 8px; }
+  .header-context { order: 3; flex-basis: 100%; grid-template-columns: minmax(120px, 1fr) auto auto auto; }
+  #copy-dock { margin-left: auto; }
+  .status-cluster { margin-left: auto; }
+}
+
+@media (max-width: 560px) {
+  .identity { font-size: 12px; }
+  .header-context { grid-template-columns: minmax(100px, 1fr) auto; }
+  #context-repository, #context-dirty { display: none; }
+  #copy-status, #copy-fenced { display: none; }
+  footer { padding-inline: 10px; }
+  #shell-status, #evidence-status { max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 #buoyant-field {
@@ -165,7 +195,13 @@ main {
 </head>
 <body>
 <header>
-  <span>DIGITAL BREAKDOWN // SIGNAL ACTIVE</span>
+  <span class="identity">DIGITAL BREAKDOWN // TERMINAL</span>
+  <div class="header-context" aria-label="Terminal context">
+    <span id="context-location" class="marker">LOCATION UNKNOWN</span>
+    <span id="context-repository" class="marker">NO REPOSITORY</span>
+    <span id="context-branch" class="marker">NO BRANCH</span>
+    <span id="context-dirty" class="marker" data-state="detached">DETACHED</span>
+  </div>
   <button id="evidence-toggle" type="button" aria-expanded="false" aria-controls="evidence-panel">EVIDENCE</button>
   <nav id="copy-dock" aria-label="Clipboard tools">
     <span id="copy-status" aria-live="polite">NO SELECTION</span>
@@ -190,6 +226,14 @@ main {
   </section>
   <div id="semantic-morph-layer" aria-hidden="true"></div>
 </main>
+<footer aria-label="Terminal runtime status">
+  <span id="shell-status" class="marker">PowerShell</span>
+  <span id="execution-status" class="marker status">READY</span>
+  <span id="exit-status" class="marker status" data-state="idle">EXIT —</span>
+  <span class="spacer"></span>
+  <span id="evidence-status" class="marker">EVIDENCE QUIET</span>
+  <span id="connection-status" class="marker status" data-state="lost">SIGNAL LOST</span>
+</footer>
 <script type="module" src="/client.js"></script>
 </body>
 </html>

@@ -7,3 +7,5 @@ __pycache__/
 host/
 evidence/
 portable/data/
+packages/commandhud/*.before-*
+services/indro-mcp/.wrangler-dryrun/

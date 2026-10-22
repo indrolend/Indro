@@ -6,7 +6,6 @@ import { runNdra } from './ndra.mjs';
 import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
-
 Run from any Git repository:
   hud shell                         plain terminal + compact clipboard result
   hud tui                           fixed terminal UI + compact clipboard result
@@ -24,6 +23,7 @@ Run from any Git repository:
 
 Retained evidence (never reruns the command):
   hud storage [--json]              read-only evidence usage and integrity inventory
+  hud output [--follow]              plain latest command output
   hud history [count]
   hud sequences [history-count]     report repeated adjacent operations; never executes
   hud handoff [--copy]
@@ -47,7 +47,7 @@ Use --root <path> to select an explicit Git repository.`;
 
 function parse(argv) {
   const args = [...argv];
-  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false };
+  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false, follow: false };
   const command = args.shift() || 'context';
   const positionals = [];
   const usedOptions = new Set();
@@ -64,6 +64,7 @@ function parse(argv) {
     else if (value === '--plain') { options.tui = false; usedOptions.add('tui'); }
     else if (value === '--tui') { options.tui = true; usedOptions.add('tui'); }
     else if (value === '--quiet') { options.quiet = true; usedOptions.add('quiet'); }
+    else if (value === '--follow') { options.follow = true; usedOptions.add('follow'); }
     else if (value === '--detach') { options.detach = true; usedOptions.add('detach'); }
     else if (value === '--json') { options.json = true; usedOptions.add('json'); }
     else if (value === '--lan') { options.host = '0.0.0.0'; usedOptions.add('host'); }
@@ -96,7 +97,7 @@ function validateCommandOptions(command, args, options, usedOptions) {
     agents: rootJson, projects: rootJson, 'agent-show': rootJson, 'agent-ls': rootJson,
     'agent-stop': rootJson, 'agent-discard': rootJson,
     'agent-start': new Set(['root', 'quiet', 'json', 'agent', 'expected-head', 'detach']),
-    raw: rootJson, head: rootJson, tail: rootJson, find: rootJson, around: rootJson,
+    output: new Set(['root', 'follow']), raw: rootJson, head: rootJson, tail: rootJson, find: rootJson, around: rootJson,
     diff: rootJson, copy: rootJson, update: rootJson,
     desktop: new Set(['root']),
     serve: new Set(['root', 'host', 'port']),
@@ -125,7 +126,7 @@ function validateCommandOptions(command, args, options, usedOptions) {
     run: [1, Infinity], last: [0, 0], packet: [0, 0], workflow: [1, 1], history: [0, 1],
     agents: [0, 0], projects: [0, 0], 'agent-start': [1, Infinity], 'agent-show': [1, 1], 'agent-ls': [0, 1],
     'agent-stop': [1, 1], 'agent-discard': [1, 1],
-    sequences: [0, 1], raw: [1, 1], head: [1, 2], tail: [1, 2], find: [2, Infinity],
+    output: [0, 0], sequences: [0, 1], raw: [1, 1], head: [1, 2], tail: [1, 2], find: [2, Infinity],
     around: [2, 3], diff: [2, 2], copy: [1, 1], update: [0, 0], open: [0, 1],
   };
   const [minimum, maximum] = argumentLimits[command] || [0, Infinity];
@@ -619,7 +620,16 @@ async function main() {
     }
     const packet = formatPacket(record.packet);
     const view = record.presentation;
-    console.log(`\n${view.status.toUpperCase()} - ${(view.durationMs / 1000).toFixed(1)}s`);
+    const recentRuns = listRuns(project, 1000);
+    const sequence = recentRuns.findIndex((run) => run.id === record.id);
+    const number = sequence < 0 ? record.id : recentRuns.length - sequence;
+    const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
+    const paint = (value, code) => useColor ? `\x1b[${code}m${value}\x1b[0m` : value;
+    const resultColor = view.status === 'pass' ? 32 : view.status === 'blocked' ? 33 : 31;
+    console.log(paint(`\n========== COMMAND ${number} ==========`, 36));
+    console.log(paint(`========== ${view.status.toUpperCase()} ${number} ==========`, resultColor));
+    console.log(`RUN=${record.id}`);
+    console.log(`DURATION=${(view.durationMs / 1000).toFixed(1)}s`);
     console.log(view.request);
     if (view.headline) console.log(view.headline);
     for (const line of view.details) console.log(line);
@@ -646,6 +656,34 @@ async function main() {
     const packet = buildWorkflowPacket(value);
     console.log(packet);
     if (options.copy) copy(packet);
+    return;
+  }
+  if (command === 'output') {
+    let lastDisplayedId = null;
+    const showLatest = () => {
+      const runs = listRuns(project, 30);
+      for (const run of runs) {
+        if (run.status === 'running' || run.status === 'pending') continue;
+        const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
+        const content = projection.streams
+          .map((stream) => stream.content || '')
+          .filter((value) => value.trim().length > 0)
+          .join('\n');
+        if (!content) continue;
+        if (run.id !== lastDisplayedId) {
+          lastDisplayedId = run.id;
+          process.stdout.write((lastDisplayedId && options.follow ? '\n' : '') +
+            content + (content.endsWith('\n') ? '' : '\n'));
+        }
+        return;
+      }
+    };
+    showLatest();
+    if (options.follow) {
+      const timer = setInterval(showLatest, 1500);
+      process.once('SIGINT', () => { clearInterval(timer); process.exit(0); });
+      process.once('SIGTERM', () => { clearInterval(timer); process.exit(0); });
+    }
     return;
   }
   if (command === 'history') {

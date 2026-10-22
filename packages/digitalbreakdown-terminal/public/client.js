@@ -3,11 +3,16 @@ import { FitAddon } from "/node_modules/@xterm/addon-fit/lib/addon-fit.mjs";
 import { createObservationStream, classifyInput } from "/observation-model.mjs";
 import { createClipboardProjection, clipboardObservedState } from "/clipboard-projection.mjs";
 import { runFunctionalThenObserve, safeVisualCall } from "/functional-boundary.mjs";
+import { contextView, decodeContextPayload } from "/context-projection.mjs";
 
 const sessionIdentity = crypto.randomUUID();
 const visualsEnabled = new URLSearchParams(location.search).get("visuals") !== "off";
 let visualObserver = () => {};
 let semanticMorph = Object.freeze({ play() {}, stop() {} });
+let shellContext = null;
+let connected = false;
+let evidenceAvailable = false;
+let executionState = "ready";
 const observations = createObservationStream({
   sessionIdentity,
   onEvent: event => visualObserver(event)
@@ -43,15 +48,20 @@ function enableOptionalVisuals() {
 const terminal = new Terminal({
   cursorBlink: true,
   allowTransparency: true,
-  fontFamily: '"Digital Breakdown Grid V3", "Cascadia Code NF", "CaskaydiaCove Nerd Font", Consolas, monospace',
-  fontSize: 17,
-  lineHeight: 1.2,
+  fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
+  fontSize: 16,
+  lineHeight: 1.15,
+  letterSpacing: 0,
   scrollback: 10000,
   theme: {
     background: "rgba(0, 25, 29, 0.88)",
     foreground: "#72e6c7",
     cursor: "#74ffbd",
-    selectionBackground: "#28666d"
+    selectionBackground: "#28666d",
+    black: "#00191d", red: "#ff657a", green: "#74ffbd", yellow: "#f1c86a",
+    blue: "#58aeb0", magenta: "#df70df", cyan: "#72e6c7", white: "#d9fff4",
+    brightBlack: "#38666b", brightRed: "#ff8b9b", brightGreen: "#a0ffd1", brightYellow: "#ffe19a",
+    brightBlue: "#82cfd1", brightMagenta: "#f09cf0", brightCyan: "#a2f9e2", brightWhite: "#ffffff"
   }
 });
 
@@ -75,6 +85,41 @@ const evidenceDetail = document.getElementById("evidence-detail");
 const evidenceDetailTitle = document.getElementById("evidence-detail-title");
 const evidenceDetailBody = document.getElementById("evidence-detail-body");
 const evidenceDetailClose = document.getElementById("evidence-detail-close");
+const contextLocation = document.getElementById("context-location");
+const contextRepository = document.getElementById("context-repository");
+const contextBranch = document.getElementById("context-branch");
+const contextDirty = document.getElementById("context-dirty");
+const connectionStatus = document.getElementById("connection-status");
+const evidenceStatus = document.getElementById("evidence-status");
+const executionStatus = document.getElementById("execution-status");
+const exitStatus = document.getElementById("exit-status");
+const shellStatus = document.getElementById("shell-status");
+
+function renderContext() {
+  const view = contextView(shellContext, { connected, evidenceAvailable, execution: executionState });
+  contextLocation.textContent = view.location;
+  contextLocation.title = shellContext?.cwd || view.location;
+  contextRepository.textContent = view.repository;
+  contextBranch.textContent = view.branch;
+  contextDirty.textContent = view.dirty;
+  contextDirty.dataset.state = view.dirty.toLowerCase();
+  connectionStatus.textContent = view.connection;
+  connectionStatus.dataset.state = connected ? "active" : "lost";
+  evidenceStatus.textContent = view.evidence;
+  executionStatus.textContent = view.execution;
+  exitStatus.textContent = view.exit;
+  exitStatus.dataset.state = shellContext?.exitCode === 0 ? "success" : shellContext?.exitCode ? "error" : "idle";
+  shellStatus.textContent = view.shell;
+}
+
+terminal.parser.registerOscHandler(777, encoded => {
+  const decoded = decodeContextPayload(encoded);
+  if (!decoded) return false;
+  shellContext = decoded;
+  executionState = "ready";
+  renderContext();
+  return true;
+});
 
 function selectedText() {
   return terminal.hasSelection() ? terminal.getSelection() : "";
@@ -123,10 +168,14 @@ paste.addEventListener("click", async () => {
 function renderEvidence(snapshot) {
   evidenceList.replaceChildren();
   if (!snapshot?.repository) {
+	 evidenceAvailable = false;
+	 renderContext();
     evidenceRepository.textContent = snapshot?.reason || "Read-only evidence is unavailable.";
     return;
   }
   const repository = snapshot.repository;
+	 evidenceAvailable = true;
+	 renderContext();
   evidenceRepository.textContent = `${repository.name} · ${repository.branch ?? "branch unknown"} · ${repository.head?.slice(0, 12) ?? "HEAD unknown"}`;
   for (const operation of snapshot.operations ?? []) {
     observeOptional("commandhud.operation", {
@@ -220,6 +269,8 @@ const protocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${protocol}//${location.host}/terminal`);
 
 socket.addEventListener("open", () => {
+	connected = true;
+	renderContext();
   socket.send(JSON.stringify({
     type: "resize",
     cols: terminal.cols,
@@ -236,11 +287,18 @@ socket.addEventListener("message", event => {
 });
 
 socket.addEventListener("close", () => {
+	connected = false;
+	executionState = "disconnected";
+	renderContext();
   terminal.writeln("\r\n[SESSION DISCONNECTED]");
   observeOptional("session.disconnected", { transport: "websocket" });
 });
 
 terminal.onData(data => {
+	if (data.includes("\r")) {
+		executionState = "running";
+		renderContext();
+	}
   if (socket.readyState === WebSocket.OPEN) {
     runFunctionalThenObserve(
       () => socket.send(JSON.stringify({ type: "input", data })),
@@ -264,3 +322,5 @@ function resize() {
 new ResizeObserver(resize).observe(document.getElementById("terminal"));
 window.addEventListener("resize", resize);
 enableOptionalVisuals();
+renderContext();
+void refreshEvidence();

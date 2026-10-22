@@ -53,7 +53,7 @@ wss.on("connection", (socket, request) => {
     name: "xterm-256color",
     cols: 100,
     rows: 30,
-    cwd: process.env.USERPROFILE || process.cwd(),
+    cwd: process.env.DB_TERMINAL_CWD || process.cwd(),
     env: terminalEnvironment(process.env),
     ...shellSpec.options
   });
