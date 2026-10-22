@@ -1,0 +1,23 @@
+program digital_breakdown_convergence
+intent "recover ${capability} from ${lineage} into ${native}, verify it, and retain resumable evidence"
+
+param capability: string
+param native: path
+param lineage: path
+
+permit read write exec
+
+flow main:
+  emit "begin bounded convergence for ${capability}"
+  do orient
+  parallel:
+    do audit ${native}
+    do audit ${lineage}
+    do doctor
+  do checkpoint
+  do prove ${native}
+  ensure "the native result is verified and the evidence is retained"
+  recover:
+    do audit ${native}
+    do checkpoint
+  emit "checkpoint the result and continue from retained state"

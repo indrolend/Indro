@@ -116,6 +116,11 @@
       "sha256": "5bb1774bd0f4a28feb662ae9d05b5317f9fa73c6671053d80968e5b41f8d2a9a"
     },
     {
+      "path": "examples/digital-breakdown-convergence.indro",
+      "bytes": 604,
+      "sha256": "9c6ce2925829e447a756678be32e4fada587c0c8b54f113955ee55da0b3e4a13"
+    },
+    {
       "path": "examples/proof-state.json",
       "bytes": 171,
       "sha256": "34766b2f1a0f1f5a85d979dc58b9a3e3246bff81ade27455503968df16948dc8"
