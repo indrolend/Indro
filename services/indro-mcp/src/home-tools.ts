@@ -3,14 +3,49 @@ import { z } from "zod";
 
 type HomeEnv = { HOME_EXECUTOR_TOKEN: string; HOME_EXECUTOR_URL: string };
 
-async function callHome(env: HomeEnv, path: string, init?: RequestInit) {
-  const response = await fetch(env.HOME_EXECUTOR_URL + path, {
-    ...init,
-    headers: { ...(init?.headers || {}), Authorization: "Bearer " + env.HOME_EXECUTOR_TOKEN, "Content-Type": "application/json" },
+const readCache = new Map<string, { expiresAt: number; value: Promise<unknown> }>();
+
+function retryDelay(response: Response, attempt: number) {
+  const retryAfter = response.headers.get("retry-after");
+  const seconds = retryAfter && Number(retryAfter);
+  const requested = Number.isFinite(seconds)
+    ? Number(seconds) * 1000
+    : retryAfter
+      ? Date.parse(retryAfter) - Date.now()
+      : 200 * (2 ** attempt);
+  return Math.max(50, Math.min(2000, Number.isFinite(requested) ? requested : 200));
+}
+
+async function fetchHome(env: HomeEnv, path: string, init?: RequestInit) {
+  const method = (init?.method || "GET").toUpperCase();
+  const attempts = method === "GET" ? 3 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const response = await fetch(env.HOME_EXECUTOR_URL + path, {
+      ...init,
+      headers: { ...(init?.headers || {}), Authorization: "Bearer " + env.HOME_EXECUTOR_TOKEN, "Content-Type": "application/json" },
+    });
+    const text = await response.text();
+    if (response.ok) return text ? JSON.parse(text) : null;
+    if (![429, 503].includes(response.status) || attempt === attempts - 1) {
+      throw new Error(`Home executor returned HTTP ${response.status}: ${text.slice(0, 500)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelay(response, attempt)));
+  }
+  throw new Error("Home executor retry loop ended unexpectedly.");
+}
+
+export async function callHome(env: HomeEnv, path: string, init?: RequestInit, cacheTtlMs = 0) {
+  const method = (init?.method || "GET").toUpperCase();
+  if (method !== "GET" || cacheTtlMs <= 0) return fetchHome(env, path, init);
+  const key = `${env.HOME_EXECUTOR_URL}${path}`;
+  const cached = readCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = fetchHome(env, path, init).catch((error) => {
+    readCache.delete(key);
+    throw error;
   });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Home executor returned HTTP ${response.status}: ${text.slice(0, 500)}`);
-  return text ? JSON.parse(text) : null;
+  readCache.set(key, { expiresAt: Date.now() + cacheTtlMs, value });
+  return value;
 }
 
 async function callHomeMedia(env: HomeEnv, path: string) {
@@ -57,7 +92,7 @@ const relativePath = z.string().min(1).max(4096).describe("Path relative to the 
 
 export function registerHomeTools(server: McpServer, env: HomeEnv) {
   server.registerTool("commandhud.home.status", { description: "Report whether the authenticated home Windows executor is reachable." }, async () => result(await callHome(env, "/health")));
-  server.registerTool("commandhud.projects", { description: "List verified projects known to the home CommandHUD authority." }, async () => result(await callHome(env, "/projects")));
+  server.registerTool("commandhud.projects", { description: "List verified projects known to the home CommandHUD authority." }, async () => result(await callHome(env, "/projects", undefined, 5000)));
   server.registerTool("commandhud.project.state", {
     description: "Measure current Git authority and active work for one verified project.", inputSchema: { project },
   }, async ({ project: projectId }) => result(await callHome(env, `/project-state?project=${encodeURIComponent(projectId)}`)));

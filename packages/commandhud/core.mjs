@@ -308,15 +308,44 @@ export async function repositoryCurrency(root, projectId = null) {
   if (!head.ok) throw new Error(`Unable to read repository HEAD: ${head.stderr}`);
   if (!files.ok) throw new Error(`Unable to enumerate repository currency: ${files.stderr}`);
   const paths = files.stdout.split('\0').filter(Boolean).sort((a, b) => a.localeCompare(b));
+  const resolvedRoot = resolve(root);
+  const cacheKey = createHash('sha256').update(resolvedRoot.toLowerCase()).digest('hex');
+  const cachePath = join(stateRoot(), 'currency-cache', `${cacheKey}.json`);
+  const previousCache = readJson(cachePath);
+  const cachedEntries = previousCache?.schemaVersion === 1 && previousCache.root === resolvedRoot
+    ? previousCache.entries || {}
+    : {};
+  const nextEntries = {};
   const hash = createHash('sha256');
+  hash.update('commandhud-repository-currency/v2\0');
   for (const path of paths) {
     hash.update(path.replaceAll('\\', '/')); hash.update('\0');
-    try { hash.update(readFileSync(join(root, path))); }
-    catch (error) { hash.update(`UNREADABLE:${error.code || error.message}`); }
+    try {
+      const absolutePath = join(root, path);
+      const metadata = statSync(absolutePath);
+      const cached = cachedEntries[path];
+      const unchanged = cached
+        && cached.size === metadata.size
+        && cached.mtimeMs === metadata.mtimeMs
+        && cached.ctimeMs === metadata.ctimeMs;
+      const digest = unchanged
+        ? cached.sha256
+        : createHash('sha256').update(readFileSync(absolutePath)).digest('hex');
+      nextEntries[path] = {
+        size: metadata.size,
+        mtimeMs: metadata.mtimeMs,
+        ctimeMs: metadata.ctimeMs,
+        sha256: digest,
+      };
+      hash.update(`sha256:${digest}`);
+    } catch (error) {
+      hash.update(`UNREADABLE:${error.code || error.message}`);
+    }
     hash.update('\0');
   }
+  atomicWriteJson(cachePath, { schemaVersion: 1, root: resolvedRoot, entries: nextEntries });
   return {
-    project: projectId || readJson(projectIdentityPath(root))?.id || `local/${basename(root)}`, root: resolve(root), head: head.stdout.trim(),
+    project: projectId || readJson(projectIdentityPath(root))?.id || `local/${basename(root)}`, root: resolvedRoot, head: head.stdout.trim(),
     worktreeFingerprint: `sha256:${hash.digest('hex')}`,
   };
 }
