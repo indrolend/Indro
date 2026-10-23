@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { writeClipboard } from './clipboard-transport.mjs';
 import { basename, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { PassThrough } from 'node:stream';
@@ -163,11 +163,7 @@ export function encodeClipboardInput(text, targetPlatform = process.platform) {
 }
 
 function clipboard(text) {
-  const tool = process.platform === 'win32' ? ['clip.exe', []]
-    : process.platform === 'darwin' ? ['pbcopy', []]
-      : ['sh', ['-c', 'command -v wl-copy >/dev/null && wl-copy || xclip -selection clipboard']];
-  const result = spawnSync(tool[0], tool[1], { input: encodeClipboardInput(text), windowsHide: true });
-  if (result.status !== 0) throw new Error('Clipboard tool is unavailable.');
+  return writeClipboard(text);
 }
 
 function displayCwd(project, cwd) {
@@ -177,8 +173,8 @@ function displayCwd(project, cwd) {
 export function deliverShellProjection(value, show, clipboardWriter = clipboard, source = 'evidence') {
   show(`${value}\n\n`);
   try {
-    clipboardWriter(value);
-    show(`COPIED ${source}\n\n`);
+    const delivery = clipboardWriter(value);
+    show(`${delivery?.transport === 'osc52' ? 'SENT OSC52 (receipt unconfirmed)' : 'COPIED'} ${source}\n\n`);
     return { value, copied: true };
   } catch (error) {
     show(`NOT COPIED · ${error.message}\nProjection remains visible above.\n\n`);
@@ -205,8 +201,8 @@ export async function deliverShellResult(project, record, output, clipboardWrite
   const context = currentContext.handoff;
   output.write(`${renderShellResult(project, record, currentContext)}\n\nSHORTENED OUTPUT\n${context}\n`);
   try {
-    clipboardWriter(context);
-    output.write(`\nCOPIED · run:${record.id}\n\n`);
+    const delivery = clipboardWriter(context);
+    output.write(`\n${delivery?.transport === 'osc52' ? 'SENT OSC52 (receipt unconfirmed)' : 'COPIED'} · run:${record.id}\n\n`);
     return { context, copied: true };
   } catch (error) {
     output.write(`\nNOT COPIED · ${error.message}\nUse /copy to try again.\n\n`);
