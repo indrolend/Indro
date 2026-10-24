@@ -12,7 +12,7 @@ Language:
   indro compile <program.indro|program.i> [compiler options]
   indro proof-plan <proof...> --state <state.json> [--cache <cache.json>]
   indro language-test
-  indro app help
+  indro work inspect <path>\n  indro work compare <left> <right>\n  indro work evidence <id>\n  indro app help
   indro app fixture set <number> --json  # offline fixture
 
 Execution and evidence (CommandHUD compatibility):
@@ -48,7 +48,7 @@ if (command === 'help' || command === '--help' || command === '-h') {
   }
 } else if (command === 'proof-plan') {
   process.exitCode = python(path.join(here, 'indro_proof.py'), args);
-} else if (command === 'app') {
+} else if (command === 'work') {\n  const { runWorkbench } = await import('./workbench.mjs');\n  process.exitCode = await runWorkbench(args);\n} else if (command === 'app') {
   const { runAppCli } = await import('./uai/cli.mjs');
   process.exitCode = await runAppCli(args);
 } else if (command === 'language-test') {
