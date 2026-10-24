@@ -1,11 +1,29 @@
-# Universal Application Interface — P1 kernel
+# INDRO Universal Application Interface — P1
 
-Initial transaction primitive for the INDRO UAI/NDRA SRS v0.1.
+This branch implements a deliberately narrow, offline transaction kernel.
 
-Run: `node --test packages/indro/uai/transaction.test.mjs`
+## Run
 
-This is an offline kernel, not a Windows application adapter. It records distinct evidence milestones, before/after observations, operation IDs, and a digest. Unknown acknowledgments remain unknown. Readback comparison is strict; adapters must normalize native quantization/tolerances under an explicit observation contract before treating a mismatch as confirmation.
+```powershell
+node --test packages/indro/uai/transaction.test.mjs
+node packages/indro/cli.mjs app help
+node packages/indro/cli.mjs app fixture set 0.75 --json
+npm test
+```
 
-Not implemented: persisted immutable evidence, adapter discovery, permissions enforcement, real FL Studio transport, independent effects, NDRA proofs, CLI routing, retries, or multi-application workflows.
+The fixture changes in-memory state only. It does **not** contact FL Studio or another Windows program.
 
-Next: integrate this primitive into canonical `indro app` and CommandHUD evidence, then prove a live FL Studio parameter round trip.
+## Evidence semantics
+
+Each transaction carries an operation ID, explicit unknown milestones, before/after observations, a verdict, and a checksum. A checksum does not imply persisted immutable evidence. The caller supplies expected state; an adapter cannot override it. Numeric comparison may use a caller-provided absolute tolerance. A timeout during invocation is `TRANSPORT_UNKNOWN` because delivery may have occurred.
+
+## Remaining release gates
+
+- Real adapter discovery, target/session scoping, and permission enforcement
+- CommandHUD-backed append-only evidence
+- Live FL Studio request/response and readback
+- Independent effect verification
+- NDRA observation contracts and reuse proofs
+- Retry, cancellation, and recovery semantics
+
+No claim of full SRS compliance is made.
