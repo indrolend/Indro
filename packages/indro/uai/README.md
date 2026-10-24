@@ -27,3 +27,18 @@ Each transaction carries an operation ID, explicit unknown milestones, before/af
 - Retry, cancellation, and recovery semantics
 
 No claim of full SRS compliance is made.
+
+## Bounded phenotype assay
+
+`assay.mjs` compares two synchronous transition functions across explicitly
+enumerated initial states and inputs. A caller-supplied projection defines the
+observable phenotype. The first difference produces a counterexample; a finite
+matching domain produces `PROVEN_EQUIVALENT` scoped to those enumerated cases.
+Execution errors and bound overruns yield `UNKNOWN`.
+
+This is not a DNA/RNA emulator, a source decompiler, a stateful sequence explorer,
+or an NDRA proof of arbitrary future behavior. Projection/comparator identifiers
+are not yet serialized into the contract hash; do not reuse these hashes as
+independent proof certificates.
+
+Run `node --test packages/indro/uai/*.test.mjs`.
