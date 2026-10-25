@@ -177,8 +177,8 @@
     },
     {
       "path": "native-verify.mjs",
-      "bytes": 15712,
-      "sha256": "86b9a769e0fe667fd4580afef3f73d6b1002a0dc6d7e1b568f0ea4f3a7c86cd4"
+      "bytes": 15678,
+      "sha256": "76f15c0019a26a2358f928d5074af565de3e314c788df5ff1e417bad113124a6"
     },
     {
       "path": "native-verify.test.mjs",
