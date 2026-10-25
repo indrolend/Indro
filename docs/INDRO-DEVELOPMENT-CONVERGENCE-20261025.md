@@ -7,6 +7,7 @@
 - Remote native-verification head: `69ccad504fbfb2e3deac235c8a63d9f1ae805b81`.
 - Local overlay checkpoint commit on the integration branch: `b62dee260a96138f36281cbdf4cc17885d1cf1d8`.
 - Integration merge: `70205d30f6b6bb366fa8a2830001c7500fdd2cc6`, with parents `b62dee2` and `69ccad5`.
+- Final validated code head before this report-only update: `7e4acbddb49419019f7cafef9a53159784485301`.
 - Integration worktree: `C:\Users\indro\Projects\Indro-convergence-20261025`.
 - Original worktree remains on `feat/uai-transaction-kernel` at `39fa719` with its original 15 tracked modifications and 23 untracked files.
 
@@ -42,6 +43,9 @@ reuse or cross-machine performance claim.
 The terminal ConPTY integration test previously assumed the checkout directory
 was literally named `Indro`. It now derives the verified repository basename,
 so the same behavior is testable in an isolated worktree.
+Inherited terminal-source line endings and EOF padding were normalized after a
+whole-range `git diff --check` exposed them; the final common-ancestor-to-code-
+head check passes.
 
 ## Conflict resolution
 
