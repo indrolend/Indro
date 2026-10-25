@@ -116,7 +116,9 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     compilers, tools, runtime,
     cmake: run('cmake', ['--version'], root).split('\n')[0],
     ctest: run('ctest', ['--version'], root).split('\n')[0],
-    environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL', 'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'SYSTEMROOT', 'WINDIR'].map(k => [k, process.env[k] ?? null])),
+    environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL',
+      'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'LOCALAPPDATA', 'HOME',
+      'XDG_DATA_HOME'].map(k => [k, process.env[k] ?? null])),
   };
   return { fingerprint: digest(inputs), inputs, testCount: plan.tests.length, complete, potentiallySkippedTests };
 }

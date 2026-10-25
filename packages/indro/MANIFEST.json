@@ -97,8 +97,8 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 1859,
-      "sha256": "73a8e6e5facc3d5c5648ed52eeb123d348e63fce5cc3f1802178db640b59e7ca"
+      "bytes": 2094,
+      "sha256": "fbcb5e0801a88b261c8560223cbab22cd5e4e8d3701060f358e99638c09048a1"
     },
     {
       "path": "cli.test.mjs",
@@ -171,9 +171,24 @@
       "sha256": "df5911cbee9b31b8ec0e03fbd0b4554643b76f1a66974b2d70bc9f32f95dec10"
     },
     {
+      "path": "native-verify.md",
+      "bytes": 2824,
+      "sha256": "b1571bc8ab97363a71fef599ac34b59483fcd0b15d1eb913fd6fbfb245b463f5"
+    },
+    {
+      "path": "native-verify.mjs",
+      "bytes": 14082,
+      "sha256": "dc422e914f1e118edebb050ec2f8082ebefe6612394f4af767d085120f8be364"
+    },
+    {
+      "path": "native-verify.test.mjs",
+      "bytes": 14755,
+      "sha256": "d7587ac25881fe8de624f2fe4a2d8d55e2cb555fa2e6672ea3be51d0ec8ad568"
+    },
+    {
       "path": "package.json",
-      "bytes": 231,
-      "sha256": "231f585de5068ccd1f8718bef9ae275942009b9d2e711d342d5fd203b6dd9a79"
+      "bytes": 256,
+      "sha256": "84b67ab646038cfffbb23a0f2b6c2d209d90fe2f811e5c151c1ae9cab61c4d79"
     },
     {
       "path": "README.md",

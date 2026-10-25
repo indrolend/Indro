@@ -168,6 +168,25 @@ test('declared external runtime file invalidates proof when changed', () => {
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
+test('runtime location environment changes invalidate proof', () => {
+  const f = fixture();
+  const key = process.platform === 'win32' ? 'TEMP' : 'HOME';
+  const previous = process.env[key];
+  try {
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    process.env[key] = join(f.parent, 'changed-runtime-location');
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('environment'));
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+    rmSync(f.parent, { recursive: true, force: true });
+  }
+});
+
 for (const property of ['DISABLED TRUE', 'SKIP_RETURN_CODE 0', 'SKIP_REGULAR_EXPRESSION PASS']) {
   test(`CTest ${property} cannot produce reusable proof despite exit code zero`, () => {
     const f = fixture();
