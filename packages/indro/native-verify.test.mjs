@@ -396,6 +396,36 @@ test('declared runtime executable permission change invalidates proof', { skip: 
 });
 
 
+test('declared runtime symlink text invalidates reuse even when target bytes match', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  const key = 'INDRO_NATIVE_RUNTIME_ALIAS', previous = process.env.INDRO_NATIVE_RUNTIME_ALIAS;
+  try {
+    const target = join(f.parent, 'runtime.dat'), alias = join(f.parent, 'runtime-alias.dat');
+    writeFileSync(target, 'unchanged');
+    symlinkSync('runtime.dat', alias);
+    process.env[key] = alias;
+    writeFileSync(join(f.root, 'probe.cpp'),
+      '#include <cstdlib>\n#include <string>\n#include <unistd.h>\nint main(){const char* p=std::getenv("INDRO_NATIVE_RUNTIME_ALIAS");if(!p)return 2;char b[1024];ssize_t n=readlink(p,b,sizeof(b));return n>0 && std::string(b,n)=="runtime.dat" ? 0 : 7;}\n');
+    const options = { ...f, runtimeFiles: [alias] };
+    const first = verifyNative(options);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, true);
+    const before = snapshotNative(options).fingerprint;
+    unlinkSync(alias);
+    symlinkSync('./runtime.dat', alias);
+    assert.notEqual(snapshotNative(options).fingerprint, before);
+    const second = verifyNative(options);
+    assert.equal(second.outcome, 'FAILED');
+    assert.equal(second.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(second.changedInputs.includes('runtime'));
+    assert.equal(second.reusable, false);
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+    rmSync(f.parent, { recursive: true, force: true });
+  }
+});
+
 test('nested CMake source cannot inherit a different Git worktree root', () => {
   const f = fixture();
   try {

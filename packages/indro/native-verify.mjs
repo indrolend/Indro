@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -17,6 +17,17 @@ function assertExternalEvidenceStore(root, store) {
   }
   const physical = resolve(realpathSync(ancestor), relative(ancestor, store));
   if (physical === root || inside(root, physical)) throw new Error('Evidence store must be outside the source repository');
+}
+// Capture symlink text along the declared path, not only the resolved file bytes.
+function pathSymlinks(path) {
+  const absolute = resolve(path);
+  let cursor = parse(absolute).root;
+  const links = [];
+  for (const component of absolute.slice(cursor.length).split(sep).filter(Boolean)) {
+    cursor = join(cursor, component);
+    if (lstatSync(cursor).isSymbolicLink()) links.push([cursor, readlinkSync(cursor)]);
+  }
+  return links;
 }
 function run(exe, args, cwd) {
   const r = spawnSync(exe, args, { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true });
@@ -124,7 +135,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   for (const path of runtimeFiles) {
     if (!existsSync(path)) { complete = false; continue; }
     const physical = realpathSync(path);
-    runtime.push({ path: physical, sha256: fileHash(path),
+    runtime.push({ declaredPath: resolve(path), path: physical, symlinks: pathSymlinks(path), sha256: fileHash(path),
       ...(process.platform === 'win32' ? {} : { executableMode: (lstatSync(physical).mode & 0o111).toString(8) }) });
   }
   runtime.sort((a, b) => a.path.localeCompare(b.path));
