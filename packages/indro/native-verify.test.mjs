@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { snapshotNative, verifyNative } from './native-verify.mjs';
 
 function fixture() {
@@ -77,6 +78,22 @@ test('corrupt newest receipt cannot reuse older success', () => {
     assert.equal(rerun.outcome, 'EXECUTED');
     assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT');
     assert.deepEqual(rerun.changedInputs, []);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('receipt with recomputed outer digest but inconsistent snapshot is rejected', () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const file = join(f.store, readdirSync(f.store)[0]);
+    const receipt = JSON.parse(readFileSync(file, 'utf8'));
+    receipt.snapshot.inputs.source = 'forged-source';
+    const { integrity, ...body } = receipt;
+    receipt.integrity = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    writeFileSync(file, JSON.stringify(receipt));
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
