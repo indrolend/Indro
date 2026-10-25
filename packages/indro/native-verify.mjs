@@ -128,7 +128,7 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
       else if (receipt.status !== 'PASS' || receipt.reusable !== true) reuseDecision = 'PREVIOUS_ATTEMPT_NOT_REUSABLE';
       else if (receipt.snapshot?.fingerprint !== before.fingerprint || receipt.snapshot?.testCount !== before.testCount) {
         reuseDecision = 'INPUT_CHANGED';
-        changedInputs = Object.keys(before.inputs).filter(key => digest(receipt.snapshot?.inputs?.[key]) !== digest(before.inputs[key]));
+        changedInputs = Object.keys(before.inputs).filter(key => JSON.stringify(receipt.snapshot?.inputs?.[key]) !== JSON.stringify(before.inputs[key]));
         if (receipt.snapshot?.testCount !== before.testCount) changedInputs.push('testCount');
       } else {
         return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [],
