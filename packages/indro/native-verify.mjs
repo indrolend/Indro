@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
@@ -28,7 +28,16 @@ function sourceFingerprint(root, build, store) {
   for (const name of paths) {
     const path = resolve(root, name);
     if (!inside(root, path) || path === build || inside(build, path) || path === store || inside(store, path)) throw new Error('Untracked build/store or unsafe source path: ' + name);
-    hash.update(name); hash.update('\0'); hash.update(readFileSync(path)); hash.update('\0');
+    // Git tracks file type and symlink targets, not just dereferenced bytes.
+    const stat = lstatSync(path);
+    hash.update(name); hash.update('\0');
+    if (stat.isSymbolicLink()) {
+      if (!inside(root, realpathSync(path))) throw new Error('Source symlink escapes repository: ' + name);
+      hash.update('SYMLINK:'); hash.update(readlinkSync(path));
+    } else if (stat.isFile()) {
+      hash.update('FILE:'); hash.update(String(Boolean(stat.mode & 0o111)));
+    } else throw new Error('Unsupported source file type: ' + name);
+    hash.update('\0'); hash.update(readFileSync(path)); hash.update('\0');
   }
   return hash.digest('hex');
 }
