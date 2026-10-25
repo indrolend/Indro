@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync, chmodSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -315,6 +315,22 @@ test('CLI rejects missing, mistyped and duplicate runtime dependency options bef
     assert.equal(result.status, 2, JSON.stringify({ args, stderr: result.stderr }));
     assert.match(result.stderr, diagnostic);
   }
+});
+
+
+test('symlinked evidence store cannot redirect receipts into the source tree', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  try {
+    const alias = join(f.parent, 'outside-looking-alias');
+    symlinkSync(f.root, alias, 'dir');
+    const options = { ...f, store: join(alias, 'evidence') };
+    for (const existing of [false, true]) {
+      if (existing) mkdirSync(join(f.root, 'evidence'));
+      assert.throws(() => snapshotNative(options), /Evidence store must be outside/);
+      assert.throws(() => verifyNative(options), /Evidence store must be outside/);
+      assert.equal(existsSync(join(f.root, 'evidence')), existing);
+    }
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
 test('same-byte executable permission change prevents evidence reuse', { skip: process.platform === 'win32' }, () => {

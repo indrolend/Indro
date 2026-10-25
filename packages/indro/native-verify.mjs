@@ -1,12 +1,23 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const digest = value => sha(JSON.stringify(value));
 const inside = (root, file) => { const r = relative(root, file); return r !== '' && r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r); };
+function assertExternalEvidenceStore(root, store) {
+  // Resolve the nearest existing ancestor so a symlink cannot redirect receipts into source.
+  let ancestor = store;
+  while (!existsSync(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) throw new Error('Evidence store path unavailable');
+    ancestor = parent;
+  }
+  const physical = resolve(realpathSync(ancestor), relative(ancestor, store));
+  if (physical === root || inside(root, physical)) throw new Error('Evidence store must be outside the source repository');
+}
 function run(exe, args, cwd) {
   const r = spawnSync(exe, args, { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true });
   if (r.error || r.status !== 0) throw new Error(`${basename(exe)} failed (${r.status ?? 'spawn'}): ${(r.stderr || r.error?.message || r.stdout || '').slice(-2000)}`);
@@ -83,7 +94,7 @@ function compilerHashes(cache, build) {
 /** A scoped, explicit-dependency CTest proof. Not a certificate of undeclared runtime dependencies. */
 export function snapshotNative({ root, build, store, configuration = 'Release', runtimeFiles = [] }) {
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
-  if (inside(root, store) || store === root) throw new Error('Evidence store must be outside the source repository');
+  assertExternalEvidenceStore(root, store);
   const cache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
   if (realpathSync(cacheSource(cache)) !== root) throw new Error('CMake cache belongs to another source tree');
   const plan = JSON.parse(run('ctest', ['--test-dir', build, '-C', configuration, '--show-only=json-v1'], root));
@@ -156,7 +167,7 @@ function readReceipt(path) {
 export function verifyNative({ root, build, store, configuration = 'Release', runtimeFiles = [], runtimeClosureDeclared = false }) {
   const started = performance.now();
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
-  if (inside(root, store) || store === root) throw new Error('Evidence store must be outside the source repository');
+  assertExternalEvidenceStore(root, store);
   const sourceBeforeBuild = sourceFingerprint(root, build, store);
   const initialCache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
   if (realpathSync(cacheSource(initialCache)) !== root) throw new Error('CMake cache belongs to another source tree');
