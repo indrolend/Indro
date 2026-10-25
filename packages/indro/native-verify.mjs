@@ -13,6 +13,15 @@ function run(exe, args, cwd) {
   return r.stdout;
 }
 function fileHash(path) { return sha(readFileSync(path)); }
+function toolProvenance(name, cwd) {
+  const locator = process.platform === 'win32' ? 'where.exe' : 'which';
+  const found = spawnSync(locator, [name], { cwd, encoding: 'utf8', windowsHide: true });
+  if (found.error || found.status !== 0) return null;
+  const path = found.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+  if (!path || !isAbsolute(path) || !existsSync(path)) return null;
+  try { return { path: realpathSync(path), sha256: fileHash(path) }; }
+  catch { return null; }
+}
 function sourceFingerprint(root, build, store) {
   const paths = run('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root).split('\0').filter(Boolean).sort();
   const hash = createHash('sha256');
@@ -74,7 +83,8 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     executables.set(realpathSync(exe), fileHash(exe));
   }
   const compilers = compilerHashes(cache, build);
-  if (!compilers) complete = false;
+  const tools = Object.fromEntries(['cmake', 'ctest', 'git'].map(name => [name, toolProvenance(name, root)]));
+  if (!compilers || Object.values(tools).some(value => !value)) complete = false;
   const runtime = [];
   for (const path of runtimeFiles) {
     if (!existsSync(path)) { complete = false; continue; }
@@ -87,7 +97,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     source: sourceFingerprint(root, build, store), cache: sha(cache),
     testPlan: digest(plan.tests),
     executables: [...executables].sort(([a], [b]) => a.localeCompare(b)),
-    compilers, runtime,
+    compilers, tools, runtime,
     cmake: run('cmake', ['--version'], root).split('\n')[0],
     ctest: run('ctest', ['--version'], root).split('\n')[0],
     environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL', 'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'SYSTEMROOT', 'WINDIR'].map(k => [k, process.env[k] ?? null])),

@@ -36,6 +36,31 @@ test('real CTest execution and unchanged reuse', () => {
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
+test('Git, CMake and CTest executable bytes participate in proof identity', () => {
+  const f = fixture();
+  try {
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    const snapshot = snapshotNative(f);
+    assert.equal(snapshot.complete, true);
+    for (const name of ['git', 'cmake', 'ctest']) {
+      assert.ok(snapshot.inputs.tools[name]?.path, name);
+      assert.match(snapshot.inputs.tools[name].sha256, /^[a-f0-9]{64}$/, name);
+    }
+    const file = join(f.store, first.receipt);
+    const receipt = JSON.parse(readFileSync(file, 'utf8'));
+    receipt.snapshot.inputs.tools.ctest.sha256 = '0'.repeat(64);
+    receipt.snapshot.fingerprint = createHash('sha256').update(JSON.stringify(receipt.snapshot.inputs)).digest('hex');
+    const { integrity, ...body } = receipt;
+    receipt.integrity = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    writeFileSync(file, JSON.stringify(receipt));
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('tools'));
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
 test('source changes invalidate proof even if output binary is identical', () => {
   const f = fixture();
   try {
