@@ -24,7 +24,8 @@ test('real CTest execution and unchanged reuse', () => {
   const f = fixture();
   try {
     const first = verifyNative(f), second = verifyNative(f);
-    assert.equal(first.outcome, 'EXECUTED'); assert.equal(first.testCount, 1); assert.equal(first.reusable, true, JSON.stringify({ compilers: snapshotNative(f).inputs.compilers, executables: snapshotNative(f).inputs.executables, cacheCompiler: readFileSync(join(f.build, 'CMakeCache.txt'), 'utf8').split('\\n').filter(line => /^CMAKE_(C|CXX)_COMPILER/.test(line)), compilerMetadata: readdirSync(join(f.build, 'CMakeFiles')).flatMap(name => { try { return readFileSync(join(f.build, 'CMakeFiles', name, 'CMakeCXXCompiler.cmake'), 'utf8').split('\\n').filter(line => /^set\\(CMAKE_CXX_COMPILER/.test(line)).slice(0,7); } catch { return []; } }) }));
+    const compilerMetadata = readdirSync(join(f.build, 'CMakeFiles')).flatMap(name => { try { return readFileSync(join(f.build, 'CMakeFiles', name, 'CMakeCXXCompiler.cmake'), 'utf8').split(String.fromCharCode(10)).filter(line => line.startsWith('set(CMAKE_CXX_COMPILER')).slice(0,7); } catch { return []; } });
+    assert.equal(first.outcome, 'EXECUTED'); assert.equal(first.testCount, 1); assert.equal(first.reusable, true, JSON.stringify({ compilers: snapshotNative(f).inputs.compilers, compilerMetadata }));
     assert.equal(second.outcome, 'REUSED'); assert.equal(second.testCount, 1);
     assert.ok(second.elapsedMs >= second.buildMs);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
