@@ -137,6 +137,8 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     compilers, tools, runtime,
     cmake: run('cmake', ['--version'], root).split('\n')[0],
     ctest: run('ctest', ['--version'], root).split('\n')[0],
+    // Digest every inherited variable: arbitrary CTest dependencies must not escape the fingerprint.
+    environmentDigest: digest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
     environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL',
       'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'LOCALAPPDATA', 'HOME',
       'XDG_DATA_HOME'].map(k => [k, process.env[k] ?? null])),
