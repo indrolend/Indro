@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -216,4 +216,24 @@ test('executable diagnostics identify changed, added and removed binaries', () =
   assert.deepEqual(changedExecutablePaths([[a, 'old'], [b, 'same']], [[a, 'new'], [b, 'same']], build), ['bin/a.exe']);
   assert.deepEqual(changedExecutablePaths([[a, 'old']], [[b, 'new']], build), ['bin/a.exe', 'bin/b.exe']);
   assert.deepEqual(changedExecutablePaths(null, [], build), []);
+});
+
+test('same-byte source symlink retarget invalidates native evidence', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  try {
+    writeFileSync(join(f.root, 'left.dat'), 'identical');
+    writeFileSync(join(f.root, 'right.dat'), 'identical');
+    const alias = join(f.root, 'alias.dat');
+    symlinkSync('left.dat', alias);
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    const original = snapshotNative(f).inputs.source;
+    unlinkSync(alias);
+    symlinkSync('right.dat', alias);
+    assert.notEqual(snapshotNative(f).inputs.source, original);
+    const second = verifyNative(f);
+    assert.equal(second.outcome, 'EXECUTED');
+    assert.equal(second.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(second.changedInputs.includes('source'));
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
