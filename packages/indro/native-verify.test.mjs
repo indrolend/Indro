@@ -187,6 +187,29 @@ test('runtime location environment changes invalidate proof', () => {
   }
 });
 
+test('unlisted runtime environment changes invalidate reuse before CTest execution', () => {
+  const f = fixture();
+  const key = 'INDRO_NATIVE_VERIFY_UNLISTED_ENV';
+  const previous = process.env[key];
+  try {
+    writeFileSync(join(f.root, 'probe.cpp'),
+      '#include <cstdlib>\n#include <cstring>\nint main(){const char* x=std::getenv("INDRO_NATIVE_VERIFY_UNLISTED_ENV");return x && std::strcmp(x,"pass")==0 ? 0 : 3;}\n');
+    process.env[key] = 'pass';
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, true);
+    process.env[key] = 'fail';
+    const second = verifyNative(f);
+    assert.equal(second.outcome, 'FAILED');
+    assert.equal(second.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(second.changedInputs.includes('environmentDigest'));
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+    rmSync(f.parent, { recursive: true, force: true });
+  }
+});
+
 for (const property of ['DISABLED TRUE', 'SKIP_RETURN_CODE 0', 'SKIP_REGULAR_EXPRESSION PASS']) {
   test(`CTest ${property} cannot produce reusable proof despite exit code zero`, () => {
     const f = fixture();
