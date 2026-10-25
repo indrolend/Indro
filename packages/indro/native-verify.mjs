@@ -118,7 +118,9 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   const runtime = [];
   for (const path of runtimeFiles) {
     if (!existsSync(path)) { complete = false; continue; }
-    runtime.push({ path: realpathSync(path), sha256: fileHash(path) });
+    const physical = realpathSync(path);
+    runtime.push({ path: physical, sha256: fileHash(path),
+      ...(process.platform === 'win32' ? {} : { executableMode: (lstatSync(physical).mode & 0o111).toString(8) }) });
   }
   runtime.sort((a, b) => a.path.localeCompare(b.path));
   const head = run('git', ['rev-parse', 'HEAD'], root).trim();

@@ -350,3 +350,24 @@ test('same-byte executable permission change prevents evidence reuse', { skip: p
     assert.equal(rerun.reuseDecision, 'PROVENANCE_INCOMPLETE');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+test('declared runtime executable permission change invalidates proof', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  try {
+    const dependency = join(f.parent, 'runtime-script.sh');
+    writeFileSync(dependency, '#!/bin/sh\\nexit 0\\n');
+    chmodSync(dependency, 0o755);
+    const options = { ...f, runtimeFiles: [dependency] };
+    const first = verifyNative(options);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, true);
+    const before = snapshotNative(options);
+    chmodSync(dependency, 0o644);
+    const after = snapshotNative(options);
+    assert.notEqual(after.fingerprint, before.fingerprint);
+    const rerun = verifyNative(options);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('runtime'));
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
