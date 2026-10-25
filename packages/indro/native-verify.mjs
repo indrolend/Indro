@@ -58,6 +58,9 @@ function hashField(hash, value) {
 function sourceFingerprint(root, build, store) {
   const paths = run('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root).split('\0').filter(Boolean).sort();
   const hash = createHash('sha256');
+  // Git's staged index can affect CTest even when working-tree bytes are unchanged.
+  hashField(hash, 'GIT_INDEX');
+  hashField(hash, run('git', ['ls-files', '--stage', '-z'], root));
   for (const name of paths) {
     const path = resolve(root, name);
     if (!inside(root, path) || path === build || inside(build, path) || path === store || inside(store, path)) throw new Error('Untracked build/store or unsafe source path: ' + name);
