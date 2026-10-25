@@ -23,6 +23,10 @@ function run(exe, args, cwd) {
   if (r.error || r.status !== 0) throw new Error(`${basename(exe)} failed (${r.status ?? 'spawn'}): ${(r.stderr || r.error?.message || r.stdout || '').slice(-2000)}`);
   return r.stdout;
 }
+function assertGitRoot(root) {
+  const gitRoot = run('git', ['rev-parse', '--show-toplevel'], root).trim();
+  if (realpathSync(gitRoot) !== root) throw new Error('Source root must match Git worktree root');
+}
 function fileHash(path) { return sha(readFileSync(path)); }
 function toolProvenance(name, cwd) {
   const locator = process.platform === 'win32' ? 'where.exe' : 'which';
@@ -94,6 +98,7 @@ function compilerHashes(cache, build) {
 /** A scoped, explicit-dependency CTest proof. Not a certificate of undeclared runtime dependencies. */
 export function snapshotNative({ root, build, store, configuration = 'Release', runtimeFiles = [] }) {
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
+  assertGitRoot(root);
   assertExternalEvidenceStore(root, store);
   const cache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
   if (realpathSync(cacheSource(cache)) !== root) throw new Error('CMake cache belongs to another source tree');
@@ -169,6 +174,7 @@ function readReceipt(path) {
 export function verifyNative({ root, build, store, configuration = 'Release', runtimeFiles = [], runtimeClosureDeclared = false }) {
   const started = performance.now();
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
+  assertGitRoot(root);
   assertExternalEvidenceStore(root, store);
   const sourceBeforeBuild = sourceFingerprint(root, build, store);
   const initialCache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
