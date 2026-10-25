@@ -25,7 +25,7 @@ function run(exe, args, cwd) {
 }
 function assertGitRoot(root) {
   const gitRoot = run('git', ['rev-parse', '--show-toplevel'], root).trim();
-  if (realpathSync(gitRoot) !== root) throw new Error('Source root must match Git worktree root');
+  if (relative(root, realpathSync(gitRoot)) !== '') throw new Error('Source root must match Git worktree root');
 }
 function fileHash(path) { return sha(readFileSync(path)); }
 function toolProvenance(name, cwd) {
