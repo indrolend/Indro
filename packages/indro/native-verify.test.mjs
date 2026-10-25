@@ -263,3 +263,22 @@ test('recomputed receipt checksum cannot authorize contradictory reusable execut
     }
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+test('NUL-containing source bytes cannot impersonate another file record', () => {
+  const f = fixture();
+  try {
+    const a = join(f.root, 'a'), b = join(f.root, 'b');
+    // Previously: a = "X\\0b\\0FILE:false\\0Y" hashed identically to a = "X", b = "Y".
+    writeFileSync(a, Buffer.from('X\\0b\\0FILE:false\\0Y'.replaceAll('\\0', '\\x00')));
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    const previous = snapshotNative(f).inputs.source;
+    writeFileSync(a, 'X');
+    writeFileSync(b, 'Y');
+    assert.notEqual(snapshotNative(f).inputs.source, previous);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('source'));
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
