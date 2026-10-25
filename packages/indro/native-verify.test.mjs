@@ -237,3 +237,29 @@ test('same-byte source symlink retarget invalidates native evidence', { skip: pr
     assert.ok(second.changedInputs.includes('source'));
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+test('recomputed receipt checksum cannot authorize contradictory reusable execution', () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const mutations = [
+      ['nonzero exit', receipt => { receipt.exitCode = 1; }],
+      ['unstable inputs', receipt => { receipt.stable = false; }],
+      ['incomplete provenance', receipt => { receipt.snapshot.complete = false; }],
+      ['skipped test', receipt => { receipt.snapshot.potentiallySkippedTests = ['probe']; }],
+      ['different command', receipt => { receipt.command = ['node', 'fake-test']; }],
+    ];
+    for (const [label, mutate] of mutations) {
+      const latest = readdirSync(f.store).filter(name => name.endsWith('.json')).sort().at(-1);
+      const path = join(f.store, latest);
+      const receipt = JSON.parse(readFileSync(path, 'utf8'));
+      mutate(receipt);
+      const { integrity, ...body } = receipt;
+      receipt.integrity = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+      writeFileSync(path, JSON.stringify(receipt));
+      const rerun = verifyNative(f);
+      assert.equal(rerun.outcome, 'EXECUTED', label);
+      assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT', label);
+    }
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
