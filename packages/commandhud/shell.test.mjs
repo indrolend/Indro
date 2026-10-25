@@ -169,6 +169,17 @@ test('requested retained-evidence projection becomes the exact clipboard payload
   assert.match(displayed, /Projection remains visible above/);
 });
 
+test('OSC 52 delivery is reported as sent with receipt unverified', () => {
+  let displayed = '';
+  const delivery = { transport: 'osc52', state: 'sent', acknowledged: false, bytes: 8 };
+  const result = deliverShellProjection('evidence', (value) => { displayed += value; }, () => delivery, 'run:test');
+  assert.equal(result.sent, true);
+  assert.equal(result.copied, false);
+  assert.deepEqual(result.delivery, delivery);
+  assert.match(displayed, /SENT run:test · OSC 52 receipt unverified/);
+  assert.doesNotMatch(displayed, /COPIED run:test/);
+});
+
 test('Windows clipboard transport preserves Unicode evidence symbols', () => {
   const value = 'SOURCE_EVIDENCE run:test · HEAD ✓';
   const encoded = encodeClipboardInput(value, 'win32');

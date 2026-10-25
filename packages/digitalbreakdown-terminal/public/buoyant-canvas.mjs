@@ -7,6 +7,7 @@ export function createBuoyantCanvas(canvas) {
   let inputPosition = 0.08;
   let frame = 0;
   let previous = performance.now();
+  const presentationInterval = 1000 / 15;
 
   function resize() {
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -19,6 +20,8 @@ export function createBuoyantCanvas(canvas) {
   }
 
   function draw(now) {
+    frame = requestAnimationFrame(draw);
+    if (now - previous < presentationInterval) return;
     resize();
     const dt = Math.min(0.05, Math.max(0, (now - previous) / 1000));
     previous = now;
@@ -42,7 +45,6 @@ export function createBuoyantCanvas(canvas) {
     context.strokeStyle = "rgba(114, 230, 199, 0.32)";
     context.lineWidth = Math.max(1, canvas.width / 900);
     context.stroke();
-    frame = requestAnimationFrame(draw);
   }
 
   frame = requestAnimationFrame(draw);

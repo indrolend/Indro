@@ -4,6 +4,8 @@ import { createObservationStream, classifyInput } from "/observation-model.mjs";
 import { createClipboardProjection, clipboardObservedState } from "/clipboard-projection.mjs";
 import { runFunctionalThenObserve, safeVisualCall } from "/functional-boundary.mjs";
 import { contextView, decodeContextPayload } from "/context-projection.mjs";
+import { createCursorInteraction } from "/cursor-interaction.mjs";
+import { createJellyOverlay } from "/jelly-overlay.mjs";
 
 const sessionIdentity = crypto.randomUUID();
 const visualsEnabled = new URLSearchParams(location.search).get("visuals") !== "off";
@@ -72,9 +74,26 @@ terminal.open(document.getElementById("terminal"));
 fit.fit();
 terminal.focus();
 
+const jellyToggle = document.getElementById("jelly-toggle");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const jellyOverlay = createJellyOverlay({ host: document.getElementById("terminal"), terminal });
+function setJellyEnabled(enabled) {
+  jellyOverlay.setEnabled(visualsEnabled && !reducedMotion.matches && enabled);
+  jellyToggle.setAttribute("aria-pressed", String(jellyOverlay.enabled));
+  jellyToggle.textContent = jellyOverlay.enabled ? "JELLY ON" : "JELLY OFF";
+}
+setJellyEnabled(visualsEnabled && !reducedMotion.matches);
+jellyToggle.disabled = !visualsEnabled || reducedMotion.matches;
+jellyToggle.addEventListener("click", () => setJellyEnabled(!jellyOverlay.enabled));
+reducedMotion.addEventListener("change", () => {
+  jellyToggle.disabled = !visualsEnabled || reducedMotion.matches;
+  setJellyEnabled(!reducedMotion.matches);
+});
+
 const copyRaw = document.getElementById("copy-raw");
 const copyFenced = document.getElementById("copy-fenced");
 const paste = document.getElementById("paste");
+const cursorInteraction = createCursorInteraction({ host: document.getElementById("terminal"), terminal, status: message => { document.getElementById("copy-status").textContent = message; }, observe: observeOptional });
 const copyStatus = document.getElementById("copy-status");
 const evidenceToggle = document.getElementById("evidence-toggle");
 const evidencePanel = document.getElementById("evidence-panel");
@@ -94,6 +113,12 @@ const evidenceStatus = document.getElementById("evidence-status");
 const executionStatus = document.getElementById("execution-status");
 const exitStatus = document.getElementById("exit-status");
 const shellStatus = document.getElementById("shell-status");
+const signalSession = document.getElementById("signal-session");
+const signalExecution = document.getElementById("signal-execution");
+const signalLocation = document.getElementById("signal-location");
+const signalBranch = document.getElementById("signal-branch");
+const signalDirty = document.getElementById("signal-dirty");
+const signalEvent = document.getElementById("signal-event");
 
 function renderContext() {
   const view = contextView(shellContext, { connected, evidenceAvailable, execution: executionState });
@@ -145,6 +170,7 @@ async function copySelection(mode) {
     await navigator.clipboard.writeText(projection);
     observeOptional("clipboard.copy", clipboardObservedState(mode, projection));
     reportClipboardStatus(`${mode.toUpperCase()} COPIED`);
+    cursorInteraction.copied('TEXT');
     terminal.focus();
   } catch {
     reportClipboardStatus("COPY BLOCKED");
@@ -266,42 +292,86 @@ evidenceDetailClose.addEventListener("click", () => {
 });
 
 const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-const socket = new WebSocket(`${protocol}//${location.host}/terminal`);
+let traceSocket = null;
+let signalSocket = null;
 
-socket.addEventListener("open", () => {
+function socketUrl(sessionId, display) {
+  return `${protocol}//${location.host}/terminal?session=${encodeURIComponent(sessionId)}&display=${display}`;
+}
+
+function updateSignal(event) {
+  if (event.state) {
+    const state = event.state;
+    const context = state.context;
+    signalExecution.textContent = String(state.execution || "unknown").toUpperCase();
+    signalLocation.textContent = context?.cwd || "UNKNOWN";
+    signalBranch.textContent = context?.branch || "UNKNOWN";
+    signalDirty.textContent = context?.repository ? (context.dirty ? "DIRTY" : "CLEAN") : "UNKNOWN";
+  }
+  if (event.sequence !== undefined) signalEvent.textContent = `${event.sequence} · ${event.type}`;
+}
+
+function terminalEvent(raw) {
+  let event;
+  try { event = JSON.parse(raw); } catch {
+    terminal.write(raw);
+    return;
+  }
+  if (event.type === "session.snapshot") {
+    if (event.outputTruncated) terminal.writeln("\r\n[EARLIER OUTPUT TRUNCATED]\r\n");
+    if (event.output) terminal.write(event.output);
+    updateSignal(event);
+  } else if (event.type === "terminal.output") {
+    runFunctionalThenObserve(
+      () => terminal.write(event.data),
+      () => observeOptional("terminal.output", { length: String(event.data).length })
+    );
+  } else if (event.type === "signal.state" || event.type === "session.exited") {
+    updateSignal(event);
+  }
+}
+
+function connectTrace(sessionId) {
+  traceSocket = new WebSocket(socketUrl(sessionId, "trace"));
+  traceSocket.addEventListener("open", () => {
 	connected = true;
 	renderContext();
-  socket.send(JSON.stringify({
+  traceSocket.send(JSON.stringify({
     type: "resize",
     cols: terminal.cols,
     rows: terminal.rows
   }));
   observeOptional("session.connected", { transport: "websocket" });
-});
+  });
 
-socket.addEventListener("message", event => {
-  runFunctionalThenObserve(
-    () => terminal.write(event.data),
-    () => observeOptional("terminal.output", { length: String(event.data).length })
-  );
-});
+  traceSocket.addEventListener("message", event => terminalEvent(event.data));
 
-socket.addEventListener("close", () => {
+  traceSocket.addEventListener("close", () => {
 	connected = false;
 	executionState = "disconnected";
 	renderContext();
   terminal.writeln("\r\n[SESSION DISCONNECTED]");
   observeOptional("session.disconnected", { transport: "websocket" });
-});
+  });
+}
+
+function connectSignal(sessionId) {
+  signalSession.textContent = sessionId;
+  signalSocket = new WebSocket(socketUrl(sessionId, "signal"));
+  signalSocket.addEventListener("message", message => {
+    try { updateSignal(JSON.parse(message.data)); } catch {}
+  });
+  signalSocket.addEventListener("close", () => { signalExecution.textContent = "DISCONNECTED"; });
+}
 
 terminal.onData(data => {
 	if (data.includes("\r")) {
 		executionState = "running";
 		renderContext();
 	}
-  if (socket.readyState === WebSocket.OPEN) {
+  if (traceSocket?.readyState === WebSocket.OPEN) {
     runFunctionalThenObserve(
-      () => socket.send(JSON.stringify({ type: "input", data })),
+      () => traceSocket.send(JSON.stringify({ type: "input", data })),
       () => observeOptional("terminal.input", { kind: classifyInput(data), length: data.length })
     );
   }
@@ -309,8 +379,10 @@ terminal.onData(data => {
 
 function resize() {
   fit.fit();
-  if (socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({
+  document.getElementById("terminal").style.setProperty("--terminal-cols", terminal.cols);
+  document.getElementById("terminal").style.setProperty("--terminal-rows", terminal.rows);
+  if (traceSocket?.readyState === WebSocket.OPEN) {
+    traceSocket.send(JSON.stringify({
       type: "resize",
       cols: terminal.cols,
       rows: terminal.rows
@@ -321,6 +393,18 @@ function resize() {
 
 new ResizeObserver(resize).observe(document.getElementById("terminal"));
 window.addEventListener("resize", resize);
+resize();
 enableOptionalVisuals();
 renderContext();
 void refreshEvidence();
+void (async () => {
+  let id = sessionStorage.getItem("indro.session");
+  if (!id) {
+    const response = await fetch("/api/session");
+    id = (await response.json()).sessionId;
+    sessionStorage.setItem("indro.session", id);
+  }
+  connectTrace(id);
+  connectSignal(id);
+})().catch(() => terminal.writeln("\r\n[SESSION CONNECTION FAILED]"));
+

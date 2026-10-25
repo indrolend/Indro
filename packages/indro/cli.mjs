@@ -16,6 +16,8 @@ Language:
   indro app fixture set <number> --json  # offline fixture
 
 Execution and evidence (CommandHUD compatibility):
+  indro godot replay --scenario smoke [--capture] [--clipboard] [--clipboard-image] [--video]
+  indro godot benchmark [--warmups 1] [--trials 3] [--timeout-ms 120000] [--output DIR]
   indro shell | tui | desktop
   indro run -- <command>
   indro state --json
@@ -48,9 +50,15 @@ if (command === 'help' || command === '--help' || command === '-h') {
   }
 } else if (command === 'proof-plan') {
   process.exitCode = python(path.join(here, 'indro_proof.py'), args);
-} else if (command === 'work') {\n  const { runWorkbench } = await import('./workbench.mjs');\n  process.exitCode = await runWorkbench(args);\n} else if (command === 'app') {
+} else if (command === 'work') {
+  const { runWorkbench } = await import('./workbench.mjs');
+  process.exitCode = await runWorkbench(args);
+} else if (command === 'app') {
   const { runAppCli } = await import('./uai/cli.mjs');
   process.exitCode = await runAppCli(args);
+} else if (command === 'godot') {
+  const { runGodotCli } = await import('./godot-replay.mjs');
+  process.exitCode = await runGodotCli(args);
 } else if (command === 'language-test') {
   process.exitCode = python(path.join(here, 'tools', 'test-all.py'), args);
 } else {

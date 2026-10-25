@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-tests = ["test-miner.py", "test-language.py", "test-safety.py", "test-package.py", "test-wordgraph.py", "test-cli.py", "test-compiler.py", "test-compact.py", "test-determinism.py", "test-proof.py"]
+tests = ["test-miner.py", "test-language.py", "test-safety.py", "test-package.py", "test-wordgraph.py", "test-cli.py", "test-compiler.py", "test-compact.py", "test-determinism.py", "test-proof.py", "test-ndra-repo-gauntlet.py", "test-convergence-gauntlet.py"]
 failed = []
 for test in tests:
     print(f"INDRO_TEST_RUN {test}")

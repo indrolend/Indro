@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Digital Breakdown Terminal</title>
+<title>INDRO // TRACE + SIGNAL</title>
 <link rel="stylesheet" href="/node_modules/@xterm/xterm/css/xterm.css">
 <style>
 @font-face {
@@ -59,7 +59,7 @@ header {
   letter-spacing: 1px;
 }
 
-#evidence-toggle {
+#evidence-toggle, #jelly-toggle {
   border: 1px solid #28666d;
   border-radius: 999px;
   padding: 5px 10px;
@@ -70,8 +70,9 @@ header {
   cursor: pointer;
 }
 
-#evidence-toggle:hover,
-#evidence-toggle:focus-visible { color: #00191d; background: #72e6c7; outline: none; }
+#evidence-toggle:hover, #jelly-toggle:hover:not(:disabled),
+#evidence-toggle:focus-visible, #jelly-toggle:focus-visible { color: #00191d; background: #72e6c7; outline: none; }
+#jelly-toggle:disabled { opacity: .4; cursor: default; }
 
 #copy-dock button {
   border: 1px solid #28666d;
@@ -115,6 +116,50 @@ header {
   box-sizing: border-box;
 }
 
+#jelly-overlay {
+  position: absolute;
+  inset: 7px 12px;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 16px;
+  line-height: 1.15;
+}
+#jelly-overlay[hidden] { display: none; }
+.jelly-glyph {
+  position: absolute;
+  left: calc(var(--col) * (100% / var(--terminal-cols)));
+  top: calc(var(--row) * (100% / var(--terminal-rows)));
+  width: calc(var(--cells) * (100% / var(--terminal-cols)));
+  height: calc(100% / var(--terminal-rows));
+  line-height: calc(100% / var(--terminal-rows));
+  white-space: pre;
+  overflow: visible;
+  transform: translateY(var(--dy)) scale(var(--sx), var(--sy));
+  transform-origin: 50% 100%;
+}
+#terminal[data-jelly="on"] .xterm-rows { color: transparent !important; }
+#terminal[data-jelly="on"] .xterm-rows span { color: transparent !important; text-shadow: none !important; }
+
+#signal {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  right: 14px;
+  width: min(360px, calc(100% - 28px));
+  border: 1px solid rgba(40,102,109,.85);
+  border-radius: 7px;
+  background: rgba(0,19,23,.94);
+  box-shadow: 0 16px 48px rgba(0,0,0,.28);
+  font: 11px/1.35 Consolas, monospace;
+}
+#signal h2 { margin: 0; padding: 9px 11px; border-bottom: 1px solid #23575a; color: #a2f9e2; font: 12px/1 "Digital Breakdown Grid V3", Consolas, monospace; letter-spacing: 1.5px; }
+.signal-row { display: grid; grid-template-columns: 10ch 1fr; gap: 10px; padding: 6px 11px; border-bottom: 1px solid rgba(35,87,90,.45); }
+.signal-row:last-child { border-bottom: 0; }
+.signal-key { color: #58aeb0; }
+.signal-value { color: #d9fff4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 footer { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 16px; border-top: 1px solid #23575a; background: rgba(0,19,23,.9); }
 footer .spacer { flex: 1; min-width: 8px; }
 
@@ -132,6 +177,7 @@ footer .spacer { flex: 1; min-width: 8px; }
   #copy-status, #copy-fenced { display: none; }
   footer { padding-inline: 10px; }
   #shell-status, #evidence-status { max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #signal { width: min(280px, calc(100% - 20px)); top: 10px; right: 10px; }
 }
 
 #buoyant-field {
@@ -189,13 +235,86 @@ main {
 @keyframes semantic-stage { to { left: var(--to-x); top: var(--to-y); opacity: .2; transform: translateY(-8px) scale(1.03); } }
 
 @media (prefers-reduced-motion: reduce) {
-  #buoyant-field { display: none; }
+  #buoyant-field, #jelly-overlay { display: none; }
 }
+#clipboard-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  pointer-events: none;
+  padding: 5px 9px;
+  border: 1px solid #74ffbd;
+  border-radius: 999px;
+  background: rgba(0,25,29,.93);
+  color: #a2f9e2;
+  box-shadow: 0 0 20px rgba(116,255,189,.25);
+  font: 10px/1 Consolas,monospace;
+  letter-spacing: 1px;
+  animation: clipboard-pulse 1.2s ease-in-out infinite alternate;
+}
+#clipboard-cursor[hidden] { display: none; }
+#terminal[data-drop-target="active"] { outline: 2px dashed #74ffbd; outline-offset: -5px; }
+@keyframes clipboard-pulse { to { box-shadow: 0 0 32px rgba(116,255,189,.65); } }
+@media (prefers-reduced-motion: reduce) {
+  #clipboard-cursor { animation: none; }
+}
+/* INDRO MINIMAL START */
+header {
+  padding: 5px 14px;
+  min-height: 24px;
+  gap: 10px;
+  border-bottom: 1px solid rgba(114,230,199,.12);
+  letter-spacing: 0;
+}
+.identity {
+  font-size: 11px;
+  letter-spacing: .5px;
+}
+.header-context { gap: 6px; }
+.marker {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+#context-repository, #context-dirty,
+#copy-dock, #evidence-toggle,
+#signal, footer, #clipboard-cursor {
+  display: none !important;
+}
+#terminal {
+  padding: 7px 12px;
+}
+#terminal[data-drop-target="active"] {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(114,230,199,.32);
+}
+#buoyant-field {
+  opacity: .35;
+}
+#evidence-panel {
+  border-radius: 0;
+  box-shadow: none;
+}
+#evidence-panel button,
+#evidence-detail button {
+  border-radius: 0;
+}
+#semantic-morph-layer {
+  opacity: .55;
+}
+@media (prefers-reduced-motion: reduce) {
+  #buoyant-field, #semantic-morph-layer { display: none; }
+}
+/* INDRO MINIMAL END */
 </style>
 </head>
 <body>
 <header>
-  <span class="identity">DIGITAL BREAKDOWN // TERMINAL</span>
+  <span class="identity">INDRO // TRACE</span>
   <div class="header-context" aria-label="Terminal context">
     <span id="context-location" class="marker">LOCATION UNKNOWN</span>
     <span id="context-repository" class="marker">NO REPOSITORY</span>
@@ -203,6 +322,7 @@ main {
     <span id="context-dirty" class="marker" data-state="detached">DETACHED</span>
   </div>
   <button id="evidence-toggle" type="button" aria-expanded="false" aria-controls="evidence-panel">EVIDENCE</button>
+  <button id="jelly-toggle" type="button" aria-pressed="true">JELLY ON</button>
   <nav id="copy-dock" aria-label="Clipboard tools">
     <span id="copy-status" aria-live="polite">NO SELECTION</span>
     <button id="copy-raw" type="button" disabled>COPY RAW</button>
@@ -213,6 +333,15 @@ main {
 <main>
   <canvas id="buoyant-field" aria-hidden="true"></canvas>
   <div id="terminal"></div>
+  <section id="signal" aria-label="Read-only persistent session dashboard">
+    <h2>INDRO // SIGNAL</h2>
+    <div class="signal-row"><span class="signal-key">SESSION</span><span id="signal-session" class="signal-value">CONNECTING</span></div>
+    <div class="signal-row"><span class="signal-key">STATE</span><span id="signal-execution" class="signal-value">READY</span></div>
+    <div class="signal-row"><span class="signal-key">LOCATION</span><span id="signal-location" class="signal-value">UNKNOWN</span></div>
+    <div class="signal-row"><span class="signal-key">BRANCH</span><span id="signal-branch" class="signal-value">UNKNOWN</span></div>
+    <div class="signal-row"><span class="signal-key">WORKTREE</span><span id="signal-dirty" class="signal-value">UNKNOWN</span></div>
+    <div class="signal-row"><span class="signal-key">EVENT</span><span id="signal-event" class="signal-value">—</span></div>
+  </section>
   <aside id="evidence-panel" hidden aria-live="polite">
     <button id="evidence-close" type="button" aria-label="Close evidence">×</button>
     <h2>RETAINED EVIDENCE</h2>
@@ -237,3 +366,5 @@ main {
 <script type="module" src="/client.js"></script>
 </body>
 </html>
+
+

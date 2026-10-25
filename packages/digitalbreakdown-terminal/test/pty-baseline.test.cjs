@@ -36,12 +36,20 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
     assert.ok(projectionBody.operations.every(operation => !("command" in operation)));
   }
 
-  const socket = new WebSocket(`ws://127.0.0.1:${port}/terminal`, {
+  const session = (await (await fetch(`http://127.0.0.1:${port}/api/session`)).json()).sessionId;
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/terminal?session=${session}&display=trace`, {
     origin: `http://127.0.0.1:${port}`
   });
   t.after(() => socket.close());
   let output = "";
-  socket.on("message", data => { output += data.toString(); });
+  socket.on("message", data => {
+    const raw = data.toString();
+    try {
+      const event = JSON.parse(raw);
+      if (event.type === "session.snapshot") output += event.output || "";
+      if (event.type === "terminal.output") output += event.data || "";
+    } catch { output += raw; }
+  });
   await new Promise((resolve, reject) => {
     socket.once("open", resolve);
     socket.once("error", reject);

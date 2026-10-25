@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>INDRO // TRACE + SIGNAL</title>
+<link rel="stylesheet" href="/node_modules/@xterm/xterm/css/xterm.css">
+<style>
+@font-face {
+  font-family: "Digital Breakdown Grid V3";
+  src: url("/fonts/DigitalBreakdownGridV3-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  background: #00191d;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  color: #72e6c7;
+  font-family: Consolas, monospace;
+}
+
+header {
+  padding: 10px 16px;
+  border-bottom: 1px solid #23575a;
+  letter-spacing: 2px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+}
+
+.identity { flex: none; font-family: "Digital Breakdown Grid V3", Consolas, monospace; font-size: 14px; color: #a2f9e2; white-space: nowrap; }
+.header-context { display: grid; grid-template-columns: minmax(140px, 1fr) auto auto auto; align-items: center; gap: 7px; min-width: 0; flex: 1; }
+.marker { border: 1px solid rgba(40,102,109,.72); border-radius: 3px; padding: 4px 7px; color: #72aeb0; font: 10px/1.1 Consolas, monospace; letter-spacing: .7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#context-location { color: #d9fff4; }
+#context-branch { color: #f1c86a; }
+#context-dirty[data-state="dirty"] { color: #ff8b9b; border-color: rgba(255,101,122,.52); }
+#context-dirty[data-state="clean"] { color: #74ffbd; }
+.status-cluster { display: flex; gap: 7px; align-items: center; flex: none; }
+.status[data-state="active"], .status[data-state="success"] { color: #74ffbd; }
+.status[data-state="lost"], .status[data-state="error"] { color: #ff657a; }
+
+#copy-dock {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  letter-spacing: 1px;
+}
+
+#evidence-toggle {
+  border: 1px solid #28666d;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #72e6c7;
+  background: rgba(0, 25, 29, 0.76);
+  font: 11px/1 Consolas, monospace;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+#evidence-toggle:hover,
+#evidence-toggle:focus-visible { color: #00191d; background: #72e6c7; outline: none; }
+
+#copy-dock button {
+  border: 1px solid #28666d;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #72e6c7;
+  background: rgba(0, 25, 29, 0.76);
+  font: 11px/1 Consolas, monospace;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+#copy-dock button:hover:not(:disabled),
+#copy-dock button:focus-visible {
+  color: #00191d;
+  background: #72e6c7;
+  outline: none;
+}
+
+#copy-dock button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+#copy-status {
+  min-width: 11ch;
+  overflow: hidden;
+  color: #58aeb0;
+  font: 11px/1 Consolas, monospace;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#terminal {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  min-height: 0;
+  padding: 14px 16px;
+  box-sizing: border-box;
+}
+
+#signal {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  right: 14px;
+  width: min(360px, calc(100% - 28px));
+  border: 1px solid rgba(40,102,109,.85);
+  border-radius: 7px;
+  background: rgba(0,19,23,.94);
+  box-shadow: 0 16px 48px rgba(0,0,0,.28);
+  font: 11px/1.35 Consolas, monospace;
+}
+#signal h2 { margin: 0; padding: 9px 11px; border-bottom: 1px solid #23575a; color: #a2f9e2; font: 12px/1 "Digital Breakdown Grid V3", Consolas, monospace; letter-spacing: 1.5px; }
+.signal-row { display: grid; grid-template-columns: 10ch 1fr; gap: 10px; padding: 6px 11px; border-bottom: 1px solid rgba(35,87,90,.45); }
+.signal-row:last-child { border-bottom: 0; }
+.signal-key { color: #58aeb0; }
+.signal-value { color: #d9fff4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+footer { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 16px; border-top: 1px solid #23575a; background: rgba(0,19,23,.9); }
+footer .spacer { flex: 1; min-width: 8px; }
+
+@media (max-width: 900px) {
+  header { flex-wrap: wrap; gap: 8px; }
+  .header-context { order: 3; flex-basis: 100%; grid-template-columns: minmax(120px, 1fr) auto auto auto; }
+  #copy-dock { margin-left: auto; }
+  .status-cluster { margin-left: auto; }
+}
+
+@media (max-width: 560px) {
+  .identity { font-size: 12px; }
+  .header-context { grid-template-columns: minmax(100px, 1fr) auto; }
+  #context-repository, #context-dirty { display: none; }
+  #copy-status, #copy-fenced { display: none; }
+  footer { padding-inline: 10px; }
+  #shell-status, #evidence-status { max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #signal { width: min(280px, calc(100% - 20px)); top: 10px; right: 10px; }
+}
+
+#buoyant-field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+#evidence-panel {
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  right: 14px;
+  width: min(380px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid #28666d;
+  border-radius: 8px;
+  padding: 14px;
+  color: #b4f6e6;
+  background: rgba(0, 25, 29, 0.95);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  font: 12px/1.45 Consolas, monospace;
+}
+
+#evidence-panel[hidden] { display: none; }
+#evidence-panel h2 { margin: 0 0 5px; color: #72e6c7; font-size: 13px; letter-spacing: 1px; }
+#evidence-panel p { margin: 5px 0; color: #72aeb0; }
+#evidence-list { margin: 12px 0 0; padding: 0; list-style: none; }
+#evidence-list li { border-top: 1px solid rgba(40, 102, 109, 0.65); padding: 8px 0; }
+#evidence-list strong { color: #74ffbd; font-weight: normal; }
+#evidence-panel button { float: right; border: 0; color: #72e6c7; background: transparent; font: inherit; cursor: pointer; }
+#evidence-panel .evidence-expand { float: none; margin-top: 7px; border: 1px solid #28666d; border-radius: 999px; padding: 3px 7px; font-size: 10px; letter-spacing: 1px; }
+#evidence-panel .evidence-expand:hover, #evidence-panel .evidence-expand:focus-visible { background: #72e6c7; color: #00191d; outline: none; }
+#evidence-detail { position: fixed; z-index: 4; inset: auto 18px 18px auto; width: min(680px, calc(100vw - 36px)); max-height: min(52vh, 540px); overflow: auto; box-sizing: border-box; border: 1px solid #4d9f9f; border-radius: 8px; padding: 14px; color: #c9fff0; background: rgba(0, 19, 23, .98); box-shadow: 0 20px 70px rgba(0,0,0,.55); font: 12px/1.4 Consolas, monospace; }
+#evidence-detail[hidden] { display: none; }
+#evidence-detail h2 { margin: 0 24px 9px 0; color: #74ffbd; font-size: 12px; letter-spacing: 1px; }
+#evidence-detail h3 { margin: 13px 0 4px; color: #72aeb0; font-size: 11px; font-weight: normal; letter-spacing: 1px; }
+#evidence-detail pre { margin: 0; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #b4f6e6; }
+#evidence-detail button { position: absolute; top: 11px; right: 12px; border: 0; color: #72e6c7; background: transparent; cursor: pointer; font: 18px/1 monospace; }
+#semantic-morph-layer { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+.semantic-morph-stage { position: fixed; left: var(--from-x); top: var(--from-y); width: var(--to-width); color: #dff59a; font: 12px/1.2 "Digital Breakdown Grid V3", Consolas, monospace; letter-spacing: 1px; text-shadow: 0 0 14px #72e6c7; animation: semantic-stage 440ms cubic-bezier(.2,.7,.2,1) both; }
+.semantic-morph-glyph { display: block; overflow: hidden; white-space: nowrap; }
+.semantic-morph-glyph[data-phase="2"] { color: #dff59a; filter: blur(.35px); }
+@keyframes semantic-stage { to { left: var(--to-x); top: var(--to-y); opacity: .2; transform: translateY(-8px) scale(1.03); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #buoyant-field { display: none; }
+}
+#clipboard-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  pointer-events: none;
+  padding: 5px 9px;
+  border: 1px solid #74ffbd;
+  border-radius: 999px;
+  background: rgba(0,25,29,.93);
+  color: #a2f9e2;
+  box-shadow: 0 0 20px rgba(116,255,189,.25);
+  font: 10px/1 Consolas,monospace;
+  letter-spacing: 1px;
+  animation: clipboard-pulse 1.2s ease-in-out infinite alternate;
+}
+#clipboard-cursor[hidden] { display: none; }
+#terminal[data-drop-target="active"] { outline: 2px dashed #74ffbd; outline-offset: -5px; }
+@keyframes clipboard-pulse { to { box-shadow: 0 0 32px rgba(116,255,189,.65); } }
+@media (prefers-reduced-motion: reduce) {
+  #clipboard-cursor { animation: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <span class="identity">INDRO // TRACE</span>
+  <div class="header-context" aria-label="Terminal context">
+    <span id="context-location" class="marker">LOCATION UNKNOWN</span>
+    <span id="context-repository" class="marker">NO REPOSITORY</span>
+    <span id="context-branch" class="marker">NO BRANCH</span>
+    <span id="context-dirty" class="marker" data-state="detached">DETACHED</span>
+  </div>
+  <button id="evidence-toggle" type="button" aria-expanded="false" aria-controls="evidence-panel">EVIDENCE</button>
+  <nav id="copy-dock" aria-label="Clipboard tools">
+    <span id="copy-status" aria-live="polite">NO SELECTION</span>
+    <button id="copy-raw" type="button" disabled>COPY RAW</button>
+    <button id="copy-fenced" type="button" disabled>COPY FENCED</button>
+    <button id="paste" type="button">PASTE</button>
+  </nav>
+</header>
+<main>
+  <canvas id="buoyant-field" aria-hidden="true"></canvas>
+  <div id="terminal"></div>
+  <section id="signal" aria-label="Read-only persistent session dashboard">
+    <h2>INDRO // SIGNAL</h2>
+    <div class="signal-row"><span class="signal-key">SESSION</span><span id="signal-session" class="signal-value">CONNECTING</span></div>
+    <div class="signal-row"><span class="signal-key">STATE</span><span id="signal-execution" class="signal-value">READY</span></div>
+    <div class="signal-row"><span class="signal-key">LOCATION</span><span id="signal-location" class="signal-value">UNKNOWN</span></div>
+    <div class="signal-row"><span class="signal-key">BRANCH</span><span id="signal-branch" class="signal-value">UNKNOWN</span></div>
+    <div class="signal-row"><span class="signal-key">WORKTREE</span><span id="signal-dirty" class="signal-value">UNKNOWN</span></div>
+    <div class="signal-row"><span class="signal-key">EVENT</span><span id="signal-event" class="signal-value">—</span></div>
+  </section>
+  <aside id="evidence-panel" hidden aria-live="polite">
+    <button id="evidence-close" type="button" aria-label="Close evidence">×</button>
+    <h2>RETAINED EVIDENCE</h2>
+    <p id="evidence-repository">Loading read-only projection…</p>
+    <ul id="evidence-list"></ul>
+  </aside>
+  <section id="evidence-detail" hidden aria-live="polite" aria-label="Expanded retained evidence">
+    <button id="evidence-detail-close" type="button" aria-label="Close expanded evidence">×</button>
+    <h2 id="evidence-detail-title">RETAINED EVIDENCE</h2>
+    <div id="evidence-detail-body"></div>
+  </section>
+  <div id="semantic-morph-layer" aria-hidden="true"></div>
+</main>
+<footer aria-label="Terminal runtime status">
+  <span id="shell-status" class="marker">PowerShell</span>
+  <span id="execution-status" class="marker status">READY</span>
+  <span id="exit-status" class="marker status" data-state="idle">EXIT —</span>
+  <span class="spacer"></span>
+  <span id="evidence-status" class="marker">EVIDENCE QUIET</span>
+  <span id="connection-status" class="marker status" data-state="lost">SIGNAL LOST</span>
+</footer>
+<script type="module" src="/client.js"></script>
+</body>
+</html>
+
