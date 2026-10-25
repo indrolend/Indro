@@ -29,6 +29,8 @@ test('real CTest execution and unchanged reuse', () => {
     const current = snapshotNative(f);
     const changed = Object.keys(current.inputs).filter(key => JSON.stringify(recorded.inputs[key]) !== JSON.stringify(current.inputs[key]));
     assert.equal(second.outcome, recorded.fingerprint === current.fingerprint ? 'REUSED' : 'EXECUTED', JSON.stringify({ changed })); assert.equal(second.testCount, 1);
+    assert.equal(second.reuseDecision, second.outcome === 'REUSED' ? 'CURRENT' : 'INPUT_CHANGED');
+    assert.deepEqual(second.changedInputs.sort(), changed.sort());
     assert.ok(second.elapsedMs >= second.buildMs);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
@@ -38,7 +40,10 @@ test('source changes invalidate proof even if output binary is identical', () =>
   try {
     assert.equal(verifyNative(f).outcome, 'EXECUTED');
     appendFileSync(join(f.root, 'probe.cpp'), '\n// source changed\n');
-    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('source'));
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
@@ -68,7 +73,10 @@ test('corrupt newest receipt cannot reuse older success', () => {
     const file = join(f.store, readdirSync(f.store)[0]);
     const data = JSON.parse(readFileSync(file, 'utf8')); data.status = 'FAIL';
     writeFileSync(file, JSON.stringify(data));
-    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT');
+    assert.deepEqual(rerun.changedInputs, []);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
@@ -76,8 +84,11 @@ test('undeclared runtime closure forces execution', () => {
   const f = fixture();
   try {
     const unsafe = { ...f, runtimeClosureDeclared: false };
-    assert.equal(verifyNative(unsafe).reusable, false);
-    assert.equal(verifyNative(unsafe).outcome, 'EXECUTED');
+    const first = verifyNative(unsafe), second = verifyNative(unsafe);
+    assert.equal(first.reusable, false);
+    assert.equal(first.reuseDecision, 'RUNTIME_CLOSURE_UNDECLARED');
+    assert.equal(second.outcome, 'EXECUTED');
+    assert.equal(second.reuseDecision, 'RUNTIME_CLOSURE_UNDECLARED');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
