@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -315,4 +315,21 @@ test('CLI rejects missing, mistyped and duplicate runtime dependency options bef
     assert.equal(result.status, 2, JSON.stringify({ args, stderr: result.stderr }));
     assert.match(result.stderr, diagnostic);
   }
+});
+
+test('same-byte executable permission change prevents evidence reuse', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  try {
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, true);
+    const executable = snapshotNative(f).inputs.executables[0][0];
+    chmodSync(executable, 0o644);
+    const snapshot = snapshotNative(f);
+    assert.equal(snapshot.complete, false);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reusable, false);
+    assert.equal(rerun.reuseDecision, 'PROVENANCE_INCOMPLETE');
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });

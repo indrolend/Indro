@@ -96,7 +96,10 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   for (const test of plan.tests) {
     const exe = test.command?.[0];
     if (!exe || !isAbsolute(exe) || !existsSync(exe) || !inside(build, realpathSync(exe))) { complete = false; continue; }
-    executables.set(realpathSync(exe), fileHash(exe));
+    const resolvedExe = realpathSync(exe);
+    const executableMode = lstatSync(resolvedExe).mode & 0o111;
+    if (process.platform !== 'win32' && executableMode === 0) complete = false;
+    executables.set(resolvedExe, `${fileHash(exe)}:${process.platform === 'win32' ? 'win32' : executableMode.toString(8)}`);
   }
   const compilers = compilerHashes(cache, build);
   const tools = Object.fromEntries(['cmake', 'ctest', 'git'].map(name => [name, toolProvenance(name, root)]));
