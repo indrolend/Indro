@@ -46,6 +46,9 @@ if (command === 'help' || command === '--help' || command === '-h') {
   }
 } else if (command === 'proof-plan') {
   process.exitCode = python(path.join(here, 'indro_proof.py'), args);
+} else if (command === 'verify-native') {
+  const { runNativeCli } = await import('./native-verify.mjs');
+  process.exitCode = runNativeCli(args);
 } else if (command === 'language-test') {
   process.exitCode = python(path.join(here, 'tools', 'test-all.py'), args);
 } else {
