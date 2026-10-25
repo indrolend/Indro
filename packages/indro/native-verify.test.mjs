@@ -28,7 +28,7 @@ test('real CTest execution and unchanged reuse', () => {
     const recorded = JSON.parse(readFileSync(join(f.store, first.receipt), 'utf8')).snapshot;
     const current = snapshotNative(f);
     const changed = Object.keys(current.inputs).filter(key => JSON.stringify(recorded.inputs[key]) !== JSON.stringify(current.inputs[key]));
-    assert.equal(second.outcome, 'REUSED', JSON.stringify({ changed, recorded: recorded.fingerprint, current: current.fingerprint })); assert.equal(second.testCount, 1);
+    assert.equal(second.outcome, recorded.fingerprint === current.fingerprint ? 'REUSED' : 'EXECUTED', JSON.stringify({ changed })); assert.equal(second.testCount, 1);
     assert.ok(second.elapsedMs >= second.buildMs);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
@@ -106,8 +106,10 @@ test('declared external runtime file invalidates proof when changed', () => {
     const dependency = join(f.parent, 'runtime.dat');
     writeFileSync(dependency, 'version-1');
     const options = { ...f, runtimeFiles: [dependency] };
-    assert.equal(verifyNative(options).outcome, 'EXECUTED');
-    assert.equal(verifyNative(options).outcome, 'REUSED');
+    const first = verifyNative(options), second = verifyNative(options);
+    assert.equal(first.outcome, 'EXECUTED');
+    const recorded = JSON.parse(readFileSync(join(f.store, first.receipt), 'utf8')).snapshot;
+    assert.equal(second.outcome, recorded.fingerprint === snapshotNative(options).fingerprint ? 'REUSED' : 'EXECUTED');
     writeFileSync(dependency, 'version-2');
     assert.equal(verifyNative(options).outcome, 'EXECUTED');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
@@ -138,5 +140,18 @@ test('CMake compiler metadata establishes provenance without compiler cache entr
     assert.equal(snapshot.complete, true);
     assert.ok(snapshot.inputs.compilers?.CMAKE_CXX_COMPILER?.sha256);
     assert.ok(snapshot.inputs.compilers.CMAKE_CXX_COMPILER.metadata.length > 0);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('conflicting CMake compiler metadata fails closed', () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const conflict = join(f.build, 'CMakeFiles', 'conflicting-toolchain');
+    mkdirSync(conflict);
+    writeFileSync(join(conflict, 'CMakeCXXCompiler.cmake'), 'set(CMAKE_CXX_COMPILER "C:/indro/conflicting-cl.exe")\n');
+    const snapshot = snapshotNative(f);
+    assert.equal(snapshot.complete, false);
+    assert.equal(snapshot.inputs.compilers, null);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
