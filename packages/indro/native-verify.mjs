@@ -128,6 +128,15 @@ function readReceipt(path) {
     if (integrity !== digest(body)) return null;
     if (!value.snapshot?.inputs || value.snapshot.fingerprint !== digest(value.snapshot.inputs) ||
       !Number.isInteger(value.snapshot.testCount) || value.snapshot.testCount < 1) return null;
+    // A self-consistent checksum is not enough: reusable success must agree with the recorded execution.
+    if (value.reusable === true) {
+      const expectedCommand = ['ctest', '--test-dir', value.snapshot.inputs.build, '-C',
+        value.snapshot.inputs.configuration, '--output-on-failure'];
+      if (value.status !== 'PASS' || value.exitCode !== 0 || value.stable !== true ||
+        value.snapshot.complete !== true || !Array.isArray(value.snapshot.potentiallySkippedTests) ||
+        value.snapshot.potentiallySkippedTests.length !== 0 ||
+        JSON.stringify(value.command) !== JSON.stringify(expectedCommand)) return null;
+    }
     return value;
   } catch { return null; }
 }
