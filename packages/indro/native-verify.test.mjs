@@ -371,3 +371,20 @@ test('declared runtime executable permission change invalidates proof', { skip: 
     assert.ok(rerun.changedInputs.includes('runtime'));
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+
+test('nested CMake source cannot inherit a different Git worktree root', () => {
+  const f = fixture();
+  try {
+    const nested = join(f.root, 'nested');
+    mkdirSync(nested);
+    writeFileSync(join(nested, 'CMakeLists.txt'),
+      'cmake_minimum_required(VERSION 3.16)\nproject(nested CXX)\nenable_testing()\nadd_executable(probe probe.cpp)\nadd_test(NAME probe COMMAND probe)\n');
+    writeFileSync(join(nested, 'probe.cpp'), 'int main(){return 0;}\n');
+    const build = join(nested, 'build');
+    execFileSync('cmake', ['-S', nested, '-B', build], { stdio: 'pipe' });
+    const options = { ...f, root: nested, build };
+    assert.throws(() => snapshotNative(options), /Source root must match Git worktree root/);
+    assert.throws(() => verifyNative(options), /Source root must match Git worktree root/);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
