@@ -24,8 +24,7 @@ test('real CTest execution and unchanged reuse', () => {
   const f = fixture();
   try {
     const first = verifyNative(f), second = verifyNative(f);
-    const compilerMetadata = readdirSync(join(f.build, 'CMakeFiles')).flatMap(name => { try { return readFileSync(join(f.build, 'CMakeFiles', name, 'CMakeCXXCompiler.cmake'), 'utf8').split(String.fromCharCode(10)).filter(line => line.startsWith('set(CMAKE_CXX_COMPILER')).slice(0,7); } catch { return []; } });
-    assert.equal(first.outcome, 'EXECUTED'); assert.equal(first.testCount, 1); assert.equal(first.reusable, true, JSON.stringify({ compilers: snapshotNative(f).inputs.compilers, compilerMetadata }));
+    assert.equal(first.outcome, 'EXECUTED'); assert.equal(first.testCount, 1); assert.equal(first.reusable, true);
     assert.equal(second.outcome, 'REUSED'); assert.equal(second.testCount, 1);
     assert.ok(second.elapsedMs >= second.buildMs);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
@@ -124,3 +123,17 @@ for (const property of ['DISABLED TRUE', 'SKIP_RETURN_CODE 0', 'SKIP_REGULAR_EXP
     } finally { rmSync(f.parent, { recursive: true, force: true }); }
   });
 }
+
+test('CMake compiler metadata establishes provenance without compiler cache entry', () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const cachePath = join(f.build, 'CMakeCache.txt');
+    const cache = readFileSync(cachePath, 'utf8');
+    writeFileSync(cachePath, cache.split(String.fromCharCode(10)).filter(line => !line.startsWith('CMAKE_CXX_COMPILER:')).join(String.fromCharCode(10)));
+    const snapshot = snapshotNative(f);
+    assert.equal(snapshot.complete, true);
+    assert.ok(snapshot.inputs.compilers?.CMAKE_CXX_COMPILER?.sha256);
+    assert.ok(snapshot.inputs.compilers.CMAKE_CXX_COMPILER.metadata.length > 0);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
