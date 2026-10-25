@@ -98,7 +98,10 @@ function readReceipt(path) {
   try {
     const value = JSON.parse(readFileSync(path, 'utf8'));
     const { integrity, ...body } = value;
-    return integrity === digest(body) ? value : null;
+    if (integrity !== digest(body)) return null;
+    if (!value.snapshot?.inputs || value.snapshot.fingerprint !== digest(value.snapshot.inputs) ||
+      !Number.isInteger(value.snapshot.testCount) || value.snapshot.testCount < 1) return null;
+    return value;
   } catch { return null; }
 }
 /** Runs CMake's build authority before considering reuse; receipts are append-only. */
