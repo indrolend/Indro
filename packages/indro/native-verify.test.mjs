@@ -355,7 +355,7 @@ test('declared runtime executable permission change invalidates proof', { skip: 
   const f = fixture();
   try {
     const dependency = join(f.parent, 'runtime-script.sh');
-    writeFileSync(dependency, '#!/bin/sh\\nexit 0\\n');
+    writeFileSync(dependency, '#!/bin/sh\nexit 0\n');
     chmodSync(dependency, 0o755);
     const options = { ...f, runtimeFiles: [dependency] };
     const first = verifyNative(options);
