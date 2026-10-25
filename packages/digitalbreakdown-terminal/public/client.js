@@ -407,4 +407,3 @@ void (async () => {
   connectTrace(id);
   connectSignal(id);
 })().catch(() => terminal.writeln("\r\n[SESSION CONNECTION FAILED]"));
-
