@@ -12,8 +12,12 @@ Language:
   indro compile <program.indro|program.i> [compiler options]
   indro proof-plan <proof...> --state <state.json> [--cache <cache.json>]
   indro language-test
-  indro work inspect <path>\n  indro work compare <left> <right>\n  indro work evidence <id>\n  indro app help
+  indro work inspect <path>
+  indro work compare <left> <right>
+  indro work evidence <id>
+  indro app help
   indro app fixture set <number> --json  # offline fixture
+  indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
 
 Execution and evidence (CommandHUD compatibility):
   indro godot replay --scenario smoke [--capture] [--clipboard] [--clipboard-image] [--video]
@@ -59,6 +63,9 @@ if (command === 'help' || command === '--help' || command === '-h') {
 } else if (command === 'godot') {
   const { runGodotCli } = await import('./godot-replay.mjs');
   process.exitCode = await runGodotCli(args);
+} else if (command === 'verify-native') {
+  const { runNativeCli } = await import('./native-verify.mjs');
+  process.exitCode = runNativeCli(args);
 } else if (command === 'language-test') {
   process.exitCode = python(path.join(here, 'tools', 'test-all.py'), args);
 } else {

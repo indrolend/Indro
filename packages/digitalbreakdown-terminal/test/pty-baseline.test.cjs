@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { spawn } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
 const net = require("node:net");
+const path = require("node:path");
 const WebSocket = require("ws");
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -70,7 +71,8 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   assert.match(output, /\x1b\]777;[A-Za-z0-9+/=]+\x07/);
   const contextMatch = output.match(/\x1b\]777;([A-Za-z0-9+/=]+)\x07/);
   const context = JSON.parse(Buffer.from(contextMatch[1], "base64").toString("utf8"));
-  assert.equal(context.repository, "Indro");
+  const repositoryRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+  assert.equal(context.repository, path.basename(repositoryRoot));
   assert.match(context.cwd.replaceAll("\\", "/"), /packages\/digitalbreakdown-terminal$/);
   assert.equal(typeof context.dirty, "boolean");
   send("Write-Output $env:TERM\r");

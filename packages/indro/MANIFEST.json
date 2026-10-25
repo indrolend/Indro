@@ -107,13 +107,13 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 2624,
-      "sha256": "c19de9552d0566796bf1c5bf09645fa379e0946edfc5e7df88069d2a3c31e8c0"
+      "bytes": 2856,
+      "sha256": "a7a91360fee2eeae358cd72ca5715fc1187cd21cd68232e6ceb587c9a9e41045"
     },
     {
       "path": "cli.test.mjs",
-      "bytes": 1447,
-      "sha256": "fabdfa0576d2714496deea47a46748267bcec86ec3f1557c43b0eb00e82c6006"
+      "bytes": 1603,
+      "sha256": "9ae993cccf8272e015ee51df1548c6333122e01d0b991f2a25406fa921488248"
     },
     {
       "path": "doctor.ps1",
@@ -191,9 +191,24 @@
       "sha256": "df5911cbee9b31b8ec0e03fbd0b4554643b76f1a66974b2d70bc9f32f95dec10"
     },
     {
+      "path": "native-verify.md",
+      "bytes": 2824,
+      "sha256": "b1571bc8ab97363a71fef599ac34b59483fcd0b15d1eb913fd6fbfb245b463f5"
+    },
+    {
+      "path": "native-verify.mjs",
+      "bytes": 16383,
+      "sha256": "e140cd201d709e4ef96866bfd00c2f971c37058a66f0c7f1764327e9532ec900"
+    },
+    {
+      "path": "native-verify.test.mjs",
+      "bytes": 21548,
+      "sha256": "19834ba60a38ca65cd1e14948c9ae84607b86c24e07853b28dba7c82e9cee645"
+    },
+    {
       "path": "package.json",
-      "bytes": 287,
-      "sha256": "9df2a5f35bc631e45178848319de71adc31d13cfb5118864af7a397c68593793"
+      "bytes": 312,
+      "sha256": "9c648d63b19040c9dd94783dcac6a1118d486d2de9a128c2b1873b2cf9d7ce92"
     },
     {
       "path": "README.md",
