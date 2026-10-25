@@ -28,15 +28,29 @@ function cacheSource(cache) {
   if (!match) throw new Error('CMake source provenance unavailable');
   return resolve(match[1].trim());
 }
-function compilerHashes(cache) {
+function compilerHashes(cache, build) {
   const out = {};
   for (const key of ['CMAKE_C_COMPILER', 'CMAKE_CXX_COMPILER']) {
     const match = cache.match(new RegExp(`^${key}:(?:FILEPATH|STRING)=(.+)$`, 'm'));
-    if (match) {
-      const path = match[1].trim();
-      if (!existsSync(path)) return null;
-      out[key] = { path: realpathSync(path), sha256: fileHash(path) };
+    let path = match?.[1]?.trim();
+    const metadata = [];
+    for (const dir of readdirSync(join(build, 'CMakeFiles'), { withFileTypes: true })) {
+      if (!dir.isDirectory()) continue;
+      const name = key === 'CMAKE_C_COMPILER' ? 'CMakeCCompiler.cmake' : 'CMakeCXXCompiler.cmake';
+      const file = join(build, 'CMakeFiles', dir.name, name);
+      if (!existsSync(file)) continue;
+      const content = readFileSync(file, 'utf8');
+      metadata.push([relative(build, file), sha(content)]);
+      if (!path) {
+        const prefix = `set(${key} "`;
+        const line = content.split(String.fromCharCode(10)).map(value => value.trim()).find(value => value.startsWith(prefix));
+        const candidate = line?.slice(prefix.length).split('"')[0];
+        if (candidate) path = candidate;
+      }
     }
+    if (!path) continue;
+    if (!isAbsolute(path) || !existsSync(path)) return null;
+    out[key] = { path: realpathSync(path), sha256: fileHash(path), metadata: metadata.sort(([a], [b]) => a.localeCompare(b)) };
   }
   return Object.keys(out).length ? out : null;
 }
@@ -58,7 +72,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     if (!exe || !isAbsolute(exe) || !existsSync(exe) || !inside(build, realpathSync(exe))) { complete = false; continue; }
     executables.set(realpathSync(exe), fileHash(exe));
   }
-  const compilers = compilerHashes(cache);
+  const compilers = compilerHashes(cache, build);
   if (!compilers) complete = false;
   const runtime = [];
   for (const path of runtimeFiles) {
