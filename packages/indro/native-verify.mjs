@@ -22,6 +22,13 @@ function toolProvenance(name, cwd) {
   try { return { path: realpathSync(path), sha256: fileHash(path) }; }
   catch { return null; }
 }
+// Length-frame each field: source bytes can contain NULs and must not mimic the next record.
+function hashField(hash, value) {
+  const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value);
+  const length = Buffer.alloc(8);
+  length.writeBigUInt64BE(BigInt(bytes.length));
+  hash.update(length); hash.update(bytes);
+}
 function sourceFingerprint(root, build, store) {
   const paths = run('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root).split('\0').filter(Boolean).sort();
   const hash = createHash('sha256');
@@ -30,14 +37,14 @@ function sourceFingerprint(root, build, store) {
     if (!inside(root, path) || path === build || inside(build, path) || path === store || inside(store, path)) throw new Error('Untracked build/store or unsafe source path: ' + name);
     // Git tracks file type and symlink targets, not just dereferenced bytes.
     const stat = lstatSync(path);
-    hash.update(name); hash.update('\0');
+    hashField(hash, name);
     if (stat.isSymbolicLink()) {
       if (!inside(root, realpathSync(path))) throw new Error('Source symlink escapes repository: ' + name);
-      hash.update('SYMLINK:'); hash.update(readlinkSync(path));
+      hashField(hash, 'SYMLINK:' + readlinkSync(path));
     } else if (stat.isFile()) {
-      hash.update('FILE:'); hash.update(String(Boolean(stat.mode & 0o111)));
+      hashField(hash, 'FILE:' + String(Boolean(stat.mode & 0o111)));
     } else throw new Error('Unsupported source file type: ' + name);
-    hash.update('\0'); hash.update(readFileSync(path)); hash.update('\0');
+    hashField(hash, readFileSync(path));
   }
   return hash.digest('hex');
 }
