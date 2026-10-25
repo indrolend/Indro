@@ -116,4 +116,3 @@ export function createCursorInteraction({ host, terminal, status, observe = () =
     }
   };
 }
-
