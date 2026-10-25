@@ -115,13 +115,24 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
   const before = snapshotNative({ root, build, store, configuration, runtimeFiles });
   const sourceStableDuringBuild = sourceBeforeBuild === before.inputs.source;
   const reusable = runtimeClosureDeclared === true && before.complete && sourceStableDuringBuild;
+  let reuseDecision = !runtimeClosureDeclared ? 'RUNTIME_CLOSURE_UNDECLARED'
+    : !before.complete ? 'PROVENANCE_INCOMPLETE'
+      : !sourceStableDuringBuild ? 'SOURCE_CHANGED_DURING_BUILD' : 'NO_RECEIPT';
+  let changedInputs = [];
   if (reusable && existsSync(store)) {
     const files = readdirSync(store).filter(x => x.endsWith('.json')).sort().reverse();
     // A corrupt newest receipt fails closed: do not fall back to an older success.
     if (files.length) {
       const receipt = readReceipt(join(store, files[0]));
-      if (receipt?.status === 'PASS' && receipt.snapshot?.fingerprint === before.fingerprint && receipt.snapshot?.testCount === before.testCount && receipt.reusable === true) {
-        return { outcome: 'REUSED', testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: files[0] };
+      if (!receipt) reuseDecision = 'RECEIPT_CORRUPT';
+      else if (receipt.status !== 'PASS' || receipt.reusable !== true) reuseDecision = 'PREVIOUS_ATTEMPT_NOT_REUSABLE';
+      else if (receipt.snapshot?.fingerprint !== before.fingerprint || receipt.snapshot?.testCount !== before.testCount) {
+        reuseDecision = 'INPUT_CHANGED';
+        changedInputs = Object.keys(before.inputs).filter(key => digest(receipt.snapshot?.inputs?.[key]) !== digest(before.inputs[key]));
+        if (receipt.snapshot?.testCount !== before.testCount) changedInputs.push('testCount');
+      } else {
+        return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [],
+          testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: files[0] };
       }
     }
   }
@@ -134,12 +145,13 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
   const body = { schema: 1, status: pass ? 'PASS' : 'FAIL', reusable: pass && reusable,
     snapshot: before, command: ['ctest', '--test-dir', build, '-C', configuration, '--output-on-failure'],
     exitCode: result.status, error: result.error?.message ?? null, stable,
-    stdout: result.stdout ?? '', stderr: result.stderr ?? '', buildMs, testMs };
+    stdout: result.stdout ?? '', stderr: result.stderr ?? '', buildMs, testMs, reuseDecision, changedInputs };
   const receipt = { ...body, integrity: digest(body) };
   mkdirSync(store, { recursive: true });
   const filename = `${new Date().toISOString().replaceAll(':', '-')}-${randomUUID()}.json`;
   writeFileSync(join(store, filename), JSON.stringify(receipt, null, 2), { flag: 'wx' });
-  return { outcome: pass ? 'EXECUTED' : 'FAILED', testCount: before.testCount, reusable: receipt.reusable,
+  return { outcome: pass ? 'EXECUTED' : 'FAILED', reuseDecision, changedInputs,
+    testCount: before.testCount, reusable: receipt.reusable,
     buildMs, testMs, elapsedMs: performance.now() - started, receipt: filename, exitCode: result.status, stable };
 }
 
