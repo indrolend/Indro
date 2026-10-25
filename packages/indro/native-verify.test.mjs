@@ -73,6 +73,28 @@ test('source changes invalidate proof even if output binary is identical', () =>
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
+test('staged Git index changes invalidate reuse despite unchanged working-tree bytes', () => {
+  const f = fixture();
+  try {
+    writeFileSync(join(f.root, 'probe.cpp'),
+      '#include <cstdlib>\\nint main(){return std::system("git diff --cached --quiet") == 0 ? 0 : 1;}\\n');
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    const before = snapshotNative(f);
+    const ignore = join(f.root, '.gitignore');
+    const original = readFileSync(ignore, 'utf8');
+    writeFileSync(ignore, original + '# staged only\\n');
+    execFileSync('git', ['-C', f.root, 'add', '.gitignore']);
+    writeFileSync(ignore, original);
+    assert.equal(readFileSync(ignore, 'utf8'), original);
+    assert.notEqual(snapshotNative(f).inputs.source, before.inputs.source);
+    const second = verifyNative(f);
+    assert.equal(second.outcome, 'FAILED');
+    assert.equal(second.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(second.changedInputs.includes('source'));
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
 test('changed binary invalidates proof', () => {
   const f = fixture();
   try {
