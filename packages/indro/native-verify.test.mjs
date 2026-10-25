@@ -269,7 +269,7 @@ test('NUL-containing source bytes cannot impersonate another file record', () =>
   try {
     const a = join(f.root, 'a'), b = join(f.root, 'b');
     // Previously: a = "X\\0b\\0FILE:false\\0Y" hashed identically to a = "X", b = "Y".
-    writeFileSync(a, Buffer.from('X\\0b\\0FILE:false\\0Y'.replaceAll('\\0', '\\x00')));
+    writeFileSync(a, Buffer.concat([Buffer.from('X'), Buffer.from([0]), Buffer.from('b'), Buffer.from([0]), Buffer.from('FILE:false'), Buffer.from([0]), Buffer.from('Y')]));
     const first = verifyNative(f);
     assert.equal(first.outcome, 'EXECUTED');
     const previous = snapshotNative(f).inputs.source;
