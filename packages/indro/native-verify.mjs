@@ -48,7 +48,11 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   if (realpathSync(cacheSource(cache)) !== root) throw new Error('CMake cache belongs to another source tree');
   const plan = JSON.parse(run('ctest', ['--test-dir', build, '-C', configuration, '--show-only=json-v1'], root));
   if (!Array.isArray(plan.tests) || !plan.tests.length) throw new Error('CTest contains no tests');
-  const executables = new Map(); let complete = true;
+  // CTest exits 0 even when tests are disabled or skipped. Such a plan cannot certify full execution.
+  const potentiallySkippedTests = plan.tests.filter(test => (test.properties || []).some(property =>
+    (property.name === 'DISABLED' && property.value === true) ||
+    property.name === 'SKIP_RETURN_CODE' || property.name === 'SKIP_REGULAR_EXPRESSION')).map(test => test.name);
+  const executables = new Map(); let complete = potentiallySkippedTests.length === 0;
   for (const test of plan.tests) {
     const exe = test.command?.[0];
     if (!exe || !isAbsolute(exe) || !existsSync(exe) || !inside(build, realpathSync(exe))) { complete = false; continue; }
@@ -73,7 +77,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     ctest: run('ctest', ['--version'], root).split('\n')[0],
     environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL', 'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'SYSTEMROOT', 'WINDIR'].map(k => [k, process.env[k] ?? null])),
   };
-  return { fingerprint: digest(inputs), inputs, testCount: plan.tests.length, complete };
+  return { fingerprint: digest(inputs), inputs, testCount: plan.tests.length, complete, potentiallySkippedTests };
 }
 function readReceipt(path) {
   try {
