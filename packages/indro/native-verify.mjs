@@ -105,7 +105,11 @@ function compilerHashes(cache, build) {
     path ||= candidates[0];
     if (!path) continue;
     if (!isAbsolute(path) || !existsSync(path)) return null;
-    out[key] = { path: realpathSync(path), sha256: fileHash(path), metadata: metadata.sort(([a], [b]) => a.localeCompare(b)) };
+    const physical = realpathSync(path);
+    const executableMode = process.platform === 'win32' ? null : lstatSync(physical).mode & 0o111;
+    if (process.platform !== 'win32' && executableMode === 0) return null;
+    out[key] = { path: physical, sha256: fileHash(path), metadata: metadata.sort(([a], [b]) => a.localeCompare(b)),
+      ...(executableMode === null ? {} : { executableMode: executableMode.toString(8) }) };
   }
   return Object.keys(out).length ? out : null;
 }

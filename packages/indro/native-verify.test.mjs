@@ -7,18 +7,26 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { snapshotNative, verifyNative, changedExecutablePaths } from './native-verify.mjs';
 
-function fixture() {
+function fixture({ compilerWrapper = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'indro-native-proof-'));
   const root = join(parent, 'source'), build = join(root, 'build'), store = join(parent, 'evidence');
   mkdirSync(root);
+  const compiler = compilerWrapper ? join(parent, 'compiler-wrapper.sh') : null;
+  if (compiler) {
+    const cxx = execFileSync('which', ['c++'], { encoding: 'utf8' }).trim();
+    writeFileSync(compiler, `#!/bin/sh\nexec "${cxx}" "$@"\n`);
+    chmodSync(compiler, 0o755);
+  }
   writeFileSync(join(root, '.gitignore'), 'build/\n');
   writeFileSync(join(root, 'CMakeLists.txt'), 'cmake_minimum_required(VERSION 3.16)\nproject(proof CXX)\nenable_testing()\nadd_executable(probe probe.cpp)\nadd_test(NAME probe COMMAND probe)\n');
   writeFileSync(join(root, 'probe.cpp'), '#include <iostream>\nint main(){std::cout << "PASS"; return 0;}\n');
   execFileSync('git', ['init', '-q', root]);
   execFileSync('git', ['-C', root, 'add', '.']);
   execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture']);
-  execFileSync('cmake', ['-S', root, '-B', build], { stdio: 'pipe' });
-  return { parent, root, build, store, runtimeClosureDeclared: true };
+  const configure = ['-S', root, '-B', build];
+  if (compiler) configure.push(`-DCMAKE_CXX_COMPILER=${compiler}`);
+  execFileSync('cmake', configure, { stdio: 'pipe' });
+  return { parent, root, build, store, compiler, runtimeClosureDeclared: true };
 }
 
 test('real CTest execution and unchanged reuse', () => {
@@ -461,5 +469,24 @@ test('nested CMake source cannot inherit a different Git worktree root', () => {
     const options = { ...f, root: nested, build };
     assert.throws(() => snapshotNative(options), /Source root must match Git worktree root/);
     assert.throws(() => verifyNative(options), /Source root must match Git worktree root/);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('compiler executable permission loss prevents reuse after no-op build', { skip: process.platform === 'win32' }, () => {
+  const f = fixture({ compilerWrapper: true });
+  try {
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, true);
+    const before = snapshotNative(f);
+    chmodSync(f.compiler, 0o644);
+    const after = snapshotNative(f);
+    assert.equal(after.complete, false);
+    assert.notEqual(after.fingerprint, before.fingerprint);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'PROVENANCE_INCOMPLETE');
+    assert.equal(rerun.reusable, false);
+    assert.equal(rerun.exitCode, 0);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
