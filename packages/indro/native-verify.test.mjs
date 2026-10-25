@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { snapshotNative, verifyNative } from './native-verify.mjs';
+import { snapshotNative, verifyNative, changedExecutablePaths } from './native-verify.mjs';
 
 function fixture() {
   const parent = mkdtempSync(join(tmpdir(), 'indro-native-proof-'));
@@ -182,4 +182,13 @@ test('conflicting CMake compiler metadata fails closed', () => {
     assert.equal(snapshot.complete, false);
     assert.equal(snapshot.inputs.compilers, null);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+
+test('executable diagnostics identify changed, added and removed binaries', () => {
+  const build = join(tmpdir(), 'indro-native-diagnostic-build');
+  const a = join(build, 'bin', 'a.exe'), b = join(build, 'bin', 'b.exe');
+  assert.deepEqual(changedExecutablePaths([[a, 'old'], [b, 'same']], [[a, 'new'], [b, 'same']], build), ['bin/a.exe']);
+  assert.deepEqual(changedExecutablePaths([[a, 'old']], [[b, 'new']], build), ['bin/a.exe', 'bin/b.exe']);
+  assert.deepEqual(changedExecutablePaths(null, [], build), []);
 });
