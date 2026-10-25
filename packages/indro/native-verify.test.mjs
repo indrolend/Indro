@@ -109,3 +109,17 @@ test('declared external runtime file invalidates proof when changed', () => {
     assert.equal(verifyNative(options).outcome, 'EXECUTED');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+for (const property of ['DISABLED TRUE', 'SKIP_RETURN_CODE 0', 'SKIP_REGULAR_EXPRESSION PASS']) {
+  test(`CTest ${property} cannot produce reusable proof despite exit code zero`, () => {
+    const f = fixture();
+    try {
+      appendFileSync(join(f.root, 'CMakeLists.txt'), `set_tests_properties(probe PROPERTIES ${property})\n`);
+      const first = verifyNative(f), second = verifyNative(f);
+      assert.equal(first.outcome, 'EXECUTED');
+      assert.equal(first.reusable, false);
+      assert.equal(second.outcome, 'EXECUTED');
+      assert.deepEqual(snapshotNative(f).potentiallySkippedTests, ['probe']);
+    } finally { rmSync(f.parent, { recursive: true, force: true }); }
+  });
+}
