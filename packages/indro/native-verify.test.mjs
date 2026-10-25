@@ -25,7 +25,10 @@ test('real CTest execution and unchanged reuse', () => {
   try {
     const first = verifyNative(f), second = verifyNative(f);
     assert.equal(first.outcome, 'EXECUTED'); assert.equal(first.testCount, 1); assert.equal(first.reusable, true);
-    assert.equal(second.outcome, 'REUSED'); assert.equal(second.testCount, 1);
+    const recorded = JSON.parse(readFileSync(join(f.store, first.receipt), 'utf8')).snapshot;
+    const current = snapshotNative(f);
+    const changed = Object.keys(current.inputs).filter(key => JSON.stringify(recorded.inputs[key]) !== JSON.stringify(current.inputs[key]));
+    assert.equal(second.outcome, 'REUSED', JSON.stringify({ changed, recorded: recorded.fingerprint, current: current.fingerprint })); assert.equal(second.testCount, 1);
     assert.ok(second.elapsedMs >= second.buildMs);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
