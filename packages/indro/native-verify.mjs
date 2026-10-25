@@ -206,11 +206,25 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
 }
 
 export function runNativeCli(args) {
-  const get = flag => { const i = args.indexOf(flag); return i < 0 ? undefined : args[i + 1]; };
+  const valueFlags = new Set(['--root', '--build', '--store', '--configuration', '--runtime-file']);
+  const values = new Map(), runtimeFiles = [];
   try {
-    if (!get('--root') || !get('--build') || !get('--store')) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--declare-runtime-closure]');
-    const runtimeFiles = args.flatMap((value, index) => value === '--runtime-file' && args[index + 1] ? [args[index + 1]] : []);
-    const result = verifyNative({ root: get('--root'), build: get('--build'), store: get('--store'), configuration: get('--configuration') || 'Release', runtimeFiles, runtimeClosureDeclared: args.includes('--declare-runtime-closure') });
+    for (let i = 0; i < args.length; i++) {
+      const flag = args[i];
+      if (flag === '--declare-runtime-closure') continue;
+      if (!valueFlags.has(flag)) throw new Error('Unknown verify-native argument: ' + flag);
+      const value = args[++i];
+      if (!value || value.startsWith('--')) throw new Error('Missing value for ' + flag);
+      if (flag === '--runtime-file') runtimeFiles.push(value);
+      else {
+        if (values.has(flag)) throw new Error('Duplicate verify-native argument: ' + flag);
+        values.set(flag, value);
+      }
+    }
+    if (!values.get('--root') || !values.get('--build') || !values.get('--store')) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--declare-runtime-closure]');
+    const result = verifyNative({ root: values.get('--root'), build: values.get('--build'), store: values.get('--store'),
+      configuration: values.get('--configuration') || 'Release', runtimeFiles,
+      runtimeClosureDeclared: args.includes('--declare-runtime-closure') });
     console.log(JSON.stringify(result));
     return result.outcome === 'FAILED' ? 1 : 0;
   } catch (error) { console.error('INDRO_NATIVE_VERIFY_ERROR ' + error.message); return 2; }

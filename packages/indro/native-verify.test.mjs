@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { snapshotNative, verifyNative, changedExecutablePaths } from './native-verify.mjs';
 
@@ -300,4 +300,19 @@ test('NUL-containing source bytes cannot impersonate another file record', () =>
     assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
     assert.ok(rerun.changedInputs.includes('source'));
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('CLI rejects missing, mistyped and duplicate runtime dependency options before building', () => {
+  const cli = join(import.meta.dirname, 'cli.mjs');
+  const common = ['--root', 'unused-root', '--build', 'unused-build', '--store', 'unused-store'];
+  for (const [args, diagnostic] of [
+    [['--declare-runtime-closure', '--runtime-file'], /Missing value for --runtime-file/],
+    [['--runtime-file', '--declare-runtime-closure'], /Missing value for --runtime-file/],
+    [['--declare-runtime-closure', '--runtime-fil', 'dependency.dat'], /Unknown verify-native argument/],
+    [['--store', 'other-store'], /Duplicate verify-native argument: --store/],
+  ]) {
+    const result = spawnSync(process.execPath, [cli, 'verify-native', ...common, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 2, JSON.stringify({ args, stderr: result.stderr }));
+    assert.match(result.stderr, diagnostic);
+  }
 });
