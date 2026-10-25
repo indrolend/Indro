@@ -77,13 +77,13 @@ test('staged Git index changes invalidate reuse despite unchanged working-tree b
   const f = fixture();
   try {
     writeFileSync(join(f.root, 'probe.cpp'),
-      '#include <cstdlib>\\nint main(){return std::system("git diff --cached --quiet") == 0 ? 0 : 1;}\\n');
+      '#include <cstdlib>\nint main(){return std::system("git diff --cached --quiet") == 0 ? 0 : 1;}\n');
     const first = verifyNative(f);
     assert.equal(first.outcome, 'EXECUTED');
     const before = snapshotNative(f);
     const ignore = join(f.root, '.gitignore');
     const original = readFileSync(ignore, 'utf8');
-    writeFileSync(ignore, original + '# staged only\\n');
+    writeFileSync(ignore, original + '# staged only\n');
     execFileSync('git', ['-C', f.root, 'add', '.gitignore']);
     writeFileSync(ignore, original);
     assert.equal(readFileSync(ignore, 'utf8'), original);
