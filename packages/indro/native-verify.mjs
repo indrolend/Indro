@@ -94,6 +94,14 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   };
   return { fingerprint: digest(inputs), inputs, testCount: plan.tests.length, complete, potentiallySkippedTests };
 }
+/** Report changed CTest executables without exposing binary contents or hashes. */
+export function changedExecutablePaths(recorded, current, build) {
+  if (!Array.isArray(recorded) || !Array.isArray(current)) return [];
+  const previous = new Map(recorded), latest = new Map(current);
+  return [...new Set([...previous.keys(), ...latest.keys()])]
+    .filter(path => previous.get(path) !== latest.get(path))
+    .map(path => relative(build, path).replaceAll('\\', '/')).sort();
+}
 function readReceipt(path) {
   try {
     const value = JSON.parse(readFileSync(path, 'utf8'));
@@ -122,6 +130,7 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
     : !before.complete ? 'PROVENANCE_INCOMPLETE'
       : !sourceStableDuringBuild ? 'SOURCE_CHANGED_DURING_BUILD' : 'NO_RECEIPT';
   let changedInputs = [];
+  let changedExecutables = [];
   if (reusable && existsSync(store)) {
     const files = readdirSync(store).filter(x => x.endsWith('.json')).sort().reverse();
     // A corrupt newest receipt fails closed: do not fall back to an older success.
@@ -133,8 +142,9 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
         reuseDecision = 'INPUT_CHANGED';
         changedInputs = Object.keys(before.inputs).filter(key => JSON.stringify(receipt.snapshot?.inputs?.[key]) !== JSON.stringify(before.inputs[key]));
         if (receipt.snapshot?.testCount !== before.testCount) changedInputs.push('testCount');
+        changedExecutables = changedExecutablePaths(receipt.snapshot.inputs.executables, before.inputs.executables, build);
       } else {
-        return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [],
+        return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [], changedExecutables: [],
           testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: files[0] };
       }
     }
@@ -153,7 +163,7 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
   mkdirSync(store, { recursive: true });
   const filename = `${new Date().toISOString().replaceAll(':', '-')}-${randomUUID()}.json`;
   writeFileSync(join(store, filename), JSON.stringify(receipt, null, 2), { flag: 'wx' });
-  return { outcome: pass ? 'EXECUTED' : 'FAILED', reuseDecision, changedInputs,
+  return { outcome: pass ? 'EXECUTED' : 'FAILED', reuseDecision, changedInputs, changedExecutables,
     testCount: before.testCount, reusable: receipt.reusable,
     buildMs, testMs, elapsedMs: performance.now() - started, receipt: filename, exitCode: result.status, stable };
 }
