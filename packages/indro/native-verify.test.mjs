@@ -328,8 +328,9 @@ test('same-byte executable permission change prevents evidence reuse', { skip: p
     const snapshot = snapshotNative(f);
     assert.equal(snapshot.complete, false);
     const rerun = verifyNative(f);
-    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.outcome, 'FAILED');
     assert.equal(rerun.reusable, false);
+    assert.notEqual(rerun.exitCode, 0);
     assert.equal(rerun.reuseDecision, 'PROVENANCE_INCOMPLETE');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
