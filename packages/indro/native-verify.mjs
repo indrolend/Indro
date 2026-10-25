@@ -33,7 +33,7 @@ function compilerHashes(cache, build) {
   for (const key of ['CMAKE_C_COMPILER', 'CMAKE_CXX_COMPILER']) {
     const match = cache.match(new RegExp(`^${key}:(?:FILEPATH|STRING)=(.+)$`, 'm'));
     let path = match?.[1]?.trim();
-    const metadata = [];
+    const metadata = [], candidates = [];
     for (const dir of readdirSync(join(build, 'CMakeFiles'), { withFileTypes: true })) {
       if (!dir.isDirectory()) continue;
       const name = key === 'CMAKE_C_COMPILER' ? 'CMakeCCompiler.cmake' : 'CMakeCXXCompiler.cmake';
@@ -41,13 +41,14 @@ function compilerHashes(cache, build) {
       if (!existsSync(file)) continue;
       const content = readFileSync(file, 'utf8');
       metadata.push([relative(build, file), sha(content)]);
-      if (!path) {
-        const prefix = `set(${key} "`;
-        const line = content.split(String.fromCharCode(10)).map(value => value.trim()).find(value => value.startsWith(prefix));
-        const candidate = line?.slice(prefix.length).split('"')[0];
-        if (candidate) path = candidate;
-      }
+      const prefix = `set(${key} "`;
+      const line = content.split(String.fromCharCode(10)).map(value => value.trim()).find(value => value.startsWith(prefix));
+      const candidate = line?.slice(prefix.length).split('"')[0];
+      if (candidate) candidates.push(candidate);
     }
+    const distinct = [...new Set(candidates.map(value => isAbsolute(value) ? resolve(value) : value))];
+    if (distinct.length > 1 || (path && distinct.length && resolve(path) !== distinct[0])) return null;
+    path ||= candidates[0];
     if (!path) continue;
     if (!isAbsolute(path) || !existsSync(path)) return null;
     out[key] = { path: realpathSync(path), sha256: fileHash(path), metadata: metadata.sort(([a], [b]) => a.localeCompare(b)) };
