@@ -52,6 +52,28 @@ jobs:
               'Runtime closure: operator-declared for this experiment; not independently established.'
             ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
           }
+      - name: Prove corrupt evidence fails closed on real CTest suite
+        shell: pwsh
+        run: |
+          $game = (Resolve-Path game).Path
+          $build = (Resolve-Path game/build).Path
+          $source = Get-ChildItem benchmark-evidence -Filter '*.json' | Select-Object -First 1
+          if (-not $source) { throw 'Missing benchmark receipt' }
+          $store = Join-Path $env:GITHUB_WORKSPACE 'benchmark-corrupt-evidence'
+          New-Item -ItemType Directory -Path $store | Out-Null
+          $receipt = Get-Content -LiteralPath $source.FullName -Raw | ConvertFrom-Json
+          $receipt.integrity = 'tampered'
+          $corrupt = Join-Path $store $source.Name
+          $receipt | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $corrupt
+          $originalHash = (Get-FileHash -LiteralPath $corrupt -Algorithm SHA256).Hash
+          $raw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
+          if ($LASTEXITCODE -ne 0) { throw 'Real CTest corruption probe failed to execute' }
+          $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
+          if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'RECEIPT_CORRUPT' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Unexpected fail-closed result: $($result | ConvertTo-Json -Compress)" }
+          if ((Get-FileHash -LiteralPath $corrupt -Algorithm SHA256).Hash -ne $originalHash) { throw 'Original corrupt evidence was overwritten' }
+          if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected append-only replacement receipt' }
+          $result | ConvertTo-Json -Depth 10 | Set-Content benchmark-corruption-result.json
+          "Real 55-test CTest receipt corruption: $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Retain raw measurements and evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -60,4 +82,6 @@ jobs:
           path: |
             benchmark-results.json
             benchmark-evidence/*.json
+            benchmark-corruption-result.json
+            benchmark-corrupt-evidence/*.json
           if-no-files-found: warn
