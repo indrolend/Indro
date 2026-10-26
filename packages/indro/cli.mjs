@@ -17,6 +17,12 @@ Language:
   indro work evidence <id>
   indro app help
   indro app fixture set <number> --json  # offline fixture
+  indro app process priority --spawn --set BelowNormal --json
+  indro capability list --json
+  indro capability validate <id> --json
+  indro capability invoke <id> --value 0..1 --verify --authorize-write --json
+  indro fl doctor --json
+  indro fl plugin set --channel N --param N --value 0..1 --verify --json
   indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
 
 Execution and evidence (CommandHUD compatibility):
@@ -60,6 +66,12 @@ if (command === 'help' || command === '--help' || command === '-h') {
 } else if (command === 'app') {
   const { runAppCli } = await import('./uai/cli.mjs');
   process.exitCode = await runAppCli(args);
+} else if (command === 'fl') {
+  const { runFlCli } = await import('./fl/cli.mjs');
+  process.exitCode = await runFlCli(args);
+} else if (command === 'capability') {
+  const { runCapabilityCli } = await import('./capability/cli.mjs');
+  process.exitCode = await runCapabilityCli(args);
 } else if (command === 'godot') {
   const { runGodotCli } = await import('./godot-replay.mjs');
   process.exitCode = await runGodotCli(args);
