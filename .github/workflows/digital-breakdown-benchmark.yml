@@ -74,6 +74,41 @@ jobs:
           if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected append-only replacement receipt' }
           $result | ConvertTo-Json -Depth 10 | Set-Content benchmark-corruption-result.json
           "Real 55-test CTest receipt corruption: $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Prove tracked source invalidation on real CTest suite
+        shell: pwsh
+        run: |
+          $game = (Resolve-Path game).Path
+          $build = (Resolve-Path game/build).Path
+          $source = Join-Path $game 'CMakeLists.txt'
+          $backup = Join-Path $env:GITHUB_WORKSPACE 'game-source-backup.txt'
+          $store = Join-Path $env:GITHUB_WORKSPACE 'benchmark-source-invalidation'
+          Copy-Item -LiteralPath $source -Destination $backup
+          $originalSourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+          try {
+            $firstRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
+            if ($LASTEXITCODE -ne 0) { throw 'Initial real-game verification failed' }
+            $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw "Unexpected initial verification: $($first | ConvertTo-Json -Compress)" }
+            $receipt = Join-Path $store $first.receipt
+            $originalReceiptHash = (Get-FileHash -LiteralPath $receipt -Algorithm SHA256).Hash
+            $reuseRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
+            if ($LASTEXITCODE -ne 0) { throw 'Unchanged real-game verification failed' }
+            $reuse = $reuseRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($reuse.outcome -ne 'REUSED' -or $reuse.receipt -ne $first.receipt) { throw "Expected stable evidence reuse before mutation: $($reuse | ConvertTo-Json -Compress)" }
+            Add-Content -LiteralPath $source -Value "`n# INDRO CI source provenance challenge"
+            $raw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
+            if ($LASTEXITCODE -ne 0) { throw 'Source invalidation did not complete real CTest verification' }
+            $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'source' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Incorrect source invalidation: $($result | ConvertTo-Json -Compress)" }
+            if ((Get-FileHash -LiteralPath $receipt -Algorithm SHA256).Hash -ne $originalReceiptHash) { throw 'Original verification receipt was modified' }
+            if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected append-only source invalidation receipt' }
+            $result | ConvertTo-Json -Depth 10 | Set-Content benchmark-source-invalidation-result.json
+            "Real 55-test source mutation: $($reuse.outcome) -> $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
+          } finally {
+            Copy-Item -LiteralPath $backup -Destination $source -Force
+            if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $originalSourceHash) { throw 'Disposable checkout source restoration failed' }
+            Remove-Item -LiteralPath $backup
+          }
       - name: Retain raw measurements and evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,4 +119,6 @@ jobs:
             benchmark-evidence/*.json
             benchmark-corruption-result.json
             benchmark-corrupt-evidence/*.json
+            benchmark-source-invalidation-result.json
+            benchmark-source-invalidation/*.json
           if-no-files-found: warn
