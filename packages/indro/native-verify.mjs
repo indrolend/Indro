@@ -168,7 +168,24 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   const buildGraph = buildGraphHashes(build);
   const compilers = compilerHashes(cache, build);
   const tools = Object.fromEntries(['cmake', 'ctest', 'git'].map(name => [name, toolProvenance(name, root)]));
-  if (!buildGraph || !compilers || Object.values(tools).some(value => !value)) complete = false;
+  // CMake delegates compilation to CMAKE_MAKE_PROGRAM; include the actual build-tool bytes.
+  const makeProgram = cache.match(/^CMAKE_MAKE_PROGRAM:(?:FILEPATH|STRING|UNINITIALIZED)=(.*)$/m)?.[1]?.trim();
+  let buildTool = null;
+  if (makeProgram) {
+    const path = isAbsolute(makeProgram) ? makeProgram : toolProvenance(makeProgram, root)?.path;
+    if (path && existsSync(path)) {
+      try {
+        const physical = realpathSync(path);
+        const executableMode = process.platform === 'win32' ? null : lstatSync(physical).mode & 0o111;
+        if (executableMode !== 0) buildTool = { declaredPath: makeProgram, path: physical,
+          symlinks: pathSymlinks(path), sha256: fileHash(path),
+          ...(executableMode === null ? {} : { executableMode: executableMode.toString(8) }) };
+      } catch { /* Unreadable build tools cannot establish provenance. */ }
+    }
+  }
+  const generator = cache.match(/^CMAKE_GENERATOR:INTERNAL=(.*)$/m)?.[1]?.trim();
+  if (!buildGraph || !compilers || Object.values(tools).some(value => !value) ||
+      (makeProgram && !buildTool) || (/Ninja|Makefiles/.test(generator || '') && !buildTool)) complete = false;
   const runtime = [];
   for (const path of runtimeFiles) {
     if (!existsSync(path)) { complete = false; continue; }
@@ -183,7 +200,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     source: sourceFingerprint(root, build, store), cache: sha(cache), buildGraph,
     testPlan: digest(plan.tests),
     executables: [...executables].sort(([a], [b]) => a.localeCompare(b)),
-    compilers, tools, runtime,
+    compilers, tools, buildTool, runtime,
     cmake: run('cmake', ['--version'], root).split('\n')[0],
     ctest: run('ctest', ['--version'], root).split('\n')[0],
     // Digest every inherited variable: arbitrary CTest dependencies must not escape the fingerprint.

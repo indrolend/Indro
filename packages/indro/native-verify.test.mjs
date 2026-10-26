@@ -7,11 +7,17 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { snapshotNative, verifyNative, changedExecutablePaths } from './native-verify.mjs';
 
-function fixture({ compilerWrapper = false, generator = null } = {}) {
+function fixture({ compilerWrapper = false, generator = null, makeProgramWrapper = false } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'indro-native-proof-'));
   const root = join(parent, 'source'), build = join(root, 'build'), store = join(parent, 'evidence');
   mkdirSync(root);
   const compiler = compilerWrapper ? join(parent, 'compiler-wrapper.sh') : null;
+  const makeProgram = makeProgramWrapper ? join(parent, 'ninja-wrapper.sh') : null;
+  if (makeProgram) {
+    const ninja = execFileSync('which', ['ninja'], { encoding: 'utf8' }).trim();
+    writeFileSync(makeProgram, `#!/bin/sh\nexec "${ninja}" "$@"\n`);
+    chmodSync(makeProgram, 0o755);
+  }
   if (compiler) {
     const cxx = execFileSync('which', ['c++'], { encoding: 'utf8' }).trim();
     writeFileSync(compiler, `#!/bin/sh\nexec "${cxx}" "$@"\n`);
@@ -26,8 +32,9 @@ function fixture({ compilerWrapper = false, generator = null } = {}) {
   const configure = ['-S', root, '-B', build];
   if (generator) configure.push('-G', generator);
   if (compiler) configure.push(`-DCMAKE_CXX_COMPILER=${compiler}`);
+  if (makeProgram) configure.push(`-DCMAKE_MAKE_PROGRAM=${makeProgram}`);
   execFileSync('cmake', configure, { stdio: 'pipe' });
-  return { parent, root, build, store, compiler, runtimeClosureDeclared: true };
+  return { parent, root, build, store, compiler, makeProgram, runtimeClosureDeclared: true };
 }
 
 test('real CTest execution and unchanged reuse', () => {
@@ -655,5 +662,26 @@ test('Ninja Multi-Config implementation rules invalidate reusable CTest evidence
     assert.equal(rerun.outcome, 'EXECUTED', JSON.stringify(rerun));
     assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
     assert.ok(rerun.changedInputs.includes('buildGraph'));
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('Ninja build-tool bytes invalidate reuse; missing tool fails closed', {
+  skip: process.platform === 'win32' || spawnSync('ninja', ['--version']).status !== 0,
+}, () => {
+  const f = fixture({ generator: 'Ninja', makeProgramWrapper: true });
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    assert.equal(verifyNative(f).outcome, 'REUSED');
+    const before = snapshotNative(f);
+    assert.equal(before.complete, true);
+    assert.ok(before.inputs.buildTool?.sha256);
+    appendFileSync(f.makeProgram, '# harmless wrapper byte change\n');
+    assert.notEqual(snapshotNative(f).fingerprint, before.fingerprint);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('buildTool'));
+    unlinkSync(f.makeProgram);
+    assert.equal(snapshotNative(f).complete, false);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
