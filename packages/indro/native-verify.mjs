@@ -118,6 +118,15 @@ function compilerHashes(cache, build) {
   }
   return Object.keys(out).length ? out : null;
 }
+// Fingerprint CMake generator entry points, not only compiled binaries and the test plan.
+function buildGraphHashes(build) {
+  const names = readdirSync(build).filter(name => name === 'Makefile' || name.endsWith('.ninja') || name.endsWith('.sln'));
+  if (!names.length) return null;
+  for (const name of ['CMakeFiles/Makefile2', 'CMakeFiles/rules.ninja']) {
+    if (existsSync(join(build, name))) names.push(name);
+  }
+  return names.sort().map(name => [name, fileHash(join(build, name))]);
+}
 /** A scoped, explicit-dependency CTest proof. Not a certificate of undeclared runtime dependencies. */
 export function snapshotNative({ root, build, store, configuration = 'Release', runtimeFiles = [] }) {
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
@@ -140,9 +149,10 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     if (process.platform !== 'win32' && executableMode === 0) complete = false;
     executables.set(exe, `${fileHash(exe)}:${process.platform === 'win32' ? 'win32' : executableMode.toString(8)}:${digest([resolvedExe, pathSymlinks(exe)])}`);
   }
+  const buildGraph = buildGraphHashes(build);
   const compilers = compilerHashes(cache, build);
   const tools = Object.fromEntries(['cmake', 'ctest', 'git'].map(name => [name, toolProvenance(name, root)]));
-  if (!compilers || Object.values(tools).some(value => !value)) complete = false;
+  if (!buildGraph || !compilers || Object.values(tools).some(value => !value)) complete = false;
   const runtime = [];
   for (const path of runtimeFiles) {
     if (!existsSync(path)) { complete = false; continue; }
@@ -154,7 +164,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   const head = run('git', ['rev-parse', 'HEAD'], root).trim();
   const inputs = {
     root, build, configuration, head,
-    source: sourceFingerprint(root, build, store), cache: sha(cache),
+    source: sourceFingerprint(root, build, store), cache: sha(cache), buildGraph,
     testPlan: digest(plan.tests),
     executables: [...executables].sort(([a], [b]) => a.localeCompare(b)),
     compilers, tools, runtime,

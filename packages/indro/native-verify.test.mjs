@@ -573,3 +573,37 @@ test('CTest tool symlink text invalidates proof despite unchanged executable byt
     assert.equal(rerun.reusable, false);
   } finally { process.env.PATH = originalPath; rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+test('changed CMake generator entry point invalidates native evidence reuse', () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    assert.equal(verifyNative(f).outcome, 'REUSED');
+    const graph = readdirSync(f.build).find(name => name === 'Makefile' || name.endsWith('.ninja') || name.endsWith('.sln'));
+    assert.ok(graph, 'expected CMake generator entry point');
+    const before = snapshotNative(f);
+    appendFileSync(join(f.build, graph), '\n# INDRO generated graph mutation\n');
+    const after = snapshotNative(f);
+    assert.notEqual(after.fingerprint, before.fingerprint);
+    assert.notDeepEqual(after.inputs.buildGraph, before.inputs.buildGraph);
+    if (process.platform !== 'win32') {
+      const rerun = verifyNative(f);
+      assert.equal(rerun.outcome, 'EXECUTED');
+      assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+      assert.ok(rerun.changedInputs.includes('buildGraph'));
+    }
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('missing CMake generator entry point prevents reusable proof', () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const graph = readdirSync(f.build).find(name => name === 'Makefile' || name.endsWith('.ninja') || name.endsWith('.sln'));
+    assert.ok(graph, 'expected CMake generator entry point');
+    unlinkSync(join(f.build, graph));
+    const snapshot = snapshotNative(f);
+    assert.equal(snapshot.complete, false);
+    assert.equal(snapshot.inputs.buildGraph, null);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
