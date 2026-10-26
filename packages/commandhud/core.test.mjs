@@ -1090,6 +1090,8 @@ test('PowerShell missing commands are blocked without treating ordinary stderr a
     message: "rg: The term 'rg' is not recognized as a name of a cmdlet, function, script file, or executable program.",
   });
   assert.equal(classifyPowerShellShellFailure('warning: optional cache is unavailable'), null);
+  const wrappedDiagnostic = "cmd: The term 'cmd' is not recognized as a\\n    | name of a cmdlet, function, script file, or executable program. Check the spelling.";
+  assert.equal(classifyPowerShellShellFailure(wrappedDiagnostic)?.kind, 'command-not-found');
 
   const project = await fixtureProject();
   const powershell = (await discoverShells(project.root)).find((entry) => entry.id === 'powershell');
