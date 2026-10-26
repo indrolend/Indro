@@ -1005,7 +1005,7 @@ export function reduceOutput(command, stdout, stderr, exitCode, { root = '', kin
 }
 
 export function classifyPowerShellShellFailure(stderr) {
-  const text = normalizeTerminalText(String(stderr || ''));
+  const text = normalizeTerminalText(String(stderr || '')).replace(/\n\s*\|\s*/g, ' ');
   const commandNotFound = firstMatch(text, [
     /^.*The term '[^']+' is not recognized as a name of a cmdlet, function, script file, or executable program.*$/im,
     /^.*CommandNotFoundException.*$/im,
@@ -1323,7 +1323,7 @@ export async function runCommand(project, tokens, {
     reduction.cause ||= capturedFailure.message || 'The shell reported that the requested operation failed.';
     reduction.classification ||= capturedFailure.classification || 'command';
   }
-  const missingCommand = exitCode !== 0 && /(?:command not found|is not recognized as (?:a name of |the name of )?a? ?(?:cmdlet|function|script file|executable program)|ENOENT)/i.test(normalizeTerminalText(`${stdout}\n${stderr}`));
+  const missingCommand = exitCode !== 0 && (capturedFailure?.kind === 'command-not-found' || /(?:command not found|is not recognized as (?:a name of |the name of )?a? ?(?:cmdlet|function|script file|executable program)|ENOENT)/i.test(normalizeTerminalText(`${stdout}\n${stderr}`)));
   const evidenceValidity = validateOperationEvidence({ stdout, stderr }, policy.requiredOutput);
   const accepted = acceptedExitCodes.includes(exitCode);
   const record = {
