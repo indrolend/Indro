@@ -517,3 +517,30 @@ test('CTest executable symlink text invalidates reuse despite unchanged binary b
     assert.equal(rerun.reusable, false);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+test('compiler symlink text invalidates reusable CTest evidence even when compiler bytes match', { skip: process.platform === 'win32' }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indro-compiler-symlink-'));
+  try {
+    const root = join(dir, 'source'), build = join(root, 'build'), store = join(dir, 'evidence');
+    mkdirSync(root); mkdirSync(join(dir, 'bin'));
+    const wrapper = join(dir, 'bin', 'compiler.sh'), link = join(dir, 'bin', 'compiler-link');
+    const cxx = execFileSync('which', ['c++'], { encoding: 'utf8' }).trim();
+    writeFileSync(wrapper, '#!/bin/sh\nexec "' + cxx + '" "$@"\n'); chmodSync(wrapper, 0o755);
+    symlinkSync('compiler.sh', link);
+    writeFileSync(join(root, '.gitignore'), 'build/\n');
+    writeFileSync(join(root, 'CMakeLists.txt'), 'cmake_minimum_required(VERSION 3.16)\nproject(proof CXX)\nenable_testing()\nadd_executable(probe probe.cpp)\nadd_test(NAME probe COMMAND probe)\n');
+    writeFileSync(join(root, 'probe.cpp'), '#include <unistd.h>\n#include <string>\nint main(){char buf[4096]; auto n=readlink("' + link.replaceAll('\\', '\\\\') + '",buf,sizeof(buf));return n>0 && std::string(buf,n)=="compiler.sh" ? 0:1;}\n');
+    execFileSync('git', ['init', '-q', root]);
+    execFileSync('git', ['-C', root, 'add', '.']);
+    execFileSync('git', ['-C', root, '-c', 'user.name=test', '-c', 'user.email=test@local', 'commit', '-qm', 'fixture']);
+    execFileSync('cmake', ['-S', root, '-B', build, '-DCMAKE_CXX_COMPILER=' + link]);
+    const opts = { root, build, store, runtimeClosureDeclared: true };
+    assert.equal(verifyNative(opts).outcome, 'EXECUTED');
+    assert.equal(verifyNative(opts).outcome, 'REUSED');
+    unlinkSync(link); symlinkSync('./compiler.sh', link);
+    const changed = verifyNative(opts);
+    assert.equal(changed.outcome, 'FAILED', JSON.stringify(changed));
+    assert.equal(changed.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(changed.changedInputs.includes('compilers'), JSON.stringify(changed));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
