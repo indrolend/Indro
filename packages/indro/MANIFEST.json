@@ -177,13 +177,13 @@
     },
     {
       "path": "native-verify.mjs",
-      "bytes": 16863,
-      "sha256": "1848c9a44ab1a73c22d8bd3f79cd50de7ebd72a63db251c35ee98cc15db7dbb7"
+      "bytes": 16899,
+      "sha256": "0b512f41ff6205cd5010b28fec42f94c9b7e9e96a044ec9e932ee2800aab0794"
     },
     {
       "path": "native-verify.test.mjs",
-      "bytes": 23820,
-      "sha256": "f4077d75431c9c2e311aa2932c9c86e079cf8f5575b4e86df602ff465cdbcc93"
+      "bytes": 25358,
+      "sha256": "c0dba797cd5556dadaf3403633987e08f7f67ebfddcf4292893a352fd268f29d"
     },
     {
       "path": "package.json",
