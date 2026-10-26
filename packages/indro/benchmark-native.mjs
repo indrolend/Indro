@@ -60,7 +60,7 @@ function execute(kind, command, argv) {
   if (r.error || r.status !== 0) throw new Error(`${kind} failed: ${(r.stderr || r.stdout || r.error?.message || '').slice(-1500)}`);
   return record;
 }
-let error = null;
+let error = null, reuseStatus = 'NOT_RUN', invalidation = null;
 try {
   // INDRO requires an explicit runtime-closure claim for evidence reuse. This
   // benchmark does not infer or silently declare that closure on the user's behalf.
@@ -74,11 +74,19 @@ try {
   const initialCount = records.find(record => record.kind === 'ctest')?.testCount;
   if (!(initialCount > 0) || first.testCount !== initialCount) throw new Error('First INDRO test coverage differs from baseline');
   const originalEvidence = evidenceSnapshot();
+  reuseStatus = 'REUSED';
   if (!Object.hasOwn(originalEvidence, first.receipt)) throw new Error('First INDRO receipt not found in evidence store');
   for (let i = 0; i < runs; i++) {
     const ordinary = baseline();
     const reused = execute('indro-reuse', process.execPath, indroArgs);
-    if (reused.outcome !== 'REUSED') throw new Error(`INDRO did not reuse at repetition ${i + 1}: ${reused.reuseDecision ?? reused.outcome}; changedInputs=${JSON.stringify(reused.changedInputs ?? [])}`);
+    if (reused.outcome === 'EXECUTED') {
+      // A baseline build can legitimately change a binary (notably on Windows).
+      // Report this as a negative reuse result; never label it a speedup.
+      reuseStatus = 'INVALIDATED';
+      invalidation = { repetition: i + 1, reason: reused.reuseDecision, changedInputs: reused.changedInputs ?? [] };
+      break;
+    }
+    if (reused.outcome !== 'REUSED') throw new Error(`INDRO verification failed at repetition ${i + 1}: ${reused.reuseDecision ?? reused.outcome}`);
     if (ordinary.testCount !== reused.testCount) throw new Error(`CTest coverage mismatch: ${ordinary.testCount} vs ${reused.testCount}`);
     if (reused.receipt !== first.receipt || !sameEvidence(originalEvidence, evidenceSnapshot()))
       throw new Error('Reuse altered evidence or changed receipt identity');
@@ -91,8 +99,8 @@ for (let i = 0; i < records.length; i++) if (records[i].kind === 'ctest') baseli
 const ordinaryMedian = median(baselineTimes.slice(1).sort((a,b)=>a-b));
 const reuseMedian = median(values('indro-reuse'));
 const report = { schema: 2, root, build, store, configuration: config, repetitions: runs, runtimeClosureAssumption: 'explicitly declared by benchmark operator; not independently established', runtimeFiles,
-  records, ordinaryMedianMs: ordinaryMedian, reuseMedianMs: reuseMedian,
-  speedup: ordinaryMedian && reuseMedian ? ordinaryMedian / reuseMedian : null, error };
+  records, ordinaryMedianMs: ordinaryMedian, reuseMedianMs: reuseMedian, reuseStatus, invalidation,
+  speedup: reuseStatus === 'REUSED' && ordinaryMedian && reuseMedian ? ordinaryMedian / reuseMedian : null, error };
 writeFileSync(output, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' });
-console.log(JSON.stringify({ output, ordinaryMedianMs: ordinaryMedian, reuseMedianMs: reuseMedian, speedup: report.speedup, error }));
+console.log(JSON.stringify({ output, ordinaryMedianMs: ordinaryMedian, reuseMedianMs: reuseMedian, reuseStatus, invalidation, speedup: report.speedup, error }));
 if (error) process.exitCode = 1;
