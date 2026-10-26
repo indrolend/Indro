@@ -1812,7 +1812,7 @@ export async function runTerminalCommand(project, command, {
       tokens = [selected.executable, '--cd', project.root, 'bash', '--noprofile', '--norc'];
     } else {
       const start = relative(project.root, selectedCwd).replaceAll('\\', '/') || '.';
-      stdin = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\npwd -W >&3\nexit $hud_exit`;
+      stdin = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\n${process.platform === 'win32' ? 'pwd -W' : 'pwd -P'} >&3\nexit $hud_exit`;
       tokens = [selected.executable, '--noprofile', '--norc'];
     }
   } else {
