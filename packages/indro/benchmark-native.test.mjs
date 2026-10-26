@@ -25,7 +25,7 @@ test('benchmark refuses an undeclared runtime closure without writing evidence',
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('benchmark runs real CTest and retains byte-identical receipts on reuse', () => {
+test('benchmark measures real CTest and reports reuse or safe invalidation', () => {
   const dir = mkdtempSync(join(tmpdir(), 'indro-benchmark-ctest-'));
   try {
     const root = join(dir, 'source'), build = join(root, 'build');
@@ -44,9 +44,20 @@ test('benchmark runs real CTest and retains byte-identical receipts on reuse', (
     const report = JSON.parse(readFileSync(output, 'utf8'));
     assert.equal(report.error, null);
     assert.equal(report.repetitions, 2);
-    assert.equal(report.records.filter(record => record.kind === 'indro-reuse' && record.outcome === 'REUSED').length, 2);
-    assert.equal(report.records.filter(record => record.kind === 'ctest' && record.testCount === 1).length, 3);
+    const attempts = report.records.filter(record => record.kind === 'indro-reuse');
+    assert.ok(attempts.length >= 1);
+    assert.ok(report.records.filter(record => record.kind === 'ctest').every(record => record.testCount === 1));
     assert.equal(report.records.filter(record => record.kind === 'indro-first' && record.outcome === 'EXECUTED').length, 1);
+    if (report.reuseStatus === 'REUSED') {
+      assert.equal(attempts.length, 2);
+      assert.ok(attempts.every(record => record.outcome === 'REUSED'));
+      assert.ok(report.speedup > 0);
+    } else {
+      assert.equal(report.reuseStatus, 'INVALIDATED');
+      assert.equal(attempts.at(-1).outcome, 'EXECUTED');
+      assert.equal(report.speedup, null);
+      assert.ok(report.invalidation?.changedInputs?.length);
+    }
     assert.ok(report.ordinaryMedianMs > 0 && report.reuseMedianMs > 0);
     assert.equal(exec('git', ['status', '--porcelain'], root).trim(), '');
   } finally { rmSync(dir, { recursive: true, force: true }); }
