@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "status": "PASS",
+  "reusable": true,
+  "snapshot": {
+    "fingerprint": "5c497d55ddece9e1afa1827cd5ca837fcc71eabef2d26171245024147d477705",
+    "inputs": {
+      "root": "D:\\hud\\fixtures\\data-game-definitive-20261026",
+      "build": "D:\\hud\\builds\\data-game-definitive-20261026",
+      "configuration": "Release",
+      "head": "8e6824278f1226f0d74950688d6cf7badb736d30",
+      "source": "1fa443bc7381c4370b7b2b94b842fca2ddf526c4aaf2a835d8a87af2b946f205",
+      "cache": "d9bf7f881acd6f0b39ab0f7a790f1c7f79b648ff35329dde68e7743cf77f6dd8",
+      "testPlan": "f383960289409d1b74ec53f79a89b64c4e6602690b655faf14e9e823888ecff4",
+      "executables": [
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\bin\\Release\\DigitalBreakdown.exe",
+          "aa8333e386a3d985452d00be0c2a43e1666ef4542bb7680a0b8a9e11e2f80f88:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\AgentPlaytestProtocolTest.exe",
+          "29bee4290c3203d79bdcda89927fd0883cf8bd3d22dd525c76f6ef87b8df5ffb:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\CityStreetGrammarTest.exe",
+          "2c66d760c6fdc8e3263ab5f0155c2a0d8ee1933daef342b291de60210d90ffca:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\CoastalWaterTest.exe",
+          "eeb16e6f540a3e66fdbdde33b009f4897c83b3f2ba8963a3966450f69b4df94e:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\ComputedSceneObjectsTest.exe",
+          "3c7d61ee166e4e96f62dfe6303b3e68b4b903f450d9dfa5026bf91a27e1df047:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\DesktopPlaytestPolicyTest.exe",
+          "ccd9e58087db5ba330d20e86fcc2cb32f5f597b55987da000994b2dcd99add17:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\DeterministicInputSoak.exe",
+          "4a03aebd7b0426b5cf0780e7618cd5e7d8408370de49cc042dbfc1ab4c903569:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\DeveloperCodecTest.exe",
+          "e4fe49c0caaa1b5e89101209a704494a8b29a127d04f0aaa3de17642d6e59b8a:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\EnemyBehaviorStateTest.exe",
+          "462b83330eecce013c1ceaa9ad4f0fd1543b443a5ff5f022de6968719b324ad5:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\EnemyEmbodimentContractTest.exe",
+          "35e28091b790505772c61399ce5336f5c911b0bd5937b1fac651566b034bad25:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\EnemyEvidenceScenarioTest.exe",
+          "15fe4e6b55ba91d8b4bcd0957a2555b79cd27108135fdf73cc7f630e25821151:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\EnemyLocomotionTest.exe",
+          "ee6ed9c4d7ff0764a5bc977b5c4c366f42aca2d44ca276aa6c6b50e3995d7138:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\EnemyMotorTest.exe",
+          "39735b5c368f07d47f1d700d9a1d6bf0e62e1898b2c6a2803059765493489691:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\EnemyPerceptionTest.exe",
+          "13802e7dc0872b5c089afde054ead28cf5cdc6b4bc8e029410965a4441b5ce8c:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\ExpressiveVisualTest.exe",
+          "e932bc216d2bd22ab0c46a793e9a9877fe4e225ef854aaf438451206ef0144fb:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\FacetedRockTest.exe",
+          "101d8edc2a154a2481955b76557c4d763a89d6dcc0868975b24a7c53d3e4a0e1:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\FieldIslandTraversalTest.exe",
+          "13a032abc02f51081ff03c69e7704b2d6da487ef55104f173613010578f93a79:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\GameplayFlowProbe.exe",
+          "e7c8747bb2a845c9608de0a2b7d97607340ecbc77fccc61937370bca8688fbbb:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\GameplayGeometryAndConfigTest.exe",
+          "8e1d52c556bc132a0a4255cf1c467170fc7fde97d61a9461b97a85e7d76a45e4:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\GameplayRoleAndSoulMotionTest.exe",
+          "229aeded890dcfab2563ccd5945bb71ef85abfa87bbda15f600bcc4244934b65:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\HistoricalPursuitComparisonTest.exe",
+          "efa317f78ab76e01c5a7e3421ee3806c490544fd4335b9a6de37496e1e15cc58:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\HostRemotePeerSimulationIsolationTest.exe",
+          "d329b7dc5e92dac0f8a7f22b9a895ed41ca4e9af6051decf635f68de6dd0f7fa:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\HouseGeometryTest.exe",
+          "034cf73eb80d3d6ba4ab2aaff586e97792d801390823296ad0a58af24b66079a:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\LightingStateSnapshotTest.exe",
+          "e51c051aaff3ce158b750e76aaf779ceaa56f79ef3e39420ccfd6a1680bc0d97:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\MarkerPillarGeometryTest.exe",
+          "d18e947aae97bcc50195a6d558f6e73f0fe288b7988486fc411c8008104732f0:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\MaterialResponseTest.exe",
+          "309103bd43d92582fbafaa8d003ed434ddfedda4eac961c25f6fe9b4da3b0837:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\MenuNavigationTest.exe",
+          "dc9e066c0a9284c49c725d56a769bc5662210ec3294e1525d73fbb565f8cfe7a:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\ModelDataTest.exe",
+          "beaf9473adf8687f392a3a28224db9f5f93681659d490030d71863fd90edac1e:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\MultiplayerConnectionStateTest.exe",
+          "69b0b23495d0739eb647ec009492a5336616e2511d1e7038d538460db04e7cfe:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\MultiplayerDeterminismTest.exe",
+          "8b2276576d2ffc3fe60f679b534a9c7841db36079c5ad6197d5619bdc3ab1748:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\MultiplayerProtocolTest.exe",
+          "12653229b98cd40e8661c240a5d6b77f8e27069f2df004cd91dd037a7bb96f4c:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\MusicDirectorTest.exe",
+          "bcd81a73b4ddf134b5926f77ef755b1d53af33ab6b94f951cebb23f48d3122e1:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\NdraResidueExperiment.exe",
+          "136ab57e95297b6292522362fb287bea55292922b623f67012d930f0d0cc6433:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\PhoneBodyContractTest.exe",
+          "4a6296b693cd454c4d523b2da5aeab90d6e5f0003465999dc302a259d6d40fcc:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\PhoneDisplayStateTest.exe",
+          "61d3ccd4265aa2aabf904803eebd0ede6edb9b775709a4548ac6aadb889c9e61:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\PhoneMenuLayoutTest.exe",
+          "c775c951b72f0f730a3299d7f6735b7547fd4d203e7e5bb8efbc4d951f02024d:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\PhoneStencilRevealTest.exe",
+          "d331e78d97cb393365754317844c565d3241f884e39579b34634c9ab668e9353:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\PhysicalEnemyBodyTest.exe",
+          "6a7102076dbcbe4852ce63a87ce34275e027d88219f870d766400f95fd85da7d:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\RenderContractsTest.exe",
+          "243db4d1e5cae362af0437fe28a83711f721db95eb88893e19d5317c80c2e758:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\RoomEnvironmentTest.exe",
+          "96369b2423d2b633010f757f9b6f4dd311d91783f5b782ed222344201becc023:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\RoomProgressionProbe.exe",
+          "c0d56a3491f8c58c0a0daf6e5cfd3519cd2b4a1b18ef5ea9a38a351d8685e39e:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\RuinGeometryTest.exe",
+          "ac907a5f744b6b7832af11bf856ce65d95825bafe686ce54957c0653a369d69b:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\RunProgressionTest.exe",
+          "b99e6e4f806433ee6d3224bf9ca92ce6755b4d0e70f070ae2bde7fdce0f47f8f:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SceneLightingResponseTest.exe",
+          "821ff99312c3258bfe21ef58a6d7ebb408680b6300c02b30c6219bd4673dedc4:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SecretTvPolicyTest.exe",
+          "b01dfe71d4f0ca07e1b8a4d561225834b2507f10eba25c5a9bf644b55cd7a7a0:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SignalResidueLifecycleTest.exe",
+          "cbe104916ff3d1b868046238213d2a0e1f1f5d5e2a5e3305afe308f6563039a8:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SlopeSupportTest.exe",
+          "badd14f9783371ae9492d2748aeb854b81aebe4af4119e47f8ed161676dccee8:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SlopeTraversalFixtureTest.exe",
+          "f9a1a118f59ef620415d90cdcd94a2fe45dc6c6ff254f5774c995a370acf5ca5:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SoulEconomyTest.exe",
+          "723630bcadfa5190b8bf73306e4b751a59758bdd6c6d92690321dc9b6f53d6fd:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SoulProjectileLifecycleTest.exe",
+          "c57dfb7f27cae7b47f8b5fea5566d692ea373ff499ffe904563ea2dedc9d2a1b:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\StateLayoutContractsTest.exe",
+          "be605449ca1625a607f6fe6679fe933f398db6878953ee707484e6f0f682ce69:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\SurfaceGeometryTest.exe",
+          "c6d83aa18f5002c9276e6c2a53e78971a87bacaf91d4d26ec5ae5c3203dc7953:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\TargetLifecycleTest.exe",
+          "6e7dd7d6d0cec7bafd4c19da813886c7971eec84712452f1ec1ad31f9514eb89:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\TraversalCalibrationTest.exe",
+          "442508c3069b0f494e29ee620cf9c7968c5625c6789288dafcfd901915c3714e:win32"
+        ],
+        [
+          "D:\\hud\\builds\\data-game-definitive-20261026\\Release\\TreeGeometryTest.exe",
+          "8696961192756339ec1f3ee55f8de16c65ea2b383b6acef13d110b52193abdcf:win32"
+        ]
+      ],
+      "compilers": {
+        "CMAKE_C_COMPILER": {
+          "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.exe",
+          "sha256": "dc8426b8760d92cf757df3d10b9f0244a95b454ff43194a58161568a0ec70d53",
+          "metadata": [
+            [
+              "CMakeFiles\\4.4.0\\CMakeCCompiler.cmake",
+              "72db7384ee16cee489271f2e624340b9b2a7439918012f25c59dff524cb8ee13"
+            ]
+          ]
+        },
+        "CMAKE_CXX_COMPILER": {
+          "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.exe",
+          "sha256": "dc8426b8760d92cf757df3d10b9f0244a95b454ff43194a58161568a0ec70d53",
+          "metadata": [
+            [
+              "CMakeFiles\\4.4.0\\CMakeCXXCompiler.cmake",
+              "79751875b4b6844e0c8b7ceed0dcf0409174f77efc7b60e56baa08e14af09c07"
+            ]
+          ]
+        }
+      },
+      "tools": {
+        "cmake": {
+          "path": "C:\\Program Files\\CMake\\bin\\cmake.exe",
+          "sha256": "4510f1883dfad3238602bae9a7a4b441fb4a931a643604aa44336710b6be5f6f"
+        },
+        "ctest": {
+          "path": "C:\\Program Files\\CMake\\bin\\ctest.exe",
+          "sha256": "b3fcab80b6f4155ea1312380e7f7d4e463b16a975c991d8d599176f410fa3754"
+        },
+        "git": {
+          "path": "C:\\Program Files\\Git\\cmd\\git.exe",
+          "sha256": "7b7971dd13f0c3a284e538601f2f9770b3a87dfaccb5fb52d68141c67ed22364"
+        }
+      },
+      "runtime": [
+        {
+          "declaredPath": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-000349\\declared-runtime.dat",
+          "path": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-000349\\declared-runtime.dat",
+          "symlinks": [],
+          "sha256": "602c2f7e2c8d9a937c613dac0c0bb2d056e1d04b363234073378cc8bf3be8b0e"
+        }
+      ],
+      "cmake": "cmake version 4.4.0",
+      "ctest": "ctest version 4.4.0",
+      "environmentDigest": "568446aaa9befd6a20258c36cf9153c92674cd04b759fb92a8f937dd0e649a47",
+      "environment": {
+        "PATH": "C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\indro\\.codex\\tmp\\arg0-windows\\codex-arg0EQPXKo;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\libheif\\libheif\\bin;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\jxrlib\\jxrlib\\bin;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\poppler\\Library\\bin;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\override;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\Microsoft SQL Server\\170\\Tools\\Binn\\;C:\\Program Files\\Microsoft SQL Server\\Client SDK\\ODBC\\170\\Tools\\Binn\\;C:\\Program Files\\dotnet\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\nodejs\\;C:\\Program Files\\GitHub CLI\\;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Tailscale\\;C:\\Program Files\\CMake\\bin;C:\\Program Files\\Go\\bin;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\starship\\bin\\;C:\\Program Files\\Sunshine;C:\\Program Files\\Sunshine\\tools;C:\\Program Files\\Steel Bank Common Lisp\\;C:\\Program Files\\Youlean\\Youlean Loudness Meter 2;C:\\Users\\indro\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\;C:\\Users\\indro\\AppData\\Local\\Programs\\Python\\Python313\\;C:\\Users\\indro\\AppData\\Local\\Programs\\Python\\Launcher\\;C:\\Program Files\\Android\\Android Studio\\jbr\\bin;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\indro\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\indro\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\indro\\AppData\\Local\\Microsoft\\WinGet\\Links;C:\\Users\\indro\\AppData\\Local\\Microsoft\\WinGet\\Packages\\yt-dlp.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-N-124716-g054dffd133-win64-gpl\\bin;C:\\Users\\indro\\.dotnet\\tools;C:\\Users\\indro\\AppData\\Roaming\\npm;C:\\Users\\indro\\AppData\\Local\\Android\\Sdk\\platform-tools;C:\\Users\\indro\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Genymobile.scrcpy_Microsoft.Winget.Source_8wekyb3d8bbwe\\scrcpy-win64-v4.0;C:\\Users\\indro\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe\\platform-tools;C:\\Users\\indro\\AppData\\Local\\Programs\\Ollama;C:\\Users\\indro\\go\\bin;C:\\Users\\indro\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\fallback;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;C:\\Users\\indro\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\git\\cmd;C:\\Users\\indro\\AppData\\Local\\OpenAI\\Codex\\bin\\c602dfdab3808440;C:\\Users\\indro\\AppData\\Local\\OpenAI\\Codex\\bin\\2993767bd1dfb009",
+        "INCLUDE": null,
+        "LIB": null,
+        "CC": null,
+        "CXX": null,
+        "CMAKE_GENERATOR": null,
+        "CTEST_PARALLEL_LEVEL": null,
+        "LD_LIBRARY_PATH": null,
+        "DYLD_LIBRARY_PATH": null,
+        "SYSTEMROOT": "C:\\WINDOWS",
+        "WINDIR": "C:\\WINDOWS",
+        "TEMP": "C:\\Users\\indro\\AppData\\Local\\Temp",
+        "TMP": "C:\\Users\\indro\\AppData\\Local\\Temp",
+        "LOCALAPPDATA": "C:\\Users\\indro\\AppData\\Local",
+        "HOME": null,
+        "XDG_DATA_HOME": null
+      }
+    },
+    "testCount": 57,
+    "complete": true,
+    "potentiallySkippedTests": []
+  },
+  "command": [
+    "ctest",
+    "--test-dir",
+    "D:\\hud\\builds\\data-game-definitive-20261026",
+    "-C",
+    "Release",
+    "--output-on-failure"
+  ],
+  "exitCode": 0,
+  "error": null,
+  "stable": true,
+  "stdout": "Test project D:/hud/builds/data-game-definitive-20261026\n      Start  1: GameplayRoleAndSoulMotionTest\n 1/57 Test  #1: GameplayRoleAndSoulMotionTest ...........   Passed    0.02 sec\n      Start  2: RunProgressionTest\n 2/57 Test  #2: RunProgressionTest ......................   Passed    0.01 sec\n      Start  3: EnemyPerceptionTest\n 3/57 Test  #3: EnemyPerceptionTest .....................   Passed    0.01 sec\n      Start  4: CoastalWaterTest\n 4/57 Test  #4: CoastalWaterTest ........................   Passed    0.01 sec\n      Start  5: PhysicalEnemyBodyTest\n 5/57 Test  #5: PhysicalEnemyBodyTest ...................   Passed    0.03 sec\n      Start  6: EnemyBehaviorStateTest\n 6/57 Test  #6: EnemyBehaviorStateTest ..................   Passed    0.01 sec\n      Start  7: EnemyLocomotionTest\n 7/57 Test  #7: EnemyLocomotionTest .....................   Passed    0.01 sec\n      Start  8: EnemyEmbodimentContractTest\n 8/57 Test  #8: EnemyEmbodimentContractTest .............   Passed    0.02 sec\n      Start  9: EnemyMotorTest\n 9/57 Test  #9: EnemyMotorTest ..........................   Passed    0.01 sec\n      Start 10: HistoricalPursuitComparisonTest\n10/57 Test #10: HistoricalPursuitComparisonTest .........   Passed    0.02 sec\n      Start 11: MultiplayerProtocolTest\n11/57 Test #11: MultiplayerProtocolTest .................   Passed    0.02 sec\n      Start 12: MultiplayerDeterminismTest\n12/57 Test #12: MultiplayerDeterminismTest ..............   Passed    0.76 sec\n      Start 13: HostRemotePeerSimulationIsolationTest\n13/57 Test #13: HostRemotePeerSimulationIsolationTest ...   Passed    0.03 sec\n      Start 14: MultiplayerConnectionStateTest\n14/57 Test #14: MultiplayerConnectionStateTest ..........   Passed    0.03 sec\n      Start 15: GameplayGeometryAndConfigTest\n15/57 Test #15: GameplayGeometryAndConfigTest ...........   Passed    0.02 sec\n      Start 16: TargetLifecycleTest\n16/57 Test #16: TargetLifecycleTest .....................   Passed    0.01 sec\n      Start 17: StateLayoutContractsTest\n17/57 Test #17: StateLayoutContractsTest ................   Passed    0.01 sec\n      Start 18: PhoneBodyContractTest\n18/57 Test #18: PhoneBodyContractTest ...................   Passed    0.01 sec\n      Start 19: PhoneMenuLayoutTest\n19/57 Test #19: PhoneMenuLayoutTest .....................   Passed    0.01 sec\n      Start 20: PhoneStencilRevealTest\n20/57 Test #20: PhoneStencilRevealTest ..................   Passed    0.01 sec\n      Start 21: MenuNavigationTest\n21/57 Test #21: MenuNavigationTest ......................   Passed    0.01 sec\n      Start 22: PhoneDisplayStateTest\n22/57 Test #22: PhoneDisplayStateTest ...................   Passed    0.02 sec\n      Start 23: RoomEnvironmentTest\n23/57 Test #23: RoomEnvironmentTest .....................   Passed    0.02 sec\n      Start 24: ComputedSceneObjectsTest\n24/57 Test #24: ComputedSceneObjectsTest ................   Passed    0.01 sec\n      Start 25: MaterialResponseTest\n25/57 Test #25: MaterialResponseTest ....................   Passed    0.01 sec\n      Start 26: ModelDataTest\n26/57 Test #26: ModelDataTest ...........................   Passed    0.01 sec\n      Start 27: FacetedRockTest\n27/57 Test #27: FacetedRockTest .........................   Passed    0.01 sec\n      Start 28: SlopeSupportTest\n28/57 Test #28: SlopeSupportTest ........................   Passed    0.01 sec\n      Start 29: SurfaceGeometryTest\n29/57 Test #29: SurfaceGeometryTest .....................   Passed    0.01 sec\n      Start 30: RuinGeometryTest\n30/57 Test #30: RuinGeometryTest ........................   Passed    0.01 sec\n      Start 31: HouseGeometryTest\n31/57 Test #31: HouseGeometryTest .......................   Passed    0.01 sec\n      Start 32: TreeGeometryTest\n32/57 Test #32: TreeGeometryTest ........................   Passed    0.01 sec\n      Start 33: CityStreetGrammarTest\n33/57 Test #33: CityStreetGrammarTest ...................   Passed    0.01 sec\n      Start 34: MarkerPillarGeometryTest\n34/57 Test #34: MarkerPillarGeometryTest ................   Passed    0.01 sec\n      Start 35: SlopeTraversalFixtureTest\n35/57 Test #35: SlopeTraversalFixtureTest ...............   Passed    1.82 sec\n      Start 36: SlopeTraversalCheck\n36/57 Test #36: SlopeTraversalCheck .....................   Passed    0.05 sec\n      Start 37: FieldIslandTraversalTest\n37/57 Test #37: FieldIslandTraversalTest ................   Passed    0.01 sec\n      Start 38: NdraResidueExperiment\n38/57 Test #38: NdraResidueExperiment ...................   Passed    0.02 sec\n      Start 39: RenderContractsTest\n39/57 Test #39: RenderContractsTest .....................   Passed    0.01 sec\n      Start 40: SceneLightingResponseTest\n40/57 Test #40: SceneLightingResponseTest ...............   Passed    0.01 sec\n      Start 41: ExpressiveVisualTest\n41/57 Test #41: ExpressiveVisualTest ....................   Passed    0.01 sec\n      Start 42: MusicDirectorTest\n42/57 Test #42: MusicDirectorTest .......................   Passed    0.01 sec\n      Start 43: LightingStateSnapshotTest\n43/57 Test #43: LightingStateSnapshotTest ...............   Passed    0.01 sec\n      Start 44: LightingReplayDeterminismTest\n44/57 Test #44: LightingReplayDeterminismTest ...........   Passed    0.08 sec\n      Start 45: EnemyEvidenceScenarioTest\n45/57 Test #45: EnemyEvidenceScenarioTest ...............   Passed    0.05 sec\n      Start 46: DesktopPlaytestPolicyTest\n46/57 Test #46: DesktopPlaytestPolicyTest ...............   Passed    0.01 sec\n      Start 47: DeveloperCodecTest\n47/57 Test #47: DeveloperCodecTest ......................   Passed    0.01 sec\n      Start 48: AgentPlaytestProtocolTest\n48/57 Test #48: AgentPlaytestProtocolTest ...............   Passed    0.01 sec\n      Start 49: SoulEconomyTest\n49/57 Test #49: SoulEconomyTest .........................   Passed    0.01 sec\n      Start 50: SoulProjectileLifecycleTest\n50/57 Test #50: SoulProjectileLifecycleTest .............   Passed    0.02 sec\n      Start 51: TraversalCalibrationTest\n51/57 Test #51: TraversalCalibrationTest ................   Passed    0.25 sec\n      Start 52: DesktopSaveRecoveryTest\n52/57 Test #52: DesktopSaveRecoveryTest .................   Passed    0.10 sec\n      Start 53: GameplayFlowProbe\n53/57 Test #53: GameplayFlowProbe .......................   Passed    0.37 sec\n      Start 54: RoomProgressionProbe\n54/57 Test #54: RoomProgressionProbe ....................   Passed    0.40 sec\n      Start 55: DeterministicInputSoak\n55/57 Test #55: DeterministicInputSoak ..................   Passed    7.25 sec\n      Start 56: SecretTvPolicyTest\n56/57 Test #56: SecretTvPolicyTest ......................   Passed    0.02 sec\n      Start 57: SignalResidueLifecycleTest\n57/57 Test #57: SignalResidueLifecycleTest ..............   Passed    0.02 sec\n\n100% tests passed out of 57\n\nTotal Test time (real) =  12.14 sec\n",
+  "stderr": "",
+  "buildMs": 3971.2604,
+  "testMs": 12181.1714,
+  "reuseDecision": "INPUT_CHANGED",
+  "changedInputs": [
+    "cache"
+  ],
+  "integrity": "924dcc640a0b9f9fee7c4f270d2ab66c1c78a22719f57109e29ca1b41ef5e671"
+}

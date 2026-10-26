@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "session": "20261026-000349",
+  "fixtureRoot": "D:\\hud\\fixtures\\data-game-definitive-20261026",
+  "fixtureCommit": "8e6824278f1226f0d74950688d6cf7badb736d30",
+  "buildRoot": "D:\\hud\\builds\\data-game-definitive-20261026",
+  "store": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-000349\\store",
+  "runtimeFile": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-000349\\declared-runtime.dat",
+  "receiptOverwritePermitted": true,
+  "observations": [
+    {
+      "mutation": "initial evidence",
+      "expected": "EXECUTED",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "NO_RECEIPT",
+      "changedInputs": [],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-04-16.818Z-bf5d03cb-d170-4296-8f78-7cdcb60b9d9a.json",
+      "elapsedMs": 27036.8287,
+      "log": "raw/invalidation-20261026-000349/00-initial-execution.log"
+    },
+    {
+      "mutation": "no relevant changes",
+      "expected": "REUSED",
+      "observedOutcome": "REUSED",
+      "reuseDecision": "CURRENT",
+      "changedInputs": [],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-04-16.818Z-bf5d03cb-d170-4296-8f78-7cdcb60b9d9a.json",
+      "elapsedMs": 5392.4047,
+      "log": "raw/invalidation-20261026-000349/01-unchanged-reuse.log"
+    },
+    {
+      "mutation": "relevant source changed to force test failure",
+      "expected": "FAILED; never REUSED",
+      "observedOutcome": "FAILED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "source",
+        "executables"
+      ],
+      "changedExecutables": [
+        "Release/SignalResidueLifecycleTest.exe"
+      ],
+      "exitCode": 1,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-04-41.694Z-967ffbc9-df49-46ae-9ba9-f79c58e6f1cc.json",
+      "elapsedMs": 19426.2696,
+      "log": "raw/invalidation-20261026-000349/02-relevant-source-failure.log"
+    },
+    {
+      "mutation": "source restored",
+      "expected": "EXECUTED then reusable PASS",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "PREVIOUS_ATTEMPT_NOT_REUSABLE",
+      "changedInputs": [],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-05-01.190Z-a8d4b631-b5a2-4a14-adac-8f884bda3230.json",
+      "elapsedMs": 19493.6243,
+      "log": "raw/invalidation-20261026-000349/02b-source-restored.log"
+    },
+    {
+      "mutation": "test binary modified",
+      "expected": "EXECUTED; never REUSED",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "executables"
+      ],
+      "changedExecutables": [
+        "Release/SignalResidueLifecycleTest.exe"
+      ],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-05-19.933Z-0d3f4069-6cce-449c-9517-86e7642d9dd1.json",
+      "elapsedMs": 18733.7733,
+      "log": "raw/invalidation-20261026-000349/03-binary-modified.log"
+    },
+    {
+      "mutation": "binary restored",
+      "expected": "EXECUTED then reusable PASS",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "executables"
+      ],
+      "changedExecutables": [
+        "Release/SignalResidueLifecycleTest.exe"
+      ],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-05-38.321Z-a831f3f2-6ecb-4449-8143-06247f90f04d.json",
+      "elapsedMs": 18386.2021,
+      "log": "raw/invalidation-20261026-000349/03b-binary-restored.log"
+    },
+    {
+      "mutation": "generated build cache/instruction changed",
+      "expected": "EXECUTED; never REUSED",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "cache"
+      ],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-05-56.765Z-ce177c74-1008-4097-8e66-0daed27c57aa.json",
+      "elapsedMs": 18439.7549,
+      "log": "raw/invalidation-20261026-000349/04-build-instruction-modified.log"
+    },
+    {
+      "mutation": "generated build instruction restored",
+      "expected": "EXECUTED then reusable PASS",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "cache"
+      ],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-06-15.671Z-9a2da40a-7f2a-4d8d-a0ef-6c43fdd59456.json",
+      "elapsedMs": 18902.1182,
+      "log": "raw/invalidation-20261026-000349/04b-build-instruction-restored.log"
+    },
+    {
+      "mutation": "declared runtime dependency changed",
+      "expected": "EXECUTED; never REUSED",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "runtime"
+      ],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-06-33.924Z-b3b216fa-649c-4ff8-a0b7-e03c036179aa.json",
+      "elapsedMs": 18251.1698,
+      "log": "raw/invalidation-20261026-000349/05-runtime-dependency-modified.log"
+    },
+    {
+      "mutation": "runtime dependency restored",
+      "expected": "EXECUTED then reusable PASS",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "runtime"
+      ],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-06-52.353Z-18bba8f1-60fa-4ae6-bce7-3bc0df83cb90.json",
+      "elapsedMs": 18427.2359,
+      "log": "raw/invalidation-20261026-000349/05b-runtime-restored.log"
+    },
+    {
+      "mutation": "newest evidence corrupted",
+      "expected": "EXECUTED with RECEIPT_CORRUPT; never REUSED",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "RECEIPT_CORRUPT",
+      "changedInputs": [],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-07-10.616Z-8024d11c-c35b-44df-8423-c48e15d779f5.json",
+      "elapsedMs": 18243.3645,
+      "log": "raw/invalidation-20261026-000349/06-corrupt-evidence.log"
+    },
+    {
+      "mutation": "evidence store missing",
+      "expected": "EXECUTED with NO_RECEIPT; never REUSED",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "NO_RECEIPT",
+      "changedInputs": [],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-07-28.778Z-6eb1be80-5279-446f-a2a8-acba51d74244.json",
+      "elapsedMs": 18160.7836,
+      "log": "raw/invalidation-20261026-000349/06b-missing-evidence.log"
+    },
+    {
+      "mutation": "test registration changed while count stayed 57",
+      "expected": "EXECUTED; never REUSED",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "testPlan",
+        "executables"
+      ],
+      "changedExecutables": [
+        "Release/SignalResidueLifecycleTest.exe"
+      ],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-07-46.976Z-bda88d1e-c3ee-49c7-a10c-52736b93f971.json",
+      "elapsedMs": 18191.6154,
+      "log": "raw/invalidation-20261026-000349/07-test-registration-modified.log"
+    },
+    {
+      "mutation": "test registration restored",
+      "expected": "EXECUTED then reusable PASS",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "testPlan",
+        "executables"
+      ],
+      "changedExecutables": [
+        "Release/SignalResidueLifecycleTest.exe"
+      ],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-08-05.150Z-d0bbe00e-8e9c-4be1-ad75-5cb3cdafa54e.json",
+      "elapsedMs": 18171.949,
+      "log": "raw/invalidation-20261026-000349/07b-test-registration-restored.log"
+    },
+    {
+      "mutation": "unrelated untracked file added",
+      "expected": "Determine whether reuse remains safe",
+      "observedOutcome": "EXECUTED",
+      "reuseDecision": "INPUT_CHANGED",
+      "changedInputs": [
+        "source"
+      ],
+      "changedExecutables": [],
+      "exitCode": 0,
+      "testCount": 57,
+      "evidenceId": "2026-10-26T05-08-23.294Z-abe496dd-1da7-4e08-840b-96bcbb53eabf.json",
+      "elapsedMs": 18138.8468,
+      "log": "raw/invalidation-20261026-000349/08-unrelated-file-added.log"
+    }
+  ]
+}

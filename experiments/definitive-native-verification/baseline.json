@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "capturedUtc": "2026-10-26T05:10:00Z",
+  "indro": {
+    "experimentCommit": "69ccad504fbfb2e3deac235c8a63d9f1ae805b81",
+    "branch": "experiment/definitive-real-world-verification",
+    "remoteVerifierBranch": "origin/feat/native-verification-evidence",
+    "nativeVerifierSha256": "e140cd201d709e4ef96866bfd00c2f971c37058a66f0c7f1764327e9532ec900",
+    "cliSha256": "fbcb5e0801a88b261c8560223cbab22cd5e4e8d3701060f358e99638c09048a1",
+    "newerLocalVerifierWorktree": {
+      "path": "C:/Users/indro/Projects/Indro-native-verification",
+      "commit": "c3b8101b17d8c3a43308070e7222d67ab7b15f34",
+      "relationship": "ancestor of 69ccad504fbfb2e3deac235c8a63d9f1ae805b81"
+    },
+    "convergedWorktree": {
+      "path": "C:/Users/indro/Projects/Indro-convergence-20261025",
+      "commitBeforeConcurrentDirtyChanges": "a38ed7b40352e77ec257548c5820bf0d76ce15c8"
+    },
+    "latestAccessibleArchive": {
+      "path": "D:/hud/checkpoints/indro/20261025-105900-feat-uai-transaction-kernel-39fa719",
+      "bundleVerified": true,
+      "bundleSha256": "7f6ad5e5b03abeb82493187a9520ad5a954de334f0c74e8c950f3d4afc2a3be7",
+      "manifestSha256": "50516747d0eba71828256cc140344fb0750d52d7f7a9f5cce518543c3c36d9a5"
+    }
+  },
+  "game": {
+    "root": "C:/Users/indro/Projects/data-game",
+    "branch": "codex/product-convergence-20261024",
+    "commit": "8e6824278f1226f0d74950688d6cf7badb736d30",
+    "upstream": "origin/codex/product-convergence-20261024",
+    "dirty": true,
+    "modified": [
+      "game/HumanModelData.hpp",
+      "godot/scripts/main.gd",
+      "native/parent_game_node.cpp",
+      "native/parent_game_node.hpp"
+    ],
+    "untracked": [
+      "codex-session-01a17114-d823-7911-8d2a-c96a3a4fd11c.md",
+      "evidence/",
+      "godot/scripts/skeleton_human_model_adapter.gd",
+      "godot/tests/camera_trauma_presentation.gd",
+      "godot/tests/performance_profile_parity.gd",
+      "godot/tests/skeleton_enemy_slice.gd"
+    ],
+    "sourceWasModifiedByExperiment": false
+  },
+  "build": {
+    "root": "C:/Users/indro/Projects/data-game/build",
+    "source": "C:/Users/indro/Projects/data-game",
+    "configuration": "Release",
+    "generator": "Visual Studio 18 2026",
+    "configurations": ["Debug", "Release", "MinSizeRel", "RelWithDebInfo"],
+    "cmake": "4.4.0",
+    "ctest": "4.4.0",
+    "node": "24.18.0",
+    "compiler": "MSVC 19.51.36248.0",
+    "registeredTests": 57,
+    "uniqueTestExecutables": 55,
+    "ctestPlanSha256": "df9347e16d9581a1b4af1b639b4ebb4a62013866bc6ba5b7d6913aaff89d2ce3",
+    "preflight": {
+      "exitCode": 0,
+      "passed": 57,
+      "failed": 0,
+      "elapsedMs": 16530.3122,
+      "buildMs": 4646.4413,
+      "testMs": 11852.6541
+    }
+  },
+  "runtimeTrustBoundary": {
+    "projectFiles": "all tracked and untracked non-ignored repository files are content-fingerprinted",
+    "testExecutables": "all 55 CTest executable identities are content-fingerprinted",
+    "tools": "CMake, CTest, Git, compiler executable and compiler metadata are fingerprinted",
+    "environment": "all inherited environment entries are included in environmentDigest",
+    "importedDlls": ["GDI32.DLL", "KERNEL32.DLL", "OPENGL32.DLL", "SHELL32.DLL", "USER32.DLL", "WINHTTP.DLL", "XINPUT9_1_0.DLL"],
+    "explicitAssumption": "installed Windows system DLL contents are trusted ambient platform state and are not individually hashed by INDRO",
+    "declaredRuntimeProbe": "a separate declared runtime file was used to test runtime invalidation"
+  }
+}

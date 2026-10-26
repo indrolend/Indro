@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "verifierCommit": "69ccad504fbfb2e3deac235c8a63d9f1ae805b81",
+  "executionIdentity": {
+    "represented": true,
+    "fields": ["root", "build", "configuration", "git HEAD", "source fingerprint", "CMake cache", "CTest plan", "test executables", "compiler", "CMake/CTest/Git tools", "declared runtime files", "environment"],
+    "testCount": 57
+  },
+  "restart": {
+    "passed": true,
+    "runs": 5,
+    "outcomes": ["REUSED", "REUSED", "REUSED", "REUSED", "REUSED"],
+    "receiptIdentityPreserved": true
+  },
+  "appendOnlyCreation": {
+    "implementationUsesExclusiveCreate": true,
+    "filesystemImmutability": false,
+    "receiptOverwritePermitted": true
+  },
+  "accidentalCorruption": {
+    "passedFailClosed": true,
+    "decision": "RECEIPT_CORRUPT",
+    "outcome": "EXECUTED"
+  },
+  "authenticatedIntegrity": {
+    "present": false,
+    "experiment": "modified stdout in the newest valid receipt, recomputed its unkeyed SHA-256 integrity field, and overwrote the same file",
+    "probeOutcome": "REUSED",
+    "probeDecision": "CURRENT",
+    "originalIntegrity": "7301f0eb886297b191fec038b7219f0ddd6a659a8a3bf0948183252d93e5339f",
+    "forgedIntegrity": "6121e563b2f94dab8b03b78a1f35cdbe3f2836e2b11f3d4fedbe2f17d718a54d",
+    "receipt": "2026-10-26T05-09-13.751Z-e15edb99-a02c-41e1-83cf-90bfae244799.json",
+    "finding": "a writer with store access can silently rewrite evidence and recompute the checksum; this is demonstrably invalid as an immutability mechanism"
+  },
+  "missingEvidence": {
+    "passedFailClosed": true,
+    "decision": "NO_RECEIPT",
+    "outcome": "EXECUTED"
+  },
+  "cacheHitSemantics": {
+    "distinguishable": true,
+    "reusedOutcome": "REUSED",
+    "executedOutcome": "EXECUTED",
+    "reusedSuccessMisrepresentedAsNewExecution": false,
+    "ctestAvoidanceEvidence": "REUSED records have no testMs and do not create a new receipt"
+  },
+  "rawEvidence": [
+    "raw/invalidation-20261026-000349/",
+    "raw/integrity-20261026-000855/"
+  ]
+}
