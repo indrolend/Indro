@@ -1098,7 +1098,12 @@ test('PowerShell missing commands are blocked without treating ordinary stderr a
   const record = await runTerminalCommand(project, command, { shell: 'powershell' });
   assert.notEqual(record.exitCode, 0);
   assert.notEqual(record.processExitCode, 0);
-  assert.equal(record.status, 'blocked');
+  assert.equal(record.status, 'blocked', JSON.stringify({
+    reason: record.resultReason,
+    capturedFailure: record.capturedFailure,
+    stderr: readFileSync(record.stderrPath, 'utf8').slice(-1200),
+    stdout: readFileSync(record.stdoutPath, 'utf8').slice(-400),
+  }));
   assert.equal(record.resultClassification, 'BLOCKED');
   assert.equal(record.resultReason, 'COMMAND_UNAVAILABLE');
   assert.equal(record.operation.status, 'blocked');
