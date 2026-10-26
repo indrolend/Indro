@@ -120,9 +120,11 @@ function compilerHashes(cache, build) {
 }
 // Fingerprint CMake generator entry points, not only compiled binaries and the test plan.
 function buildGraphHashes(build) {
-  const names = readdirSync(build).filter(name => name === 'Makefile' || name.endsWith('.ninja') ||
-    name.endsWith('.sln') || name.endsWith('.slnx') || name.endsWith('.vcxproj'));
+  const entries = readdirSync(build);
+  const names = entries.filter(name => name === 'Makefile' || name.endsWith('.ninja') ||
+    name.endsWith('.sln') || name.endsWith('.slnx'));
   if (!names.length) return null;
+  names.push(...entries.filter(name => name.endsWith('.vcxproj')));
   for (const name of ['CMakeFiles/Makefile2', 'CMakeFiles/Makefile.cmake', 'CMakeFiles/rules.ninja']) {
     if (existsSync(join(build, name))) names.push(name);
   }
