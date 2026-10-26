@@ -1,0 +1,1 @@
+{"outcome":"EXECUTED","reuseDecision":"INPUT_CHANGED","changedInputs":["testPlan","executables"],"changedExecutables":["Release/SignalResidueLifecycleTest.exe"],"testCount":57,"reusable":true,"buildMs":3971.5866000000005,"testMs":11748.0905,"elapsedMs":18507.4195,"receipt":"2026-10-26T11-53-10.384Z-bfd4d9fe-4f29-47d3-9546-c887b59c0cae.json","exitCode":0,"stable":true}

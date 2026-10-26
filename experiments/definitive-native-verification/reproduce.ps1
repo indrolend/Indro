@@ -4,8 +4,9 @@ param(
     [string]$BuildRoot = 'C:\Users\indro\Projects\data-game\build',
     [string]$IndroRoot = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent),
     [string]$ExternalRoot = 'D:\hud\experiments\indro-definitive-native-verification',
+    [string]$EvidenceKey = 'D:\hud\experiments\indro-definitive-native-verification\native-ed25519.pem',
     [int]$Repetitions = 5,
-    [ValidateSet('benchmark','preflight')]
+    [ValidateSet('benchmark','preflight','first')]
     [string]$Mode = 'benchmark'
 )
 
@@ -59,7 +60,7 @@ function Invoke-Baseline([string]$Condition,[int]$Iteration) {
 function Invoke-Indro([string]$Condition,[int]$Iteration,[string]$Store,[bool]$RestartProbe) {
     $prefix = "${Condition}-${Iteration}"
     $args = @($cli,'verify-native','--root',$GameRoot,'--build',$BuildRoot,'--store',$Store,
-        '--configuration',$configuration,'--declare-runtime-closure')
+        '--configuration',$configuration,'--evidence-key',$EvidenceKey,'--declare-runtime-closure')
     Push-Location $IndroRoot
     try { $run = Invoke-Captured -Program node -Arguments $args -WorkingDirectory $IndroRoot -LogPath (Join-Path $rawRoot "$prefix-indro.log") }
     finally { Pop-Location }
@@ -80,6 +81,15 @@ function Invoke-Indro([string]$Condition,[int]$Iteration,[string]$Store,[bool]$R
 if ($Mode -eq 'preflight') {
     Invoke-Baseline 'preflight' 1
     exit $LASTEXITCODE
+}
+
+if ($Mode -eq 'first') {
+    for ($i=1; $i -le $Repetitions; $i++) {
+        Invoke-Indro 'B-fixed' $i (Join-Path $storeRoot "first-$i") $false
+    }
+    Copy-Item -LiteralPath $storeRoot -Destination (Join-Path $rawRoot 'receipts') -Recurse
+    Write-Output "SESSION=$session"
+    exit 0
 }
 
 for ($i=1; $i -le $Repetitions; $i++) {

@@ -1,0 +1,119 @@
+Test project C:/Users/indro/Projects/data-game/build
+      Start  1: GameplayRoleAndSoulMotionTest
+ 1/57 Test  #1: GameplayRoleAndSoulMotionTest ...........   Passed    0.01 sec
+      Start  2: RunProgressionTest
+ 2/57 Test  #2: RunProgressionTest ......................   Passed    0.01 sec
+      Start  3: EnemyPerceptionTest
+ 3/57 Test  #3: EnemyPerceptionTest .....................   Passed    0.01 sec
+      Start  4: CoastalWaterTest
+ 4/57 Test  #4: CoastalWaterTest ........................   Passed    0.01 sec
+      Start  5: PhysicalEnemyBodyTest
+ 5/57 Test  #5: PhysicalEnemyBodyTest ...................   Passed    0.03 sec
+      Start  6: EnemyBehaviorStateTest
+ 6/57 Test  #6: EnemyBehaviorStateTest ..................   Passed    0.01 sec
+      Start  7: EnemyLocomotionTest
+ 7/57 Test  #7: EnemyLocomotionTest .....................   Passed    0.01 sec
+      Start  8: EnemyEmbodimentContractTest
+ 8/57 Test  #8: EnemyEmbodimentContractTest .............   Passed    0.01 sec
+      Start  9: EnemyMotorTest
+ 9/57 Test  #9: EnemyMotorTest ..........................   Passed    0.01 sec
+      Start 10: HistoricalPursuitComparisonTest
+10/57 Test #10: HistoricalPursuitComparisonTest .........   Passed    0.01 sec
+      Start 11: MultiplayerProtocolTest
+11/57 Test #11: MultiplayerProtocolTest .................   Passed    0.02 sec
+      Start 12: MultiplayerDeterminismTest
+12/57 Test #12: MultiplayerDeterminismTest ..............   Passed    0.76 sec
+      Start 13: HostRemotePeerSimulationIsolationTest
+13/57 Test #13: HostRemotePeerSimulationIsolationTest ...   Passed    0.01 sec
+      Start 14: MultiplayerConnectionStateTest
+14/57 Test #14: MultiplayerConnectionStateTest ..........   Passed    0.01 sec
+      Start 15: GameplayGeometryAndConfigTest
+15/57 Test #15: GameplayGeometryAndConfigTest ...........   Passed    0.01 sec
+      Start 16: TargetLifecycleTest
+16/57 Test #16: TargetLifecycleTest .....................   Passed    0.01 sec
+      Start 17: StateLayoutContractsTest
+17/57 Test #17: StateLayoutContractsTest ................   Passed    0.01 sec
+      Start 18: PhoneBodyContractTest
+18/57 Test #18: PhoneBodyContractTest ...................   Passed    0.01 sec
+      Start 19: PhoneMenuLayoutTest
+19/57 Test #19: PhoneMenuLayoutTest .....................   Passed    0.01 sec
+      Start 20: PhoneStencilRevealTest
+20/57 Test #20: PhoneStencilRevealTest ..................   Passed    0.01 sec
+      Start 21: MenuNavigationTest
+21/57 Test #21: MenuNavigationTest ......................   Passed    0.01 sec
+      Start 22: PhoneDisplayStateTest
+22/57 Test #22: PhoneDisplayStateTest ...................   Passed    0.02 sec
+      Start 23: RoomEnvironmentTest
+23/57 Test #23: RoomEnvironmentTest .....................   Passed    0.02 sec
+      Start 24: ComputedSceneObjectsTest
+24/57 Test #24: ComputedSceneObjectsTest ................   Passed    0.01 sec
+      Start 25: MaterialResponseTest
+25/57 Test #25: MaterialResponseTest ....................   Passed    0.01 sec
+      Start 26: ModelDataTest
+26/57 Test #26: ModelDataTest ...........................   Passed    0.01 sec
+      Start 27: FacetedRockTest
+27/57 Test #27: FacetedRockTest .........................   Passed    0.01 sec
+      Start 28: SlopeSupportTest
+28/57 Test #28: SlopeSupportTest ........................   Passed    0.01 sec
+      Start 29: SurfaceGeometryTest
+29/57 Test #29: SurfaceGeometryTest .....................   Passed    0.01 sec
+      Start 30: RuinGeometryTest
+30/57 Test #30: RuinGeometryTest ........................   Passed    0.01 sec
+      Start 31: HouseGeometryTest
+31/57 Test #31: HouseGeometryTest .......................   Passed    0.01 sec
+      Start 32: TreeGeometryTest
+32/57 Test #32: TreeGeometryTest ........................   Passed    0.01 sec
+      Start 33: CityStreetGrammarTest
+33/57 Test #33: CityStreetGrammarTest ...................   Passed    0.01 sec
+      Start 34: MarkerPillarGeometryTest
+34/57 Test #34: MarkerPillarGeometryTest ................   Passed    0.01 sec
+      Start 35: SlopeTraversalFixtureTest
+35/57 Test #35: SlopeTraversalFixtureTest ...............   Passed    1.81 sec
+      Start 36: SlopeTraversalCheck
+36/57 Test #36: SlopeTraversalCheck .....................   Passed    0.05 sec
+      Start 37: FieldIslandTraversalTest
+37/57 Test #37: FieldIslandTraversalTest ................   Passed    0.01 sec
+      Start 38: NdraResidueExperiment
+38/57 Test #38: NdraResidueExperiment ...................   Passed    0.01 sec
+      Start 39: RenderContractsTest
+39/57 Test #39: RenderContractsTest .....................   Passed    0.01 sec
+      Start 40: SceneLightingResponseTest
+40/57 Test #40: SceneLightingResponseTest ...............   Passed    0.01 sec
+      Start 41: ExpressiveVisualTest
+41/57 Test #41: ExpressiveVisualTest ....................   Passed    0.01 sec
+      Start 42: MusicDirectorTest
+42/57 Test #42: MusicDirectorTest .......................   Passed    0.01 sec
+      Start 43: LightingStateSnapshotTest
+43/57 Test #43: LightingStateSnapshotTest ...............   Passed    0.01 sec
+      Start 44: LightingReplayDeterminismTest
+44/57 Test #44: LightingReplayDeterminismTest ...........   Passed    0.09 sec
+      Start 45: EnemyEvidenceScenarioTest
+45/57 Test #45: EnemyEvidenceScenarioTest ...............   Passed    0.05 sec
+      Start 46: DesktopPlaytestPolicyTest
+46/57 Test #46: DesktopPlaytestPolicyTest ...............   Passed    0.01 sec
+      Start 47: DeveloperCodecTest
+47/57 Test #47: DeveloperCodecTest ......................   Passed    0.01 sec
+      Start 48: AgentPlaytestProtocolTest
+48/57 Test #48: AgentPlaytestProtocolTest ...............   Passed    0.02 sec
+      Start 49: SoulEconomyTest
+49/57 Test #49: SoulEconomyTest .........................   Passed    0.01 sec
+      Start 50: SoulProjectileLifecycleTest
+50/57 Test #50: SoulProjectileLifecycleTest .............   Passed    0.01 sec
+      Start 51: TraversalCalibrationTest
+51/57 Test #51: TraversalCalibrationTest ................   Passed    0.25 sec
+      Start 52: DesktopSaveRecoveryTest
+52/57 Test #52: DesktopSaveRecoveryTest .................   Passed    0.10 sec
+      Start 53: GameplayFlowProbe
+53/57 Test #53: GameplayFlowProbe .......................   Passed    0.37 sec
+      Start 54: RoomProgressionProbe
+54/57 Test #54: RoomProgressionProbe ....................   Passed    0.39 sec
+      Start 55: DeterministicInputSoak
+55/57 Test #55: DeterministicInputSoak ..................   Passed    7.20 sec
+      Start 56: SecretTvPolicyTest
+56/57 Test #56: SecretTvPolicyTest ......................   Passed    0.02 sec
+      Start 57: SignalResidueLifecycleTest
+57/57 Test #57: SignalResidueLifecycleTest ..............   Passed    0.01 sec
+
+100% tests passed out of 57
+
+Total Test time (real) =  11.79 sec

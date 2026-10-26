@@ -1,65 +1,61 @@
-# Results
+# Results after repair
 
 ## Verdict
 
-**FAIL — RETHINK.** INDRO correctly avoided CTest and rejected every ordinary controlled input mutation, but it missed the 3× target (2.88×) and, more importantly, its receipt checksum did not provide immutability: a modified and rehashed receipt was accepted as `REUSED/CURRENT`.
+**PASS — CONTINUE.** Signed evidence reuse retained all 57 tests' coverage, rejected every controlled mutation and receipt attack, survived process restart, and reduced unchanged verification from a pooled ordinary median of 15.91 seconds to 1.12 seconds (14.24×).
 
 ## Performance
 
-All values are end-to-end wall-clock measurements in milliseconds. Variability is sample standard deviation.
+All values are end-to-end wall-clock measurements in milliseconds. Conditions A through E use five interleaved repetitions from session `20261026-064001`. The optimized fresh path was then measured five times in session `20261026-065438`.
 
-| Condition | n | Median | Min | Max | Std. dev. | Result |
-|---|---:|---:|---:|---:|---:|---|
-| A ordinary build + full CTest | 5 | 16052.06 | 16036.64 | 16081.99 | 20.41 | 57/57 |
-| B INDRO fresh verification | 5 | 18539.40 | 18431.70 | 18870.07 | 177.42 | EXECUTED, 57/57 |
-| C INDRO unchanged reuse | 5 | 5576.52 | 5532.72 | 5613.98 | 34.26 | REUSED |
-| D ordinary unchanged repetition | 5 | 16034.21 | 15976.60 | 16090.47 | 43.59 | 57/57 |
-| E INDRO reuse after prior process exit | 5 | 5592.52 | 5566.24 | 5664.94 | 38.78 | REUSED |
+| Condition | n | Median | Min | Max | Result |
+|---|---:|---:|---:|---:|---|
+| A ordinary build + full CTest | 5 | 15893.39 | 15794.42 | 21232.55 | 57/57 |
+| B signed INDRO fresh, initial implementation | 5 | 18977.53 | 18927.69 | 19183.98 | EXECUTED, 57/57 |
+| B-fixed signed INDRO fresh, current implementation | 5 | 18525.94 | 18427.13 | 19568.94 | EXECUTED, 57/57 |
+| C signed INDRO unchanged reuse | 5 | 1117.49 | 1087.27 | 1159.52 | REUSED, buildMs 0 |
+| D ordinary unchanged repetition | 5 | 15913.46 | 15822.98 | 15983.97 | 57/57 |
+| E signed INDRO reuse after process exit | 5 | 1113.08 | 1106.38 | 1122.67 | REUSED, buildMs 0 |
 
-The pooled ordinary median is 16048.28 ms. Relative to it, C is **2.88×** faster and E is **2.87×** faster. Fresh INDRO is 15.5% slower than ordinary verification. Its one-time overhead is recovered after one successful reuse: `(18539.40 + 5576.52) < 2 × 16048.28`. This break-even excludes the pre-existing game build/configuration cost but includes evidence initialization in B.
+The pooled ordinary median is 15908.80 ms. Relative to it, C is **14.24×** faster and E is **14.29×** faster. The current fresh-verification median is slightly faster than the pre-repair INDRO median of 18539.40 ms, so the repair introduced no first-run regression relative to the production verifier it replaced. One reuse recovers the initial overhead.
 
-The observed saving comes from skipping approximately 11.82 seconds of CTest execution. It does not avoid compilation: every INDRO hit still invokes `cmake --build`. The remaining roughly 5.58 seconds is mostly the no-op Visual Studio build plus full source/executable/tool/environment fingerprinting. This is evidence reuse beyond CMake/CTest caching, but it is not a 3× end-to-end win.
+The measured saving comes from signed evidence reuse avoiding both the roughly four-second no-op Visual Studio build and the roughly 11.9-second CTest run. Snapshot, tool, signature, and signed-head validation account for the remaining approximately 1.1 seconds. CMake still remains authoritative on every miss.
 
-## Invalidation
+## Invalidation and integrity
 
-No ordinary controlled mutation produced false reuse:
+The signed real-workload run produced zero false reuse:
 
 | Mutation | Observed |
 |---|---|
 | No relevant change | REUSED / CURRENT |
-| Relevant source forced to fail | FAILED / INPUT_CHANGED; failing test was executed |
+| Relevant source forced to fail | FAILED / INPUT_CHANGED; failing test executed |
 | Test executable byte changed | EXECUTED / INPUT_CHANGED |
-| CMake cache/generated build instruction changed | EXECUTED / INPUT_CHANGED |
+| CMake cache/generated instruction changed | EXECUTED / INPUT_CHANGED |
 | Declared runtime dependency changed | EXECUTED / INPUT_CHANGED |
-| Newest receipt accidentally corrupted | EXECUTED / RECEIPT_CORRUPT |
+| Newest receipt overwritten/corrupted | EXECUTED / RECEIPT_HEAD_INVALID |
 | Evidence store absent | EXECUTED / NO_RECEIPT |
 | Test registration changed with count still 57 | EXECUTED / INPUT_CHANGED |
 | Unrelated untracked file added | EXECUTED / INPUT_CHANGED |
+| Receipt modified and checksum recomputed | EXECUTED / RECEIPT_HEAD_INVALID |
+| Newest receipt deleted to expose older success | EXECUTED / RECEIPT_HEAD_INVALID |
 
-The unrelated-file result is conservative rather than unsafe: reuse is lost because the verifier fingerprints every repository file. Full details and evidence IDs are in `invalidation.json`.
-
-## Evidence integrity
-
-Receipts bind the execution identity, test count, test plan, binaries, source, build cache, compiler/tools, environment, and declared runtime files. Hits remain reusable after process exit and are clearly reported as `REUSED`, not as newly executed tests. Missing and accidentally corrupted evidence fail closed.
-
-However, the store is not immutable or authenticated. The audit overwrote a valid receipt's stdout, recomputed the public unkeyed SHA-256 field, and then received `REUSED/CURRENT` for the same receipt. Exclusive creation prevents filename collision during initial write; it does not prevent later rewriting. This fails the explicit evidence-immutability criterion.
+Unsigned operation remains CLI-compatible but is deliberately non-reusable (`SIGNING_KEY_UNDECLARED`). Receipts use Ed25519 signatures and a signed head outside the receipt store, namespaced by store identity. A receipt-store writer can no longer forge or roll back evidence. The private key and adjacent head namespace are explicitly trusted INDRO authority.
 
 ## Architectural attribution
 
-- The measurable benefit came from `packages/indro/native-verify.mjs` storing a successful CTest receipt and skipping CTest when its fingerprint matched.
-- CommandHUD's generic execution/history runtime did not participate in the native verifier's cache decision or measured path; the CLI imports the native verifier directly.
-- NDRA contributed no measured cache behavior. `NdraResidueExperiment` was one of the 57 ordinary CTest tests, but no behavioral-equivalence substitution occurred.
-- Continuum contributed no observed reuse behavior in this experiment.
-- CMake provided the no-op incremental build in both workflows. INDRO's additional benefit was only the avoided CTest run; it did not avoid the CMake/MSBuild startup.
+- The measured benefit comes from `packages/indro/native-verify.mjs`: it validates a signed exact snapshot and returns before CMake/CTest.
+- CommandHUD's generic execution/history runtime still does not participate in this cache decision.
+- NDRA contributed no behavioral-equivalence substitution; `NdraResidueExperiment` remains one of the 57 normally verified tests.
+- Continuum made no measured contribution.
+- CMake/CTest remain authoritative on every miss; INDRO adds authenticated reuse rather than relabeling their incremental cache.
 
-## Limitations
+## Remaining limitations
 
-- System DLL contents are an explicit trusted ambient assumption and are not hashed.
-- Timings are one Windows machine, one Release build, and five interleaved repetitions per condition; they are not cross-platform claims.
-- The active game checkout was dirty, so the benchmark identity is commit plus the exact dirty paths in `baseline.json`, not commit alone.
-- The disposable invalidation fixture was clean commit `8e682427…`; it exercised the same 57-test registration but not the active checkout's dirty overlay.
-- No claim is made that NDRA or Continuum caused a speedup.
+- Windows system DLL contents remain an explicit trusted ambient assumption rather than individually hashed runtime files.
+- Timings cover one Windows machine, Release configuration, and five repetitions per condition.
+- Unrelated repository files conservatively invalidate reuse.
+- Anyone controlling the private key/head authority can create evidence; protect that location with operating-system access controls or a hardware-backed key if the threat model includes compromise of the INDRO account itself.
 
 ## Recommendation
 
-**RETHINK.** The core idea avoids real work and breaks even after one reuse, but the measured end-to-end gain misses the project target and the current evidence store cannot substantiate immutable history. Do not add architectural layers based on this result; first decide whether a simpler authenticated receipt/cache with less than about 5.35 seconds of hit overhead can meet the target.
+**CONTINUE.** The repaired verifier now demonstrates a large, reproducible real-workload advantage with fail-closed invalidation and authenticated evidence under an explicit local trust boundary.

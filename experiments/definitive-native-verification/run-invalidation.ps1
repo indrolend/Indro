@@ -2,7 +2,8 @@
 param(
     [string]$FixtureRoot = 'D:\hud\fixtures\data-game-definitive-20261026',
     [string]$BuildRoot = 'D:\hud\builds\data-game-definitive-20261026',
-    [string]$ExternalRoot = 'D:\hud\experiments\indro-definitive-native-invalidation'
+    [string]$ExternalRoot = 'D:\hud\experiments\indro-definitive-native-invalidation',
+    [string]$EvidenceKey = 'D:\hud\experiments\indro-definitive-native-verification\native-ed25519.pem'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,7 +21,7 @@ $observations = [Collections.Generic.List[object]]::new()
 function Invoke-Verify([string]$Name,[string]$UseStore=$store) {
     $timer=[Diagnostics.Stopwatch]::StartNew()
     $output=@(& node $cli verify-native --root $FixtureRoot --build $BuildRoot --store $UseStore `
-        --configuration Release --runtime-file $runtime --declare-runtime-closure 2>&1)
+        --configuration Release --runtime-file $runtime --evidence-key $EvidenceKey --declare-runtime-closure 2>&1)
     $exit=$LASTEXITCODE; $timer.Stop()
     $output | Set-Content -LiteralPath (Join-Path $raw "$Name.log") -Encoding utf8
     $line=$output|Where-Object {$_ -match '^\{.*\}$'}|Select-Object -Last 1
@@ -88,7 +89,7 @@ try {
     $receiptText=[Text.Encoding]::UTF8.GetString($receiptBytes).Replace('"status": "PASS"','"status": "POSS"')
     [IO.File]::WriteAllText($latest.FullName,$receiptText,[Text.UTF8Encoding]::new($false))
     $run=Invoke-Verify '06-corrupt-evidence'
-    Add-Observation 'newest evidence corrupted' 'EXECUTED with RECEIPT_CORRUPT; never REUSED' $run
+    Add-Observation 'newest evidence corrupted' 'EXECUTED with RECEIPT_HEAD_INVALID or RECEIPT_CORRUPT; never REUSED' $run
 } finally { }
 
 $run=Invoke-Verify '06b-missing-evidence' $missingStore

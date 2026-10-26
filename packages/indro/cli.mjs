@@ -12,7 +12,7 @@ Language:
   indro compile <program.indro|program.i> [compiler options]
   indro proof-plan <proof...> --state <state.json> [--cache <cache.json>]
   indro language-test
-  indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
+  indro verify-native --root PATH --build PATH --store PATH [--evidence-key PATH] [--declare-runtime-closure]
 
 Execution and evidence (CommandHUD compatibility):
   indro shell | tui | desktop

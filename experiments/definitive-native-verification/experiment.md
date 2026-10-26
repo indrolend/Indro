@@ -2,7 +2,7 @@
 
 ## Scope and identity
 
-This is a falsification experiment against the real Digital Breakdown CMake/CTest workload. Production verifier code and the authoritative game source were not edited. The experiment uses INDRO commit `69ccad504fbfb2e3deac235c8a63d9f1ae805b81` and the dirty game checkout at commit `8e6824278f1226f0d74950688d6cf7badb736d30`. Exact dirty paths, tool versions, build identity, and runtime assumptions are in `baseline.json`.
+This began as a falsification experiment against the real Digital Breakdown CMake/CTest workload and then verified the bounded repair requested after the original failure. The authoritative game source was never edited. The verifier baseline is INDRO commit `69ccad504fbfb2e3deac235c8a63d9f1ae805b81`; the repair is on the isolated experiment branch. The dirty game checkout remained at commit `8e6824278f1226f0d74950688d6cf7badb736d30`. Exact dirty paths, tool versions, build identity, and runtime assumptions are in `baseline.json`.
 
 The independent preflight and performance benchmark used `C:\Users\indro\Projects\data-game\build`. Controlled mutations used detached worktree `D:\hud\fixtures\data-game-definitive-20261026` and build `D:\hud\builds\data-game-definitive-20261026`; they never touched the authoritative checkout. Receipt stores were under `D:\hud\experiments` because the verifier correctly rejects stores inside source repositories.
 
@@ -26,7 +26,9 @@ node packages\indro\cli.mjs verify-native `
   --root C:\Users\indro\Projects\data-game `
   --build C:\Users\indro\Projects\data-game\build `
   --store D:\hud\experiments\indro-definitive-native-verification\SESSION\iteration-N `
-  --configuration Release --declare-runtime-closure
+  --configuration Release `
+  --evidence-key D:\hud\experiments\indro-definitive-native-verification\native-ed25519.pem `
+  --declare-runtime-closure
 ```
 
 Reproduction:
@@ -37,15 +39,16 @@ Reproduction:
 .\experiments\definitive-native-verification\run-invalidation.ps1
 ```
 
-The benchmark alternates A ordinary, B fresh INDRO, C unchanged INDRO, D ordinary, and E post-exit INDRO reuse for each of five iterations. Every CLI call starts a new Node process. Setup/configuration of the disposable fixture is excluded from reuse timing and separately visible in shell history; each measured INDRO total includes its mandatory no-op build and fingerprint overhead.
+The benchmark alternates A ordinary, B fresh INDRO, C unchanged INDRO, D ordinary, and E post-exit INDRO reuse for each of five iterations. Every CLI call starts a new Node process. Setup/configuration of the disposable fixture is excluded from reuse timing. Fresh/miss measurements include build and tests; authenticated hits intentionally include neither and report `buildMs: 0`.
 
 ## Artifacts and traceability
 
 - `runs.ndjson`: one structured timing record per measurement (plus one preflight).
 - `raw/20261025-235424`: preflight build and CTest logs.
-- `raw/20261025-235454`: 25 interleaved benchmark logs and copied receipts.
-- `invalidation.json` and `raw/invalidation-20261026-000349`: controlled mutation results and logs.
-- `evidence-audit.json` and `raw/integrity-20261026-000855`: corruption and authenticated-rewrite probes.
+- `raw/20261026-064001`: 25 repaired interleaved benchmark logs and signed receipts.
+- `raw/20261026-065438`: five optimized fresh-verification runs.
+- `invalidation.json` and `raw/invalidation-20261026-064917`: signed controlled-mutation results and logs.
+- `evidence-audit.json` and `raw/integrity-fixed-20261026-065353`: rejected rewrite probe.
 - `baseline.json`: source, build, test, toolchain, archive, and runtime identity.
 
-`runs.ndjson` SHA-256 before this report was written: `e3b98354a01172c7da195c71d559f88e936a8725ff3e0f92549a193afaeb3ceb`. `invalidation.json` SHA-256: `cb06cdff0a1075082eb26ae87f4b8f72798a4e8c6456f2965d75d84a243550b5`.
+After normalization, `runs.ndjson` SHA-256 is `3006a8368b330fae6539140919c0f11045a270ed3011636021c001b8735d9d9b`; `invalidation.json` is `72d3c2ad3009ada2e02047ca9739ecfb936583edab3838922bedd19148aa31e9`.

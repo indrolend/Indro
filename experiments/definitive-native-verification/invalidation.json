@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "session": "20261026-000349",
+  "session": "20261026-064917",
   "fixtureRoot": "D:\\hud\\fixtures\\data-game-definitive-20261026",
   "fixtureCommit": "8e6824278f1226f0d74950688d6cf7badb736d30",
   "buildRoot": "D:\\hud\\builds\\data-game-definitive-20261026",
-  "store": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-000349\\store",
-  "runtimeFile": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-000349\\declared-runtime.dat",
+  "store": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-064917\\store",
+  "runtimeFile": "D:\\hud\\experiments\\indro-definitive-native-invalidation\\20261026-064917\\declared-runtime.dat",
   "receiptOverwritePermitted": true,
   "observations": [
     {
@@ -17,9 +17,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-04-16.818Z-bf5d03cb-d170-4296-8f78-7cdcb60b9d9a.json",
-      "elapsedMs": 27036.8287,
-      "log": "raw/invalidation-20261026-000349/00-initial-execution.log"
+      "evidenceId": "2026-10-26T11-49-41.479Z-0166762e-c5e8-451e-8669-99e05bf8a7f2.json",
+      "elapsedMs": 23508.9257,
+      "log": "raw/invalidation-20261026-064917/00-initial-execution.log"
     },
     {
       "mutation": "no relevant changes",
@@ -30,9 +30,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-04-16.818Z-bf5d03cb-d170-4296-8f78-7cdcb60b9d9a.json",
-      "elapsedMs": 5392.4047,
-      "log": "raw/invalidation-20261026-000349/01-unchanged-reuse.log"
+      "evidenceId": "2026-10-26T11-49-41.479Z-0166762e-c5e8-451e-8669-99e05bf8a7f2.json",
+      "elapsedMs": 1066.6381,
+      "log": "raw/invalidation-20261026-064917/01-unchanged-reuse.log"
     },
     {
       "mutation": "relevant source changed to force test failure",
@@ -40,17 +40,14 @@
       "observedOutcome": "FAILED",
       "reuseDecision": "INPUT_CHANGED",
       "changedInputs": [
-        "source",
-        "executables"
+        "source"
       ],
-      "changedExecutables": [
-        "Release/SignalResidueLifecycleTest.exe"
-      ],
+      "changedExecutables": [],
       "exitCode": 1,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-04-41.694Z-967ffbc9-df49-46ae-9ba9-f79c58e6f1cc.json",
-      "elapsedMs": 19426.2696,
-      "log": "raw/invalidation-20261026-000349/02-relevant-source-failure.log"
+      "evidenceId": "2026-10-26T11-50-03.146Z-dc5b402e-5bb8-44f2-9af6-2e85a1112d79.json",
+      "elapsedMs": 20536.9047,
+      "log": "raw/invalidation-20261026-064917/02-relevant-source-failure.log"
     },
     {
       "mutation": "source restored",
@@ -61,9 +58,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-05-01.190Z-a8d4b631-b5a2-4a14-adac-8f884bda3230.json",
-      "elapsedMs": 19493.6243,
-      "log": "raw/invalidation-20261026-000349/02b-source-restored.log"
+      "evidenceId": "2026-10-26T11-50-22.385Z-2b5a340d-0c8a-48e2-8282-dbaad41c2b7c.json",
+      "elapsedMs": 19236.7463,
+      "log": "raw/invalidation-20261026-064917/02b-source-restored.log"
     },
     {
       "mutation": "test binary modified",
@@ -78,9 +75,9 @@
       ],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-05-19.933Z-0d3f4069-6cce-449c-9517-86e7642d9dd1.json",
-      "elapsedMs": 18733.7733,
-      "log": "raw/invalidation-20261026-000349/03-binary-modified.log"
+      "evidenceId": "2026-10-26T11-50-41.258Z-1b0a866d-549f-4a8b-9aab-0f4b81c67474.json",
+      "elapsedMs": 18864.2526,
+      "log": "raw/invalidation-20261026-064917/03-binary-modified.log"
     },
     {
       "mutation": "binary restored",
@@ -95,9 +92,9 @@
       ],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-05-38.321Z-a831f3f2-6ecb-4449-8143-06247f90f04d.json",
-      "elapsedMs": 18386.2021,
-      "log": "raw/invalidation-20261026-000349/03b-binary-restored.log"
+      "evidenceId": "2026-10-26T11-51-00.166Z-d6e8e7fd-f9fc-4beb-a320-f5fdd5860f9a.json",
+      "elapsedMs": 18904.164,
+      "log": "raw/invalidation-20261026-064917/03b-binary-restored.log"
     },
     {
       "mutation": "generated build cache/instruction changed",
@@ -110,9 +107,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-05-56.765Z-ce177c74-1008-4097-8e66-0daed27c57aa.json",
-      "elapsedMs": 18439.7549,
-      "log": "raw/invalidation-20261026-000349/04-build-instruction-modified.log"
+      "evidenceId": "2026-10-26T11-51-19.202Z-e8a529df-6616-4682-8180-17149d547ac1.json",
+      "elapsedMs": 19030.5953,
+      "log": "raw/invalidation-20261026-064917/04-build-instruction-modified.log"
     },
     {
       "mutation": "generated build instruction restored",
@@ -125,9 +122,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-06-15.671Z-9a2da40a-7f2a-4d8d-a0ef-6c43fdd59456.json",
-      "elapsedMs": 18902.1182,
-      "log": "raw/invalidation-20261026-000349/04b-build-instruction-restored.log"
+      "evidenceId": "2026-10-26T11-51-37.890Z-a51959df-2447-4ee0-b673-3ca9866fb384.json",
+      "elapsedMs": 18687.2009,
+      "log": "raw/invalidation-20261026-064917/04b-build-instruction-restored.log"
     },
     {
       "mutation": "declared runtime dependency changed",
@@ -140,9 +137,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-06-33.924Z-b3b216fa-649c-4ff8-a0b7-e03c036179aa.json",
-      "elapsedMs": 18251.1698,
-      "log": "raw/invalidation-20261026-000349/05-runtime-dependency-modified.log"
+      "evidenceId": "2026-10-26T11-51-56.599Z-9ecf3b26-d49d-4bec-a253-2d8879135073.json",
+      "elapsedMs": 18706.5504,
+      "log": "raw/invalidation-20261026-064917/05-runtime-dependency-modified.log"
     },
     {
       "mutation": "runtime dependency restored",
@@ -155,22 +152,22 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-06-52.353Z-18bba8f1-60fa-4ae6-bce7-3bc0df83cb90.json",
-      "elapsedMs": 18427.2359,
-      "log": "raw/invalidation-20261026-000349/05b-runtime-restored.log"
+      "evidenceId": "2026-10-26T11-52-15.285Z-2084a053-04e6-4cee-8ef9-707c15df05d1.json",
+      "elapsedMs": 18683.6097,
+      "log": "raw/invalidation-20261026-064917/05b-runtime-restored.log"
     },
     {
       "mutation": "newest evidence corrupted",
-      "expected": "EXECUTED with RECEIPT_CORRUPT; never REUSED",
+      "expected": "EXECUTED with RECEIPT_HEAD_INVALID or RECEIPT_CORRUPT; never REUSED",
       "observedOutcome": "EXECUTED",
-      "reuseDecision": "RECEIPT_CORRUPT",
+      "reuseDecision": "RECEIPT_HEAD_INVALID",
       "changedInputs": [],
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-07-10.616Z-8024d11c-c35b-44df-8423-c48e15d779f5.json",
-      "elapsedMs": 18243.3645,
-      "log": "raw/invalidation-20261026-000349/06-corrupt-evidence.log"
+      "evidenceId": "2026-10-26T11-52-33.523Z-41d0b627-81e7-469f-a09a-098bb788b643.json",
+      "elapsedMs": 18220.156,
+      "log": "raw/invalidation-20261026-064917/06-corrupt-evidence.log"
     },
     {
       "mutation": "evidence store missing",
@@ -181,9 +178,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-07-28.778Z-6eb1be80-5279-446f-a2a8-acba51d74244.json",
-      "elapsedMs": 18160.7836,
-      "log": "raw/invalidation-20261026-000349/06b-missing-evidence.log"
+      "evidenceId": "2026-10-26T11-52-51.812Z-231ca920-e931-4109-9b17-ef14571a06e6.json",
+      "elapsedMs": 18287.1595,
+      "log": "raw/invalidation-20261026-064917/06b-missing-evidence.log"
     },
     {
       "mutation": "test registration changed while count stayed 57",
@@ -199,9 +196,9 @@
       ],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-07-46.976Z-bda88d1e-c3ee-49c7-a10c-52736b93f971.json",
-      "elapsedMs": 18191.6154,
-      "log": "raw/invalidation-20261026-000349/07-test-registration-modified.log"
+      "evidenceId": "2026-10-26T11-53-10.384Z-bfd4d9fe-4f29-47d3-9546-c887b59c0cae.json",
+      "elapsedMs": 18566.2574,
+      "log": "raw/invalidation-20261026-064917/07-test-registration-modified.log"
     },
     {
       "mutation": "test registration restored",
@@ -217,9 +214,9 @@
       ],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-08-05.150Z-d0bbe00e-8e9c-4be1-ad75-5cb3cdafa54e.json",
-      "elapsedMs": 18171.949,
-      "log": "raw/invalidation-20261026-000349/07b-test-registration-restored.log"
+      "evidenceId": "2026-10-26T11-53-29.088Z-1f73c89e-9621-42bf-b77c-85afd5b4f637.json",
+      "elapsedMs": 18700.5795,
+      "log": "raw/invalidation-20261026-064917/07b-test-registration-restored.log"
     },
     {
       "mutation": "unrelated untracked file added",
@@ -232,9 +229,9 @@
       "changedExecutables": [],
       "exitCode": 0,
       "testCount": 57,
-      "evidenceId": "2026-10-26T05-08-23.294Z-abe496dd-1da7-4e08-840b-96bcbb53eabf.json",
-      "elapsedMs": 18138.8468,
-      "log": "raw/invalidation-20261026-000349/08-unrelated-file-added.log"
+      "evidenceId": "2026-10-26T11-53-47.820Z-795bada5-7229-4330-b22e-7a8bd8d660f7.json",
+      "elapsedMs": 18726.9942,
+      "log": "raw/invalidation-20261026-064917/08-unrelated-file-added.log"
     }
   ]
 }

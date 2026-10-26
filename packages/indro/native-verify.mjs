@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, randomUUID, sign, verify } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
@@ -39,6 +39,38 @@ function assertGitRoot(root) {
   if (prefix !== '') throw new Error('Source root must match Git worktree root');
 }
 function fileHash(path) { return sha(readFileSync(path)); }
+function loadEvidenceSigner(path, root, store) {
+  if (!path) return null;
+  path = realpathSync(path);
+  if (path === root || inside(root, path) || path === store || inside(store, path)) throw new Error('Evidence key must be outside source and evidence store');
+  const privateKey = createPrivateKey(readFileSync(path));
+  if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('Evidence key must be an Ed25519 private key');
+  const publicKey = createPublicKey(privateKey);
+  const publicDer = publicKey.export({ type: 'spki', format: 'der' });
+  const storeId = sha(Buffer.from(resolve(store))).slice(0, 16);
+  return { privateKey, publicKey, keyId: sha(publicDer), headPath: `${path}.${storeId}.head.json` };
+}
+function signedValue(body, signer) {
+  const integrity = digest(body);
+  const signed = { ...body, integrity };
+  return { ...signed, signature: sign(null, Buffer.from(JSON.stringify(signed)), signer.privateKey).toString('base64') };
+}
+function verifySignedValue(value, signer) {
+  if (!value || value.keyId !== signer.keyId || typeof value.signature !== 'string') return null;
+  const { signature, integrity, ...body } = value;
+  if (integrity !== digest(body)) return null;
+  const signed = { ...body, integrity };
+  return verify(null, Buffer.from(JSON.stringify(signed)), signer.publicKey, Buffer.from(signature, 'base64')) ? value : null;
+}
+function readHead(signer) {
+  try { return verifySignedValue(JSON.parse(readFileSync(signer.headPath, 'utf8')), signer); }
+  catch { return null; }
+}
+function writeHead(signer, body) {
+  const temporary = `${signer.headPath}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, JSON.stringify(signedValue(body, signer), null, 2), { flag: 'wx' });
+  renameSync(temporary, signer.headPath);
+}
 function toolProvenance(name, cwd) {
   const locator = process.platform === 'win32' ? 'where.exe' : 'which';
   const found = spawnSync(locator, [name], { cwd, encoding: 'utf8', windowsHide: true });
@@ -164,11 +196,15 @@ export function changedExecutablePaths(recorded, current, build) {
     .filter(path => previous.get(path) !== latest.get(path))
     .map(path => relative(build, path).replaceAll('\\', '/')).sort();
 }
-function readReceipt(path) {
+function readReceipt(path, signer) {
   try {
     const value = JSON.parse(readFileSync(path, 'utf8'));
-    const { integrity, ...body } = value;
-    if (integrity !== digest(body)) return null;
+    if (signer) {
+      if (value.schema !== 2 || !verifySignedValue(value, signer)) return null;
+    } else {
+      const { integrity, ...body } = value;
+      if (integrity !== digest(body)) return null;
+    }
     if (!value.snapshot?.inputs || value.snapshot.fingerprint !== digest(value.snapshot.inputs) ||
       !Number.isInteger(value.snapshot.testCount) || value.snapshot.testCount < 1) return null;
     // A self-consistent checksum is not enough: reusable success must agree with the recorded execution.
@@ -183,65 +219,75 @@ function readReceipt(path) {
     return value;
   } catch { return null; }
 }
-/** Runs CMake's build authority before considering reuse; receipts are append-only. */
-export function verifyNative({ root, build, store, configuration = 'Release', runtimeFiles = [], runtimeClosureDeclared = false }) {
+/** Reuses only a signed exact snapshot; every miss falls through to authoritative build and CTest execution. */
+export function verifyNative({ root, build, store, configuration = 'Release', runtimeFiles = [], runtimeClosureDeclared = false, evidenceKeyPath = null }) {
   const started = performance.now();
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
   assertGitRoot(root);
   assertExternalEvidenceStore(root, store);
-  const sourceBeforeBuild = sourceFingerprint(root, build, store);
-  const initialCache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
-  if (realpathSync(cacheSource(initialCache)) !== root) throw new Error('CMake cache belongs to another source tree');
+  const signer = loadEvidenceSigner(evidenceKeyPath, root, store);
+  let reuseDecision = !runtimeClosureDeclared ? 'RUNTIME_CLOSURE_UNDECLARED'
+    : !signer ? 'SIGNING_KEY_UNDECLARED'
+      : 'NO_RECEIPT';
+  let changedInputs = [];
+  let changedExecutables = [];
+  let sourceBeforeBuild;
+  if (runtimeClosureDeclared && signer && existsSync(store)) {
+    const files = readdirSync(store).filter(x => x.endsWith('.json')).sort().reverse();
+    if (files.length) {
+      const head = readHead(signer);
+      const receiptPath = join(store, files[0]);
+      const receiptSha256 = fileHash(receiptPath);
+      const receipt = head?.receipt === files[0] && head?.receiptSha256 === receiptSha256
+        ? readReceipt(receiptPath, signer) : null;
+      if (!head || head.receipt !== files[0] || head.receiptSha256 !== receiptSha256) reuseDecision = 'RECEIPT_HEAD_INVALID';
+      else if (!receipt) reuseDecision = 'RECEIPT_CORRUPT';
+      else if (receipt.status !== 'PASS' || receipt.reusable !== true) reuseDecision = 'PREVIOUS_ATTEMPT_NOT_REUSABLE';
+      else {
+        const prebuild = snapshotNative({ root, build, store, configuration, runtimeFiles });
+        sourceBeforeBuild = prebuild.inputs.source;
+        if (!prebuild.complete) reuseDecision = 'PROVENANCE_INCOMPLETE';
+        else if (receipt.snapshot?.fingerprint !== prebuild.fingerprint || receipt.snapshot?.testCount !== prebuild.testCount) {
+          reuseDecision = 'INPUT_CHANGED';
+          changedInputs = Object.keys(prebuild.inputs).filter(key => JSON.stringify(receipt.snapshot?.inputs?.[key]) !== JSON.stringify(prebuild.inputs[key]));
+          if (receipt.snapshot?.testCount !== prebuild.testCount) changedInputs.push('testCount');
+          changedExecutables = changedExecutablePaths(receipt.snapshot.inputs.executables, prebuild.inputs.executables, build);
+        } else {
+          return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [], changedExecutables: [],
+            testCount: prebuild.testCount, buildMs: 0, elapsedMs: performance.now() - started, receipt: files[0] };
+        }
+      }
+    }
+  }
+  sourceBeforeBuild ??= sourceFingerprint(root, build, store);
   const buildStarted = performance.now();
   run('cmake', ['--build', build, '--config', configuration], root);
   const buildMs = performance.now() - buildStarted;
   const before = snapshotNative({ root, build, store, configuration, runtimeFiles });
   const sourceStableDuringBuild = sourceBeforeBuild === before.inputs.source;
-  const reusable = runtimeClosureDeclared === true && before.complete && sourceStableDuringBuild;
-  let reuseDecision = !runtimeClosureDeclared ? 'RUNTIME_CLOSURE_UNDECLARED'
-    : !before.complete ? 'PROVENANCE_INCOMPLETE'
-      : !sourceStableDuringBuild ? 'SOURCE_CHANGED_DURING_BUILD' : 'NO_RECEIPT';
-  let changedInputs = [];
-  let changedExecutables = [];
-  if (reusable && existsSync(store)) {
-    const files = readdirSync(store).filter(x => x.endsWith('.json')).sort().reverse();
-    // A corrupt newest receipt fails closed: do not fall back to an older success.
-    if (files.length) {
-      const receipt = readReceipt(join(store, files[0]));
-      if (!receipt) reuseDecision = 'RECEIPT_CORRUPT';
-      else if (receipt.status !== 'PASS' || receipt.reusable !== true) reuseDecision = 'PREVIOUS_ATTEMPT_NOT_REUSABLE';
-      else if (receipt.snapshot?.fingerprint !== before.fingerprint || receipt.snapshot?.testCount !== before.testCount) {
-        reuseDecision = 'INPUT_CHANGED';
-        changedInputs = Object.keys(before.inputs).filter(key => JSON.stringify(receipt.snapshot?.inputs?.[key]) !== JSON.stringify(before.inputs[key]));
-        if (receipt.snapshot?.testCount !== before.testCount) changedInputs.push('testCount');
-        changedExecutables = changedExecutablePaths(receipt.snapshot.inputs.executables, before.inputs.executables, build);
-      } else {
-        return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [], changedExecutables: [],
-          testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: files[0] };
-      }
-    }
-  }
+  const reusable = runtimeClosureDeclared === true && Boolean(signer) && before.complete && sourceStableDuringBuild;
   const testStarted = performance.now();
   const result = spawnSync('ctest', ['--test-dir', build, '-C', configuration, '--output-on-failure'], { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true });
   const testMs = performance.now() - testStarted;
   const after = snapshotNative({ root, build, store, configuration, runtimeFiles });
   const stable = sourceStableDuringBuild && before.fingerprint === after.fingerprint;
   const pass = !result.error && result.status === 0 && stable;
-  const body = { schema: 1, status: pass ? 'PASS' : 'FAIL', reusable: pass && reusable,
+  const body = { schema: signer ? 2 : 1, keyId: signer?.keyId ?? null, status: pass ? 'PASS' : 'FAIL', reusable: pass && reusable,
     snapshot: before, command: ['ctest', '--test-dir', build, '-C', configuration, '--output-on-failure'],
     exitCode: result.status, error: result.error?.message ?? null, stable,
     stdout: result.stdout ?? '', stderr: result.stderr ?? '', buildMs, testMs, reuseDecision, changedInputs };
-  const receipt = { ...body, integrity: digest(body) };
+  const receipt = signer ? signedValue(body, signer) : { ...body, integrity: digest(body) };
   mkdirSync(store, { recursive: true });
   const filename = `${new Date().toISOString().replaceAll(':', '-')}-${randomUUID()}.json`;
   writeFileSync(join(store, filename), JSON.stringify(receipt, null, 2), { flag: 'wx' });
+  if (signer) writeHead(signer, { schema: 1, keyId: signer.keyId, receipt: filename, receiptSha256: fileHash(join(store, filename)) });
   return { outcome: pass ? 'EXECUTED' : 'FAILED', reuseDecision, changedInputs, changedExecutables,
     testCount: before.testCount, reusable: receipt.reusable,
     buildMs, testMs, elapsedMs: performance.now() - started, receipt: filename, exitCode: result.status, stable };
 }
 
 export function runNativeCli(args) {
-  const valueFlags = new Set(['--root', '--build', '--store', '--configuration', '--runtime-file']);
+  const valueFlags = new Set(['--root', '--build', '--store', '--configuration', '--runtime-file', '--evidence-key']);
   const values = new Map(), runtimeFiles = [];
   try {
     for (let i = 0; i < args.length; i++) {
@@ -256,10 +302,10 @@ export function runNativeCli(args) {
         values.set(flag, value);
       }
     }
-    if (!values.get('--root') || !values.get('--build') || !values.get('--store')) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--declare-runtime-closure]');
+    if (!values.get('--root') || !values.get('--build') || !values.get('--store')) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--evidence-key PATH] [--declare-runtime-closure]');
     const result = verifyNative({ root: values.get('--root'), build: values.get('--build'), store: values.get('--store'),
       configuration: values.get('--configuration') || 'Release', runtimeFiles,
-      runtimeClosureDeclared: args.includes('--declare-runtime-closure') });
+      runtimeClosureDeclared: args.includes('--declare-runtime-closure'), evidenceKeyPath: values.get('--evidence-key') ?? null });
     console.log(JSON.stringify(result));
     return result.outcome === 'FAILED' ? 1 : 0;
   } catch (error) { console.error('INDRO_NATIVE_VERIFY_ERROR ' + error.message); return 2; }

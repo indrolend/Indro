@@ -4,12 +4,12 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { snapshotNative, verifyNative, changedExecutablePaths } from './native-verify.mjs';
 
 function fixture() {
   const parent = mkdtempSync(join(tmpdir(), 'indro-native-proof-'));
-  const root = join(parent, 'source'), build = join(root, 'build'), store = join(parent, 'evidence');
+  const root = join(parent, 'source'), build = join(root, 'build'), store = join(parent, 'evidence'), evidenceKeyPath = join(parent, 'evidence-key.pem');
   mkdirSync(root);
   writeFileSync(join(root, '.gitignore'), 'build/\n');
   writeFileSync(join(root, 'CMakeLists.txt'), 'cmake_minimum_required(VERSION 3.16)\nproject(proof CXX)\nenable_testing()\nadd_executable(probe probe.cpp)\nadd_test(NAME probe COMMAND probe)\n');
@@ -18,7 +18,9 @@ function fixture() {
   execFileSync('git', ['-C', root, 'add', '.']);
   execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture']);
   execFileSync('cmake', ['-S', root, '-B', build], { stdio: 'pipe' });
-  return { parent, root, build, store, runtimeClosureDeclared: true };
+  const { privateKey } = generateKeyPairSync('ed25519');
+  writeFileSync(evidenceKeyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }));
+  return { parent, root, build, store, runtimeClosureDeclared: true, evidenceKeyPath };
 }
 
 test('real CTest execution and unchanged reuse', () => {
@@ -56,8 +58,7 @@ test('Git, CMake and CTest executable bytes participate in proof identity', () =
     writeFileSync(file, JSON.stringify(receipt));
     const rerun = verifyNative(f);
     assert.equal(rerun.outcome, 'EXECUTED');
-    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
-    assert.ok(rerun.changedInputs.includes('tools'));
+    assert.equal(rerun.reuseDecision, 'RECEIPT_HEAD_INVALID');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
@@ -101,7 +102,7 @@ test('corrupt newest receipt cannot reuse older success', () => {
     writeFileSync(file, JSON.stringify(data));
     const rerun = verifyNative(f);
     assert.equal(rerun.outcome, 'EXECUTED');
-    assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT');
+    assert.equal(rerun.reuseDecision, 'RECEIPT_HEAD_INVALID');
     assert.deepEqual(rerun.changedInputs, []);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
@@ -118,7 +119,7 @@ test('receipt with recomputed outer digest but inconsistent snapshot is rejected
     writeFileSync(file, JSON.stringify(receipt));
     const rerun = verifyNative(f);
     assert.equal(rerun.outcome, 'EXECUTED');
-    assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT');
+    assert.equal(rerun.reuseDecision, 'RECEIPT_HEAD_INVALID');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
@@ -301,7 +302,7 @@ test('recomputed receipt checksum cannot authorize contradictory reusable execut
       writeFileSync(path, JSON.stringify(receipt));
       const rerun = verifyNative(f);
       assert.equal(rerun.outcome, 'EXECUTED', label);
-      assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT', label);
+      assert.equal(rerun.reuseDecision, 'RECEIPT_HEAD_INVALID', label);
     }
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
@@ -338,6 +339,49 @@ test('CLI rejects missing, mistyped and duplicate runtime dependency options bef
     assert.equal(result.status, 2, JSON.stringify({ args, stderr: result.stderr }));
     assert.match(result.stderr, diagnostic);
   }
+});
+
+test('unsigned evidence remains compatible but cannot be reused', () => {
+  const f = fixture();
+  try {
+    const unsigned = { ...f, evidenceKeyPath: null };
+    const first = verifyNative(unsigned), second = verifyNative(unsigned);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, false);
+    assert.equal(first.reuseDecision, 'SIGNING_KEY_UNDECLARED');
+    assert.equal(second.outcome, 'EXECUTED');
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('signed receipt rewrite with recomputed checksum is rejected', () => {
+  const f = fixture();
+  try {
+    const first = verifyNative(f);
+    const path = join(f.store, first.receipt);
+    const receipt = JSON.parse(readFileSync(path, 'utf8'));
+    receipt.stdout += '\nFORGED';
+    const { signature, integrity, ...body } = receipt;
+    receipt.integrity = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    receipt.signature = signature;
+    writeFileSync(path, JSON.stringify(receipt));
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'RECEIPT_HEAD_INVALID');
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('receipt rollback is rejected by the separately anchored signed head', () => {
+  const f = fixture();
+  try {
+    const first = verifyNative(f);
+    appendFileSync(join(f.root, 'probe.cpp'), '\n// second receipt\n');
+    const second = verifyNative(f);
+    assert.notEqual(first.receipt, second.receipt);
+    unlinkSync(join(f.store, second.receipt));
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'RECEIPT_HEAD_INVALID');
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
 
