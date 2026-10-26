@@ -174,7 +174,7 @@ jobs:
           $reuse = $reuseRaw | Select-Object -Last 1 | ConvertFrom-Json
           if ($reuse.outcome -ne 'REUSED' -or $reuse.receipt -ne $first.receipt) { throw 'Expected unchanged build graph evidence reuse' }
           $recorded = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
-          $graph = Get-ChildItem -LiteralPath $build -File | Where-Object { $_.Extension -eq '.sln' } | Select-Object -First 1
+          $graph = Get-ChildItem -LiteralPath $build -File | Where-Object { $_.Extension -in @('.slnx', '.sln') } | Select-Object -First 1
           if (-not $graph) { throw 'No Visual Studio solution found in generated build graph' }
           $relativeGraph = [System.IO.Path]::GetRelativePath($build, $graph.FullName)
           $recordedPaths = @($recorded.snapshot.inputs.buildGraph | ForEach-Object { [string]($_[0]) })
@@ -183,7 +183,8 @@ jobs:
           $backup = Join-Path $env:GITHUB_WORKSPACE 'build-graph-original.sln'
           Copy-Item -LiteralPath $graph.FullName -Destination $backup
           try {
-            $comment = [Environment]::NewLine + '# INDRO CI generated build graph challenge' + [Environment]::NewLine
+            $commentText = if ($graph.Extension -eq '.slnx') { '<!-- INDRO CI generated build graph challenge -->' } else { '# INDRO CI generated build graph challenge' }
+            $comment = [Environment]::NewLine + $commentText + [Environment]::NewLine
             [System.IO.File]::AppendAllText($graph.FullName, $comment, [System.Text.UTF8Encoding]::new($false))
             if ((Get-FileHash -LiteralPath $graph.FullName -Algorithm SHA256).Hash -eq $originalHash) { throw 'Graph mutation did not change bytes' }
             $raw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
