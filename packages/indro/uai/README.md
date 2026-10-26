@@ -8,10 +8,13 @@ This branch implements a deliberately narrow, offline transaction kernel.
 node --test packages/indro/uai/transaction.test.mjs
 node packages/indro/cli.mjs app help
 node packages/indro/cli.mjs app fixture set 0.75 --json
+node packages/indro/cli.mjs app process priority --spawn --set BelowNormal --json
 npm test
 ```
 
 The fixture changes in-memory state only. It does **not** contact FL Studio or another Windows program.
+
+The Windows process command accepts only the exact form shown above. It creates and owns a disposable child, binds its PID to its creation time before every operation, sets priority through the experimental adapter, reads the value back, records a CIM observation as declared shared authority (not independent proof), confirms cleanup, and writes a create-only receipt beneath CommandHUD's machine-local state root.
 
 ## Evidence semantics
 
