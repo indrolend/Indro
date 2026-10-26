@@ -2297,7 +2297,13 @@ export async function discardSandboxJob(project, sandboxId) {
   const directChild = canonicalWorkspace && canonicalParent && relative(canonicalParent, canonicalWorkspace) === basename(workspace);
   const isRegistered = registered.ok && directChild && registered.stdout.split(/\r?\n/).some((line) => {
     if (!line.startsWith('worktree ')) return false;
-    try { return realpathSync(line.slice(9)) === canonicalWorkspace; } catch { return false; }
+    try {
+      const candidate = line.slice(9);
+      if (realpathSync(candidate) === canonicalWorkspace) return true;
+      const expected = statSync(workspace, { bigint: true });
+      const actual = statSync(candidate, { bigint: true });
+      return expected.ino !== 0n && expected.dev === actual.dev && expected.ino === actual.ino && actual.isDirectory();
+    } catch { return false; }
   });
   if (!isRegistered) {
     throw new Error('Sandbox workspace is not a registered worktree of the verified source repository.');
