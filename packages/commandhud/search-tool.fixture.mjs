@@ -28,4 +28,4 @@ for (const path of files) {
     matches++;
   }
 }
-process.exit(matches ? 0 : 1);
+process.exitCode = matches ? 0 : 1;
