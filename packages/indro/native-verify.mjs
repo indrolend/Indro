@@ -133,7 +133,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     const resolvedExe = realpathSync(exe);
     const executableMode = lstatSync(resolvedExe).mode & 0o111;
     if (process.platform !== 'win32' && executableMode === 0) complete = false;
-    executables.set(resolvedExe, `${fileHash(exe)}:${process.platform === 'win32' ? 'win32' : executableMode.toString(8)}`);
+    executables.set(exe, `${fileHash(exe)}:${process.platform === 'win32' ? 'win32' : executableMode.toString(8)}:${digest([resolvedExe, pathSymlinks(exe)])}`);
   }
   const compilers = compilerHashes(cache, build);
   const tools = Object.fromEntries(['cmake', 'ctest', 'git'].map(name => [name, toolProvenance(name, root)]));
