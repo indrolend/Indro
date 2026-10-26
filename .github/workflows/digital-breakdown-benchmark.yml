@@ -1,0 +1,63 @@
+name: Digital Breakdown native verification benchmark
+on:
+  push:
+    branches: [feat/native-verification-evidence]
+    paths: ['.github/workflows/digital-breakdown-benchmark.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-game:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out INDRO benchmark
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out pinned Digital Breakdown source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: indrolend/data-game
+          ref: 18b19807333be6b1c83f0a39ae08084978285aeb
+          path: game
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Configure actual game CMake project
+        run: cmake -S game -B game/build
+      - name: Measure real CTest baseline and INDRO reuse
+        shell: pwsh
+        run: |
+          $game = (Resolve-Path game).Path
+          $build = (Resolve-Path game/build).Path
+          $store = Join-Path $env:GITHUB_WORKSPACE 'benchmark-evidence'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'benchmark-results.json'
+          node packages/indro/benchmark-native.mjs --root $game --build $build --store $store --output $output --runs 5 --declare-runtime-closure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Summarize observed outcome (never invent a speedup)
+        if: always()
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:GITHUB_WORKSPACE 'benchmark-results.json'
+          if (Test-Path $path) {
+            $r = Get-Content $path -Raw | ConvertFrom-Json
+            @(
+              '## Digital Breakdown CTest benchmark'
+              "Source: indrolend/data-game @ 18b19807333be6b1c83f0a39ae08084978285aeb"
+              "Reuse status: $($r.reuseStatus)"
+              "Ordinary median (ms): $($r.ordinaryMedianMs)"
+              "INDRO median (ms): $($r.reuseMedianMs)"
+              "Speedup (only for complete reuse): $($r.speedup)"
+              "Error: $($r.error)"
+              'Runtime closure: operator-declared for this experiment; not independently established.'
+            ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          }
+      - name: Retain raw measurements and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digital-breakdown-ctest-benchmark
+          path: |
+            benchmark-results.json
+            benchmark-evidence/*.json
+          if-no-files-found: warn
