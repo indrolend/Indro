@@ -78,7 +78,7 @@ try {
   for (let i = 0; i < runs; i++) {
     const ordinary = baseline();
     const reused = execute('indro-reuse', process.execPath, indroArgs);
-    if (reused.outcome !== 'REUSED') throw new Error(`INDRO did not reuse at repetition ${i + 1}: ${reused.reuseDecision ?? reused.outcome}`);
+    if (reused.outcome !== 'REUSED') throw new Error(`INDRO did not reuse at repetition ${i + 1}: ${reused.reuseDecision ?? reused.outcome}; changedInputs=${JSON.stringify(reused.changedInputs ?? [])}`);
     if (ordinary.testCount !== reused.testCount) throw new Error(`CTest coverage mismatch: ${ordinary.testCount} vs ${reused.testCount}`);
     if (reused.receipt !== first.receipt || !sameEvidence(originalEvidence, evidenceSnapshot()))
       throw new Error('Reuse altered evidence or changed receipt identity');
