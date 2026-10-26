@@ -221,7 +221,10 @@ export function changedExecutablePaths(recorded, current, build) {
 }
 function readReceipt(path) {
   try {
-    const value = JSON.parse(readFileSync(path, 'utf8'));
+    const bytes = readFileSync(path, 'utf8');
+    const value = JSON.parse(bytes);
+    // Reject byte-only edits: receipts are written in canonical JSON form.
+    if (bytes !== JSON.stringify(value, null, 2)) return null;
     const { integrity, ...body } = value;
     if (integrity !== digest(body)) return null;
     if (!value.snapshot?.inputs || value.snapshot.fingerprint !== digest(value.snapshot.inputs) ||

@@ -69,7 +69,7 @@ test('Git, CMake and CTest executable bytes participate in proof identity', () =
     receipt.snapshot.fingerprint = createHash('sha256').update(JSON.stringify(receipt.snapshot.inputs)).digest('hex');
     const { integrity, ...body } = receipt;
     receipt.integrity = createHash('sha256').update(JSON.stringify(body)).digest('hex');
-    writeFileSync(file, JSON.stringify(receipt));
+    writeFileSync(file, JSON.stringify(receipt, null, 2));
     const rerun = verifyNative(f);
     assert.equal(rerun.outcome, 'EXECUTED');
     assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
@@ -127,6 +127,24 @@ test('changed configuration invalidates proof', () => {
     const cache = join(f.build, 'CMakeCache.txt');
     writeFileSync(cache, readFileSync(cache, 'utf8').replace(/^CMAKE_INSTALL_PREFIX:PATH=.*$/m, 'CMAKE_INSTALL_PREFIX:PATH=/indro-proof-changed'));
     assert.equal(verifyNative(f).outcome, 'EXECUTED');
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('byte-only receipt edits invalidate reuse and preserve prior evidence', () => {
+  const f = fixture();
+  try {
+    const first = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, true);
+    const path = join(f.store, first.receipt);
+    appendFileSync(path, '\n'); // Same parsed JSON and digest, different retained bytes.
+    const modified = readFileSync(path);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'RECEIPT_CORRUPT');
+    assert.equal(rerun.testCount, 1);
+    assert.deepEqual(readFileSync(path), modified);
+    assert.equal(readdirSync(f.store).filter(name => name.endsWith('.json')).length, 2);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
