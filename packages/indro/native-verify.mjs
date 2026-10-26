@@ -120,10 +120,20 @@ function compilerHashes(cache, build) {
 }
 // Fingerprint CMake generator entry points, not only compiled binaries and the test plan.
 function buildGraphHashes(build) {
-  const names = readdirSync(build).filter(name => name === 'Makefile' || name.endsWith('.ninja') || (name.endsWith('.sln') || name.endsWith('.slnx')));
+  const names = readdirSync(build).filter(name => name === 'Makefile' || name.endsWith('.ninja') ||
+    name.endsWith('.sln') || name.endsWith('.slnx') || name.endsWith('.vcxproj'));
   if (!names.length) return null;
-  for (const name of ['CMakeFiles/Makefile2', 'CMakeFiles/rules.ninja']) {
+  for (const name of ['CMakeFiles/Makefile2', 'CMakeFiles/Makefile.cmake', 'CMakeFiles/rules.ninja']) {
     if (existsSync(join(build, name))) names.push(name);
+  }
+  // Makefile2 alone misses per-target compile and link instructions.
+  const cmakeFiles = join(build, 'CMakeFiles');
+  if (existsSync(cmakeFiles)) for (const dir of readdirSync(cmakeFiles, { withFileTypes: true })) {
+    if (!dir.isDirectory() || !dir.name.endsWith('.dir')) continue;
+    for (const name of ['build.make', 'flags.make', 'link.txt']) {
+      const path = join('CMakeFiles', dir.name, name);
+      if (existsSync(join(build, path))) names.push(path);
+    }
   }
   return names.sort().map(name => [name, fileHash(join(build, name))]);
 }

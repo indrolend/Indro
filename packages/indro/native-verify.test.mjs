@@ -608,3 +608,32 @@ test('missing CMake generator entry point prevents reusable proof', () => {
     assert.equal(snapshot.inputs.buildGraph, null);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+test('per-target Makefile compiler flags invalidate reusable CTest evidence', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    assert.equal(verifyNative(f).outcome, 'REUSED');
+    const flags = join(f.build, 'CMakeFiles', 'probe.dir', 'flags.make');
+    assert.ok(existsSync(flags), 'requires Unix Makefiles generator');
+    const before = snapshotNative(f);
+    appendFileSync(flags, '\n# changed generated compiler flags\n');
+    assert.notEqual(snapshotNative(f).fingerprint, before.fingerprint);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('buildGraph'));
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('Visual Studio project edits change build graph provenance', { skip: process.platform !== 'win32' }, () => {
+  const f = fixture();
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    const project = readdirSync(f.build).find(name => name.endsWith('.vcxproj'));
+    assert.ok(project, 'requires Visual Studio generator');
+    const before = snapshotNative(f);
+    appendFileSync(join(f.build, project), '\n<!-- changed generated project -->\n');
+    assert.notEqual(snapshotNative(f).fingerprint, before.fingerprint);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
