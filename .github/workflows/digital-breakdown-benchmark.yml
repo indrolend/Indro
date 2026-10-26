@@ -209,6 +209,91 @@ jobs:
             if ((Get-FileHash -LiteralPath $graph.FullName -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable build graph restoration failed' }
             Remove-Item -LiteralPath $backup
           }
+      - name: Challenge actual external model runtime dependency
+        shell: pwsh
+        run: |
+          $game = (Resolve-Path game).Path
+          $build = (Resolve-Path game/build).Path
+          $cmakeFile = Join-Path $game 'CMakeLists.txt'
+          $cmakeBackup = Join-Path $env:GITHUB_WORKSPACE 'runtime-cmake-backup.txt'
+          $external = Join-Path $env:GITHUB_WORKSPACE 'runtime-phone.dbmesh'
+          $store = Join-Path $env:GITHUB_WORKSPACE 'benchmark-runtime-invalidation'
+          $originalHash = (Get-FileHash -LiteralPath $cmakeFile -Algorithm SHA256).Hash
+          $needle = 'DB_PHONE_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/phone.dbmesh"'
+          $originalText = [IO.File]::ReadAllText($cmakeFile)
+          if (-not $originalText.Contains($needle)) { throw 'Pinned model-path declaration changed' }
+          Copy-Item -LiteralPath $cmakeFile -Destination $cmakeBackup
+          Copy-Item -LiteralPath (Join-Path $game 'models/phone.dbmesh') -Destination $external
+          try {
+            # Disposable checkout only: redirect the real ModelDataTest to a file outside Git source.
+            $replacement = 'DB_PHONE_MODEL_PATH="' + $external.Replace('\','/') + '"'
+            [IO.File]::WriteAllText($cmakeFile, $originalText.Replace($needle, $replacement))
+            cmake -S $game -B $build
+            if ($LASTEXITCODE -ne 0) { throw 'Runtime model reconfiguration failed' }
+            cmake --build $build --config Release
+            if ($LASTEXITCODE -ne 0) { throw 'Runtime model rebuild failed' }
+            $modelBytes = [IO.File]::ReadAllBytes($external)
+            if ($modelBytes.Length -lt 24 -or [Text.Encoding]::ASCII.GetString($modelBytes,0,4) -ne 'DBM1') { throw 'Unexpected binary model format' }
+            # Negative control: prove the real CTest executable actually opens the external file.
+            $broken = [byte[]]$modelBytes.Clone()
+            $broken[0] = [byte][char]'X'
+            [IO.File]::WriteAllBytes($external, $broken)
+            try {
+              $negative = ctest --test-dir $build -C Release -R '^ModelDataTest        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digital-breakdown-ctest-benchmark
+          path: |
+            benchmark-results.json
+            benchmark-evidence/*.json
+            benchmark-corruption-result.json
+            benchmark-corrupt-evidence/*.json
+            benchmark-source-invalidation-result.json
+            benchmark-source-invalidation/*.json
+            benchmark-binary-invalidation-result.json
+            benchmark-binary-invalidation/*.json
+            benchmark-graph-invalidation-result.json
+            benchmark-graph-invalidation/*.json
+            benchmark-runtime-invalidation-result.json
+            benchmark-runtime-invalidation/*.json
+          if-no-files-found: warn
+ --output-on-failure 2>&1 | Out-String
+              if ($LASTEXITCODE -eq 0 -or $negative -notmatch 'MODEL_VALIDATION_FAILED') { throw 'External runtime dependency not causally observed' }
+            } finally { [IO.File]::WriteAllBytes($external, $modelBytes) }
+            $args = @('packages/indro/cli.mjs','verify-native','--root',$game,'--build',$build,'--store',$store,'--configuration','Release','--runtime-file',$external,'--declare-runtime-closure')
+            $firstRaw = node @args
+            if ($LASTEXITCODE -ne 0) { throw 'Initial runtime-declared CTest failed' }
+            $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw 'Expected reusable 55-test baseline' }
+            $receiptPath = Join-Path $store $first.receipt
+            $receiptHash = (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
+            $before = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+            if (@($before.snapshot.inputs.runtime).Count -ne 1 -or $before.snapshot.inputs.runtime[0].sha256 -ne (Get-FileHash -LiteralPath $external -Algorithm SHA256).Hash.ToLowerInvariant()) { throw 'External model absent from runtime fingerprint' }
+            $reuseRaw = node @args
+            if ($LASTEXITCODE -ne 0) { throw 'Unchanged runtime verification failed' }
+            $reuse = $reuseRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($reuse.outcome -ne 'REUSED' -or $reuse.receipt -ne $first.receipt) { throw 'Expected unchanged external-runtime reuse' }
+            # Change only the last color byte; the model remains structurally valid.
+            $changed = [byte[]]$modelBytes.Clone()
+            $changed[$changed.Length-1] = $changed[$changed.Length-1] -bxor 1
+            [IO.File]::WriteAllBytes($external, $changed)
+            $raw = node @args
+            if ($LASTEXITCODE -ne 0) { throw 'External-runtime invalidation CTest failed' }
+            $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'runtime' -or @($result.changedInputs) -contains 'source' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Runtime-only invalidation failed: $($result | ConvertTo-Json -Compress)" }
+            if ((Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash -ne $receiptHash) { throw 'Prior receipt mutated' }
+            if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected appended runtime receipt' }
+            $after = Get-Content -LiteralPath (Join-Path $store $result.receipt) -Raw | ConvertFrom-Json
+            if ($after.snapshot.inputs.source -ne $before.snapshot.inputs.source) { throw 'Runtime experiment unexpectedly changed Git source fingerprint' }
+            [pscustomobject]@{ negativeControl = 'MODEL_VALIDATION_FAILED'; result = $result; runtimeFile = $external; runtimeSha256Before = $before.snapshot.inputs.runtime[0].sha256; runtimeSha256After = $after.snapshot.inputs.runtime[0].sha256 } |
+              ConvertTo-Json -Depth 12 | Set-Content benchmark-runtime-invalidation-result.json
+            "Real 55-test external runtime dependency: observed -> REUSED -> INPUT_CHANGED(runtime) -> EXECUTED" | Add-Content $env:GITHUB_STEP_SUMMARY
+          } finally {
+            Copy-Item -LiteralPath $cmakeBackup -Destination $cmakeFile -Force
+            if ((Get-FileHash -LiteralPath $cmakeFile -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable CMake source restoration failed' }
+            Remove-Item -LiteralPath $cmakeBackup
+            Remove-Item -LiteralPath $external -ErrorAction SilentlyContinue
+          }
       - name: Retain raw measurements and evidence
         if: always()
         uses: actions/upload-artifact@v4
