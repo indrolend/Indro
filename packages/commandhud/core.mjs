@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -2292,7 +2292,14 @@ export async function discardSandboxJob(project, sandboxId) {
   const { record, workspace } = readSandboxRecord(project, sandboxId);
   if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, status: 'DISCARDED', alreadyAbsent: true };
   const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
-  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === workspace)) {
+  const canonicalWorkspace = existsSync(workspace) ? realpathSync(workspace) : null;
+  const canonicalParent = existsSync(dirname(workspace)) ? realpathSync(dirname(workspace)) : null;
+  const directChild = canonicalWorkspace && canonicalParent && relative(canonicalParent, canonicalWorkspace) === basename(workspace);
+  const isRegistered = registered.ok && directChild && registered.stdout.split(/\r?\n/).some((line) => {
+    if (!line.startsWith('worktree ')) return false;
+    try { return realpathSync(line.slice(9)) === canonicalWorkspace; } catch { return false; }
+  });
+  if (!isRegistered) {
     throw new Error('Sandbox workspace is not a registered worktree of the verified source repository.');
   }
   const removed = await exec('git', ['worktree', 'remove', '--force', workspace], project.root);
