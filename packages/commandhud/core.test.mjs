@@ -1063,6 +1063,17 @@ test('PowerShell unknown command is blocked but missing filesystem path is not',
   );
   assert.equal(blocked.status, 'blocked');
 
+  // The PowerShell diagnostic classifier must not turn a missing command into a generic failure.
+  const classifiedBlocked = await runCommand(
+    project,
+    [process.execPath, '-e', `console.error("x: The term 'x' is not recognized as a name of a cmdlet, function, script file, or executable program."); process.exit(1)`],
+    { stream: false, classifyCapturedFailure: ({ stderr }) => classifyPowerShellShellFailure(stderr) },
+  );
+  assert.equal(classifiedBlocked.status, 'blocked');
+  assert.equal(classifiedBlocked.resultClassification, 'BLOCKED');
+  assert.equal(classifiedBlocked.resultReason, 'COMMAND_UNAVAILABLE');
+  assert.equal(classifiedBlocked.capturedFailure?.kind, 'command-not-found');
+
   const ordinaryFailure = await runCommand(
     project,
     [process.execPath, '-e', `console.error("Get-Item: Cannot find path 'C:\\missing' because it does not exist."); process.exit(1)`],
