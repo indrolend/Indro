@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { snapshotNative, verifyNative, changedExecutablePaths } from './native-verify.mjs';
 
-function fixture({ compilerWrapper = false } = {}) {
+function fixture({ compilerWrapper = false, generator = null } = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'indro-native-proof-'));
   const root = join(parent, 'source'), build = join(root, 'build'), store = join(parent, 'evidence');
   mkdirSync(root);
@@ -24,6 +24,7 @@ function fixture({ compilerWrapper = false } = {}) {
   execFileSync('git', ['-C', root, 'add', '.']);
   execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture']);
   const configure = ['-S', root, '-B', build];
+  if (generator) configure.push('-G', generator);
   if (compiler) configure.push(`-DCMAKE_CXX_COMPILER=${compiler}`);
   execFileSync('cmake', configure, { stdio: 'pipe' });
   return { parent, root, build, store, compiler, runtimeClosureDeclared: true };
@@ -635,5 +636,24 @@ test('Visual Studio project edits change build graph provenance', { skip: proces
     const before = snapshotNative(f);
     appendFileSync(join(f.build, project), '\n<!-- changed generated project -->\n');
     assert.notEqual(snapshotNative(f).fingerprint, before.fingerprint);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
+
+test('Ninja Multi-Config implementation rules invalidate reusable CTest evidence', { skip: process.platform === 'win32' || spawnSync('ninja', ['--version']).status !== 0 }, () => {
+  const f = fixture({ generator: 'Ninja Multi-Config' });
+  try {
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    assert.equal(verifyNative(f).outcome, 'REUSED');
+    const impl = join(f.build, 'CMakeFiles', 'impl-Release.ninja');
+    assert.ok(existsSync(impl), 'expected generated per-configuration Ninja rules');
+    const before = snapshotNative(f);
+    appendFileSync(impl, '\n# changed per-configuration build instructions\n');
+    const after = snapshotNative(f);
+    assert.notEqual(after.fingerprint, before.fingerprint);
+    assert.notDeepEqual(after.inputs.buildGraph, before.inputs.buildGraph);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'EXECUTED', JSON.stringify(rerun));
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('buildGraph'));
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });

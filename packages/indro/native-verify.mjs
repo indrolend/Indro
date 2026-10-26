@@ -130,6 +130,10 @@ function buildGraphHashes(build) {
   }
   // Makefile2 alone misses per-target compile and link instructions.
   const cmakeFiles = join(build, 'CMakeFiles');
+  // Ninja Multi-Config stores per-configuration compile/link rules here.
+  if (existsSync(cmakeFiles)) names.push(...readdirSync(cmakeFiles)
+    .filter(name => name.startsWith('impl-') && name.endsWith('.ninja'))
+    .map(name => join('CMakeFiles', name)));
   if (existsSync(cmakeFiles)) for (const dir of readdirSync(cmakeFiles, { withFileTypes: true })) {
     if (!dir.isDirectory() || !dir.name.endsWith('.dir')) continue;
     for (const name of ['build.make', 'flags.make', 'link.txt']) {
