@@ -10,6 +10,8 @@ on:
       - "CommandHUD*.cmd"
       - "hud.cmd"
       - "package.json"
+      - "package-lock.json"
+      - "packages/digitalbreakdown-terminal/package-lock.json"
       - ".github/workflows/commandhud-checks.yml"
   push:
     branches: [main]
@@ -21,6 +23,8 @@ on:
       - "CommandHUD*.cmd"
       - "hud.cmd"
       - "package.json"
+      - "package-lock.json"
+      - "packages/digitalbreakdown-terminal/package-lock.json"
       - ".github/workflows/commandhud-checks.yml"
   workflow_dispatch:
 
@@ -48,6 +52,13 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm run audit:security
 
       - name: Verify Indro
         run: npm test

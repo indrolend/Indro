@@ -10,12 +10,13 @@
     "commandhud": "./packages/commandhud/cli.mjs"
   },
   "scripts": {
-    "test": "npm --prefix packages/commandhud test && npm --prefix packages/indro test"
+    "test": "npm --prefix packages/commandhud test && npm --prefix packages/indro test",
+    "audit:security": "npm audit --audit-level=high && npm audit --audit-level=high --prefix packages/digitalbreakdown-terminal"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/sdk": "1.32.2"
   }
 }
