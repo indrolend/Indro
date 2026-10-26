@@ -45,8 +45,13 @@ function toolProvenance(name, cwd) {
   if (found.error || found.status !== 0) return null;
   const path = found.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
   if (!path || !isAbsolute(path) || !existsSync(path)) return null;
-  try { return { path: realpathSync(path), sha256: fileHash(path) }; }
-  catch { return null; }
+  try {
+    const physical = realpathSync(path);
+    const executableMode = process.platform === 'win32' ? null : lstatSync(physical).mode & 0o111;
+    if (process.platform !== 'win32' && executableMode === 0) return null;
+    return { declaredPath: resolve(path), path: physical, symlinks: pathSymlinks(path), sha256: fileHash(path),
+      ...(executableMode === null ? {} : { executableMode: executableMode.toString(8) }) };
+  } catch { return null; }
 }
 // Length-frame each field: source bytes can contain NULs and must not mimic the next record.
 function hashField(hash, value) {
