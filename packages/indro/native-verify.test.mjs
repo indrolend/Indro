@@ -579,7 +579,7 @@ test('changed CMake generator entry point invalidates native evidence reuse', ()
   try {
     assert.equal(verifyNative(f).outcome, 'EXECUTED');
     assert.equal(verifyNative(f).outcome, 'REUSED');
-    const graph = readdirSync(f.build).find(name => name === 'Makefile' || name.endsWith('.ninja') || name.endsWith('.sln'));
+    const graph = readdirSync(f.build).find(name => name === 'Makefile' || name.endsWith('.ninja') || (name.endsWith('.sln') || name.endsWith('.slnx')));
     assert.ok(graph, 'expected CMake generator entry point');
     const before = snapshotNative(f);
     appendFileSync(join(f.build, graph), '\n# INDRO generated graph mutation\n');
@@ -599,7 +599,7 @@ test('missing CMake generator entry point prevents reusable proof', () => {
   const f = fixture();
   try {
     assert.equal(verifyNative(f).outcome, 'EXECUTED');
-    const graph = readdirSync(f.build).find(name => name === 'Makefile' || name.endsWith('.ninja') || name.endsWith('.sln'));
+    const graph = readdirSync(f.build).find(name => name === 'Makefile' || name.endsWith('.ninja') || (name.endsWith('.sln') || name.endsWith('.slnx')));
     assert.ok(graph, 'expected CMake generator entry point');
     unlinkSync(join(f.build, graph));
     const snapshot = snapshotNative(f);
