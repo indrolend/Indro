@@ -490,3 +490,30 @@ test('compiler executable permission loss prevents reuse after no-op build', { s
     assert.equal(rerun.exitCode, 0);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
+
+test('CTest executable symlink text invalidates reuse despite unchanged binary bytes', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  try {
+    writeFileSync(join(f.root, 'CMakeLists.txt'),
+      'cmake_minimum_required(VERSION 3.16)\nproject(proof CXX)\nenable_testing()\nadd_executable(probe probe.cpp)\nadd_test(NAME probe COMMAND "${CMAKE_BINARY_DIR}/alias")\n');
+    writeFileSync(join(f.root, 'probe.cpp'),
+      '#include <unistd.h>\n#include <cstring>\nint main(int, char** argv){char b[1024];auto n=readlink(argv[0],b,sizeof(b));return n==5 && std::strncmp(b,"probe",5)==0 ? 0 : 7;}\n');
+    execFileSync('cmake', ['-S', f.root, '-B', f.build], { stdio: 'pipe' });
+    const alias = join(f.build, 'alias');
+    symlinkSync('probe', alias);
+    const first = verifyNative(f), reused = verifyNative(f);
+    assert.equal(first.outcome, 'EXECUTED');
+    assert.equal(first.reusable, true);
+    assert.equal(reused.outcome, 'REUSED');
+    unlinkSync(alias);
+    symlinkSync('./probe', alias);
+    const direct = spawnSync('ctest', ['--test-dir', f.build, '--output-on-failure'], { encoding: 'utf8' });
+    assert.notEqual(direct.status, 0);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'FAILED');
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('executables'));
+    assert.ok(rerun.changedExecutables.includes('alias'));
+    assert.equal(rerun.reusable, false);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
+});
