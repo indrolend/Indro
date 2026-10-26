@@ -239,25 +239,7 @@ jobs:
             $broken[0] = [byte][char]'X'
             [IO.File]::WriteAllBytes($external, $broken)
             try {
-              $negative = ctest --test-dir $build -C Release -R '^ModelDataTest        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: digital-breakdown-ctest-benchmark
-          path: |
-            benchmark-results.json
-            benchmark-evidence/*.json
-            benchmark-corruption-result.json
-            benchmark-corrupt-evidence/*.json
-            benchmark-source-invalidation-result.json
-            benchmark-source-invalidation/*.json
-            benchmark-binary-invalidation-result.json
-            benchmark-binary-invalidation/*.json
-            benchmark-graph-invalidation-result.json
-            benchmark-graph-invalidation/*.json
-            benchmark-runtime-invalidation-result.json
-            benchmark-runtime-invalidation/*.json
-          if-no-files-found: warn
- --output-on-failure 2>&1 | Out-String
+              $negative = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
               if ($LASTEXITCODE -eq 0 -or $negative -notmatch 'MODEL_VALIDATION_FAILED') { throw 'External runtime dependency not causally observed' }
             } finally { [IO.File]::WriteAllBytes($external, $modelBytes) }
             $args = @('packages/indro/cli.mjs','verify-native','--root',$game,'--build',$build,'--store',$store,'--configuration','Release','--runtime-file',$external,'--declare-runtime-closure')
@@ -310,4 +292,6 @@ jobs:
             benchmark-binary-invalidation/*.json
             benchmark-graph-invalidation-result.json
             benchmark-graph-invalidation/*.json
+            benchmark-runtime-invalidation-result.json
+            benchmark-runtime-invalidation/*.json
           if-no-files-found: warn
