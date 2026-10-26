@@ -544,3 +544,32 @@ test('compiler symlink text invalidates reusable CTest evidence even when compil
     assert.ok(changed.changedInputs.includes('compilers'), JSON.stringify(changed));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('CTest tool symlink text invalidates proof despite unchanged executable bytes', { skip: process.platform === 'win32' }, () => {
+  const f = fixture();
+  const originalPath = process.env.PATH;
+  try {
+    const realCTest = execFileSync('which', ['ctest'], { encoding: 'utf8' }).trim();
+    const bin = join(f.parent, 'tool-bin'); mkdirSync(bin);
+    const driver = join(bin, 'ctest-driver'), link = join(bin, 'ctest');
+    const script = ['#!/bin/sh', '"' + realCTest + '" "$@"', 'status=$?',
+      'case " $* " in *" --output-on-failure "*) if [ "$(readlink "' + link + '")" != "ctest-driver" ]; then exit 8; fi;; esac',
+      'exit "$status"'].join('\n') + '\n';
+    writeFileSync(driver, script); chmodSync(driver, 0o755); symlinkSync('ctest-driver', link);
+    process.env.PATH = bin + ':' + originalPath;
+    assert.equal(verifyNative(f).outcome, 'EXECUTED');
+    assert.equal(verifyNative(f).outcome, 'REUSED');
+    const before = snapshotNative(f);
+    unlinkSync(link); symlinkSync('./ctest-driver', link);
+    const after = snapshotNative(f);
+    assert.equal(before.inputs.tools.ctest.sha256, after.inputs.tools.ctest.sha256);
+    assert.notEqual(before.fingerprint, after.fingerprint);
+    const direct = spawnSync('ctest', ['--test-dir', f.build, '--output-on-failure'], { encoding: 'utf8' });
+    assert.notEqual(direct.status, 0);
+    const rerun = verifyNative(f);
+    assert.equal(rerun.outcome, 'FAILED', JSON.stringify(rerun));
+    assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
+    assert.ok(rerun.changedInputs.includes('tools'));
+    assert.equal(rerun.reusable, false);
+  } finally { process.env.PATH = originalPath; rmSync(f.parent, { recursive: true, force: true }); }
+});
