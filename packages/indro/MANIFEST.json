@@ -122,13 +122,13 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 3702,
-      "sha256": "216ffc1d680b9d726772aaa62ecfd9062550ecac41411a1b24af92497c704d77"
+      "bytes": 4303,
+      "sha256": "58fa070c2244e8aa2aff4d238a159ba3f5035a3d75ff3122ced43b0ed531a2b8"
     },
     {
       "path": "cli.test.mjs",
-      "bytes": 4404,
-      "sha256": "759c27cef90710cf993fc84226483ac1568a83db0ba7340c82084caaafb27dc7"
+      "bytes": 5233,
+      "sha256": "6186a8b80d9b599e8de4c917c985b6c3b9616f64d7295276a8ebd7ab00e8eda2"
     },
     {
       "path": "doctor.ps1",
@@ -326,14 +326,19 @@
       "sha256": "5e1d0f119b724533f21285f01579fef1028d9c08c81a06106c98a344377e28ad"
     },
     {
+      "path": "tools/ndra_repo_gauntlet.py",
+      "bytes": 24038,
+      "sha256": "f55642618d1f6e095aed0faa754867c82522295248e5c70b46cb0a30caf4fb92"
+    },
+    {
       "path": "tools/suggest-words.py",
       "bytes": 1889,
       "sha256": "519bd292785dba31d9aad8b28f1721e8643cd9272185e6642c31d02fa6b35f68"
     },
     {
       "path": "tools/test-all.py",
-      "bytes": 618,
-      "sha256": "f53fcf0ef4d1f66c93be69c641012ab921f85aa3725e6509f010a2fb3b69893f"
+      "bytes": 648,
+      "sha256": "e73baa54dc47561f939e9f0781364e86df2e6069df5c2318872b86587e6b3668"
     },
     {
       "path": "tools/test-cli.py",
@@ -364,6 +369,11 @@
       "path": "tools/test-miner.py",
       "bytes": 3660,
       "sha256": "4543a47b6931e32786bc0e351f2b21e671fa747d64e00089cf74b6ff9c4c082c"
+    },
+    {
+      "path": "tools/test-ndra-repo-gauntlet.py",
+      "bytes": 366,
+      "sha256": "9d3007b0fe1ffcdcc53c53e501d453d27db2b1d3a77ccf3d5cac7414cc9ea28c"
     },
     {
       "path": "tools/test-package.py",

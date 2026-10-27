@@ -86,3 +86,16 @@ test('canonical INDRO routes Godot replay and rejects unsupported scenarios and 
   assert.equal(unsupported.status, 2);
   assert.match(unsupported.stderr, /supports replay only/);
 });
+
+test('canonical INDRO runs bounded NDRA static self-test and rejects unscoped requests', () => {
+  const invoke = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  assert.match(invoke('help').stdout, /indro ndra repo --self-test/);
+  const positive = invoke('ndra', 'repo', '--self-test');
+  assert.equal(positive.status, 0, positive.stderr);
+  assert.match(positive.stdout, /PASS: exact proof, real-shape counterexample, unsupported UNKNOWN/);
+  for (const args of [['ndra'], ['ndra', 'unsupported'], ['ndra', 'repo'], ['ndra', 'repo', '--workspace', 'missing']]) {
+    const negative = invoke(...args);
+    assert.equal(negative.status, 2, JSON.stringify({ args, stdout: negative.stdout, stderr: negative.stderr }));
+    assert.match(negative.stderr, /INDRO_ERROR ndra repo requires/);
+  }
+});
