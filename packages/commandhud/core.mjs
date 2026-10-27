@@ -1766,7 +1766,7 @@ export async function discoverShells(root = process.cwd()) {
   for (const [id, definition] of Object.entries(SHELL_DEFINITIONS)) {
     let executable = null;
     for (const candidate of definition.executables) {
-      const probe = await exec(candidate, id === 'cmd' ? ['/d', '/c', 'ver'] : candidate.toLowerCase().endsWith('wsl.exe') ? ['--status'] : ['--version'], root);
+      const probe = await exec(candidate, id === 'cmd' ? ['/d', '/c', 'ver'] : candidate.toLowerCase().endsWith('wsl.exe') ? ['--exec', 'bash', '-c', 'exit 0'] : ['--version'], root);
       if (probe.ok) { executable = candidate; break; }
     }
     shells.push({ id, label: definition.label, available: Boolean(executable), executable });
