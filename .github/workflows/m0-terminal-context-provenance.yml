@@ -1,0 +1,28 @@
+name: M0 terminal context provenance falsifier
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m0-terminal-context-provenance.yml'
+      - 'experiments/m0-terminal-context-provenance.test.cjs'
+jobs:
+  source-pinned-falsifier:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Retrieve exact historical source without importing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin 1b2d3141aafdf53fdec881ef088057ac44f16c23
+          mkdir -p experiments/feature-session-manager/test
+          git show FETCH_HEAD:packages/digitalbreakdown-terminal/session-manager.cjs > experiments/feature-session-manager/session-manager.cjs
+          git show FETCH_HEAD:packages/digitalbreakdown-terminal/test/session-manager.test.cjs > experiments/feature-session-manager/test/session-manager.test.cjs
+          test "$(git hash-object experiments/feature-session-manager/session-manager.cjs)" = 4c6da15cea816e3ebe9d62a878bf6136fe6db564
+          test "$(git hash-object experiments/feature-session-manager/test/session-manager.test.cjs)" = 4c30808a3c1c8283682b95138ab29fd9803166a0
+      - name: Existing positive tests and new negative control
+        run: node --test experiments/feature-session-manager/test/session-manager.test.cjs experiments/m0-terminal-context-provenance.test.cjs
