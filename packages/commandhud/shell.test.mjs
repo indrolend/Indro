@@ -354,7 +354,7 @@ test('Windows repository launcher works from outside its checkout', {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /Indro · semantic development system/);
   assert.match(result.stdout, /Repository: commandhud-launcher-/);
-  assert.match(result.stdout, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+  assert.match(result.stdout, new RegExp(realpathSync.native(root).replace(/[.*+?^${}()|[\]\\]/g, '\\new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')'), 'i'));
 });
 
 test('TUI readline output constrains clear-screen-down to the command row', async () => {
