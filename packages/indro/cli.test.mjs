@@ -99,3 +99,19 @@ test('canonical INDRO runs bounded NDRA static self-test and rejects unscoped re
     assert.match(negative.stderr, /INDRO_ERROR ndra repo requires/);
   }
 });
+
+test('canonical INDRO exposes owned Windows process priority and rejects unsupported mutations', () => {
+  const invoke = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  const help = invoke('app', 'help');
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /indro app process priority --spawn/);
+  for (const args of [
+    ['app', 'process', 'priority', '--set', 'BelowNormal', '--json'],
+    ['app', 'process', 'priority', '--spawn', '--set', 'High', '--json'],
+    ['app', 'process', 'priority', '--spawn', '--set', 'BelowNormal']
+  ]) {
+    const result = invoke(...args);
+    assert.equal(result.status, 2, JSON.stringify({ args, stderr: result.stderr }));
+    assert.match(result.stderr, /INDRO_ERROR Usage:/);
+  }
+});
