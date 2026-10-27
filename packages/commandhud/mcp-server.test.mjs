@@ -92,17 +92,23 @@ test('CommandHUD MCP exposes typed lifecycle, sandbox, and Brokeman continuity t
   assert.equal('const' in startTool.inputSchema.properties.agent, false);
   assert.equal('enum' in startTool.inputSchema.properties.agent, false);
   assert.equal(startTool.inputSchema.properties.allow_paid.default, false);
+  const paidHarness = agents.structuredContent.agents.find((candidate) => candidate.id === 'codex/local');
+  assert.equal(typeof paidHarness?.available, 'boolean');
   const paidWithoutAuthorization = await client.callTool({ name: 'start_agent', arguments: {
     project: 'indrolend/mcp-fixture', objective: 'must not launch',
     expected_head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
     agent: 'codex/local',
   } });
   assert.equal(paidWithoutAuthorization.isError, true);
-  assert.match(paidWithoutAuthorization.content[0].text, /requires explicit allow_paid=true authorization/);
+  assert.match(paidWithoutAuthorization.content[0].text, paidHarness.available
+    ? /requires explicit allow_paid=true authorization/
+    : /Agent harness is not available: codex\/local/);
   const stale = await client.callTool({ name: 'start_agent', arguments: {
     project: 'indrolend/mcp-fixture', objective: 'must not launch', expected_head: '0'.repeat(40),
     agent: 'codex/local', allow_paid: true,
   } });
   assert.equal(stale.isError, true);
-  assert.match(stale.content[0].text, /does not match current HEAD/);
+  assert.match(stale.content[0].text, paidHarness.available
+    ? /does not match current HEAD/
+    : /Agent harness is not available: codex\/local/);
 });

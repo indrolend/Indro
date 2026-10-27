@@ -318,6 +318,7 @@ function fixture() {
   execFileSync('git', ['init', '-b', 'main'], { cwd: root });
   execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
   execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: root });
   writeFileSync(join(root, 'file.txt'), 'initial\n');
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', ['commit', '-m', 'fixture'], { cwd: root });
@@ -1063,6 +1064,17 @@ test('PowerShell unknown command is blocked but missing filesystem path is not',
   );
   assert.equal(blocked.status, 'blocked');
 
+  // The PowerShell diagnostic classifier must not turn a missing command into a generic failure.
+  const classifiedBlocked = await runCommand(
+    project,
+    [process.execPath, '-e', `console.error("x: The term 'x' is not recognized as a name of a cmdlet, function, script file, or executable program."); process.exit(1)`],
+    { stream: false, classifyCapturedFailure: ({ stderr }) => classifyPowerShellShellFailure(stderr) },
+  );
+  assert.equal(classifiedBlocked.status, 'blocked');
+  assert.equal(classifiedBlocked.resultClassification, 'BLOCKED');
+  assert.equal(classifiedBlocked.resultReason, 'COMMAND_UNAVAILABLE');
+  assert.equal(classifiedBlocked.capturedFailure?.kind, 'command-not-found');
+
   const ordinaryFailure = await runCommand(
     project,
     [process.execPath, '-e', `console.error("Get-Item: Cannot find path 'C:\\missing' because it does not exist."); process.exit(1)`],
@@ -1079,6 +1091,8 @@ test('PowerShell missing commands are blocked without treating ordinary stderr a
     message: "rg: The term 'rg' is not recognized as a name of a cmdlet, function, script file, or executable program.",
   });
   assert.equal(classifyPowerShellShellFailure('warning: optional cache is unavailable'), null);
+  const wrappedDiagnostic = "cmd: The term 'cmd' is not recognized as a\n    | name of a cmdlet, function, script file, or executable program. Check the spelling.";
+  assert.equal(classifyPowerShellShellFailure(wrappedDiagnostic)?.kind, 'command-not-found');
 
   const project = await fixtureProject();
   const powershell = (await discoverShells(project.root)).find((entry) => entry.id === 'powershell');
@@ -1087,7 +1101,12 @@ test('PowerShell missing commands are blocked without treating ordinary stderr a
   const record = await runTerminalCommand(project, command, { shell: 'powershell' });
   assert.notEqual(record.exitCode, 0);
   assert.notEqual(record.processExitCode, 0);
-  assert.equal(record.status, 'blocked');
+  assert.equal(record.status, 'blocked', JSON.stringify({
+    reason: record.resultReason,
+    capturedFailure: record.capturedFailure,
+    stderr: readFileSync(record.stderrPath, 'utf8').slice(-1200),
+    stdout: readFileSync(record.stdoutPath, 'utf8').slice(-400),
+  }));
   assert.equal(record.resultClassification, 'BLOCKED');
   assert.equal(record.resultReason, 'COMMAND_UNAVAILABLE');
   assert.equal(record.operation.status, 'blocked');
@@ -1575,7 +1594,7 @@ test('terminal commands preserve exact intent and working directory across avail
   for (const shell of shells.filter((entry) => entry.available)) {
     const example = cases[shell.id];
     const record = await runTerminalCommand(project, example.command, { shell: shell.id });
-    assert.equal(record.status, 'pass', `${shell.id}: ${readFileSync(record.stderrPath, 'utf8')}`);
+    assert.equal(record.status, 'pass', `${shell.id}: ${JSON.stringify({ executable: shell.executable, exitCode: record.exitCode, processExitCode: record.processExitCode, reason: record.reason ?? record.reduction?.reason ?? null, stdout: readFileSync(record.stdoutPath, 'utf8').slice(0, 2000), stderr: readFileSync(record.stderrPath, 'utf8').slice(0, 2000), operation: record.operation })}`);
     assert.equal(record.command, example.command);
     assert.equal(record.inputText, example.command);
     assert.equal(record.operationId, record.id);

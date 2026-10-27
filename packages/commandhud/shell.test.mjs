@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -354,7 +354,7 @@ test('Windows repository launcher works from outside its checkout', {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /Indro · semantic development system/);
   assert.match(result.stdout, /Repository: commandhud-launcher-/);
-  assert.match(result.stdout, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+  assert.ok(result.stdout.toLowerCase().includes(realpathSync.native(root).toLowerCase()), result.stdout);
 });
 
 test('TUI readline output constrains clear-screen-down to the command row', async () => {

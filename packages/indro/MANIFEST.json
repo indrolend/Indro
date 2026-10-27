@@ -36,6 +36,16 @@
   },
   "files": [
     {
+      "path": "benchmark-native.mjs",
+      "bytes": 7916,
+      "sha256": "87d398333567c5d4004c9b8fd1749b12b7af3270efa08179dfe801a98a8ecfd3"
+    },
+    {
+      "path": "benchmark-native.test.mjs",
+      "bytes": 3683,
+      "sha256": "e9668c25f429218b5bdd6863d82ac5f94de9e2c50112b43a7a245dac835d1158"
+    },
+    {
       "path": "benchmarks/crosscheck.json",
       "bytes": 140,
       "sha256": "95c65f2449c999eaef42752fc31aea745dedab0fc7a81901f5dc69a7d91e662d"
@@ -96,14 +106,29 @@
       "sha256": "3c957a7f8cf15aeb8db35f9f085cff119e251bcf9704430c9a8c4cc56d54f6ee"
     },
     {
+      "path": "capability/cli.mjs",
+      "bytes": 2511,
+      "sha256": "ef9750df65f6fc4f376fc222769975cc5216706d0917bbae290277662d7848f1"
+    },
+    {
+      "path": "capability/store.mjs",
+      "bytes": 13563,
+      "sha256": "f0ff2d90672e6042a525b7993b86f6d47c65af218d78c7943e85e4a481f8cad8"
+    },
+    {
+      "path": "capability/store.test.mjs",
+      "bytes": 8529,
+      "sha256": "369e8a76aaa85ca85654c8e07e852786718b23c9047d2b8bb8896eaaed5a7df1"
+    },
+    {
       "path": "cli.mjs",
-      "bytes": 1859,
-      "sha256": "73a8e6e5facc3d5c5648ed52eeb123d348e63fce5cc3f1802178db640b59e7ca"
+      "bytes": 4388,
+      "sha256": "a92f8fdfefa3265fc456ee2be183f4c9cefcc1cc04dd7a39c7245058890ea184"
     },
     {
       "path": "cli.test.mjs",
-      "bytes": 1394,
-      "sha256": "583c3732d8dff7a47d13ecf4f593f4d06a3114574628e44c5ad6131b2f5fa6c0"
+      "bytes": 6014,
+      "sha256": "dbaf4bda1d2bff2a2d59d7700bf0305296d2e42a7447dc5a5d92ea9a79161fd1"
     },
     {
       "path": "doctor.ps1",
@@ -146,6 +171,46 @@
       "sha256": "0da7cba84fd1f29f393445b6fe69ef0b246cb0539ad92bb0b1b5273fa07776d0"
     },
     {
+      "path": "fl/adapter.mjs",
+      "bytes": 8938,
+      "sha256": "434bb2ceaae249b12b8ab08ecb549a5d7f2075edf197e893cc9b0fe31759c3d4"
+    },
+    {
+      "path": "fl/adapter.test.mjs",
+      "bytes": 2245,
+      "sha256": "f932851950dbd825adacb41c360a6d03c34a1150f80c445355a0403a6ef736f9"
+    },
+    {
+      "path": "fl/bridge/device_INDROFLBridge.py",
+      "bytes": 8225,
+      "sha256": "b1e8168ed0004c9bf4bd9c7c9dbda152800e872883a76ba49d95f3dd611bdc60"
+    },
+    {
+      "path": "fl/cli.mjs",
+      "bytes": 7449,
+      "sha256": "a6c4dc86a2ca13c0affc9e0f4d88c921e0ddcf95854f4b88b9bee69718a77a4c"
+    },
+    {
+      "path": "fl/cli.test.mjs",
+      "bytes": 6080,
+      "sha256": "b3885c1e48f4ff2bc062e5484632635e8c27fdddbbe47231029cbb452dd2ad7e"
+    },
+    {
+      "path": "fl/send-trigger.ps1",
+      "bytes": 2182,
+      "sha256": "28c576b9f3c96f60f01d4f393d39f6ab723f3bb693874fadf51c6feaaa3c8484"
+    },
+    {
+      "path": "godot-replay.mjs",
+      "bytes": 15265,
+      "sha256": "8513c93f99955be790dbeaba766beab16d528e7093c7d66c5fed43f9717a395a"
+    },
+    {
+      "path": "godot-replay.test.mjs",
+      "bytes": 3862,
+      "sha256": "9a2f7435fd10b056ec925777a3f08596705fffc4a0dce02345885ede450a5e1e"
+    },
+    {
       "path": "indro_lang.py",
       "bytes": 17754,
       "sha256": "91fd49d22d3a914ecc3c51877949239cc84f438e2a664d64a8c85dcee7d0c6ce"
@@ -171,9 +236,44 @@
       "sha256": "df5911cbee9b31b8ec0e03fbd0b4554643b76f1a66974b2d70bc9f32f95dec10"
     },
     {
+      "path": "native-verify.md",
+      "bytes": 2824,
+      "sha256": "b1571bc8ab97363a71fef599ac34b59483fcd0b15d1eb913fd6fbfb245b463f5"
+    },
+    {
+      "path": "native-verify.mjs",
+      "bytes": 20361,
+      "sha256": "3934b4b357b2a7d93fbc744b98ce531e25d5bf681c155dcc31ffa483b7059704"
+    },
+    {
+      "path": "native-verify.test.mjs",
+      "bytes": 36561,
+      "sha256": "4c6973615ac843f2ad7d31ea9cce30be57c5be8ab1a58c8290f2f17c6f46057e"
+    },
+    {
       "path": "package.json",
-      "bytes": 231,
-      "sha256": "231f585de5068ccd1f8718bef9ae275942009b9d2e711d342d5fd203b6dd9a79"
+      "bytes": 567,
+      "sha256": "8b45511bce0b80a7bae0938636f0cb7a226a1f4e64e7a481c0622e63fadbc070"
+    },
+    {
+      "path": "paint/artifact.mjs",
+      "bytes": 2723,
+      "sha256": "a66663a429d325b1440ac538d2036a83279e9fb826bc3527abf8d8792c4da40f"
+    },
+    {
+      "path": "paint/artifact.test.mjs",
+      "bytes": 2041,
+      "sha256": "d77ed82161411d7c22beb1a0f78be6d426c9edb55daa081fe538c30e47b9f56f"
+    },
+    {
+      "path": "paint/cli.mjs",
+      "bytes": 1015,
+      "sha256": "9c7ec4da583675b7dca1fa16c7476cfbdb598a9265dfe2183ab3292005c769ed"
+    },
+    {
+      "path": "paint/png-fixture.test-helper.mjs",
+      "bytes": 934,
+      "sha256": "93eecddc0b0906276cda118a2838b94539b9800dae9fab64c7ed5ac048b247eb"
     },
     {
       "path": "README.md",
@@ -226,14 +326,19 @@
       "sha256": "5e1d0f119b724533f21285f01579fef1028d9c08c81a06106c98a344377e28ad"
     },
     {
+      "path": "tools/ndra_repo_gauntlet.py",
+      "bytes": 24038,
+      "sha256": "f55642618d1f6e095aed0faa754867c82522295248e5c70b46cb0a30caf4fb92"
+    },
+    {
       "path": "tools/suggest-words.py",
       "bytes": 1889,
       "sha256": "519bd292785dba31d9aad8b28f1721e8643cd9272185e6642c31d02fa6b35f68"
     },
     {
       "path": "tools/test-all.py",
-      "bytes": 618,
-      "sha256": "f53fcf0ef4d1f66c93be69c641012ab921f85aa3725e6509f010a2fb3b69893f"
+      "bytes": 648,
+      "sha256": "e73baa54dc47561f939e9f0781364e86df2e6069df5c2318872b86587e6b3668"
     },
     {
       "path": "tools/test-cli.py",
@@ -266,6 +371,11 @@
       "sha256": "4543a47b6931e32786bc0e351f2b21e671fa747d64e00089cf74b6ff9c4c082c"
     },
     {
+      "path": "tools/test-ndra-repo-gauntlet.py",
+      "bytes": 366,
+      "sha256": "9d3007b0fe1ffcdcc53c53e501d453d27db2b1d3a77ccf3d5cac7414cc9ea28c"
+    },
+    {
       "path": "tools/test-package.py",
       "bytes": 2729,
       "sha256": "ebe0cc68cd13544c393e58556efd3444566df6914b64418498f1600c2138f838"
@@ -286,9 +396,79 @@
       "sha256": "7c27ddd40a655ee1cea1e06656c5e3b179ac7766e8685bf127291f62ebc9f210"
     },
     {
+      "path": "uai/assay.mjs",
+      "bytes": 2307,
+      "sha256": "4df54e1a5b48ef087033623ac3d17f9cadd0b671ba2af2aaf085948c6916cc78"
+    },
+    {
+      "path": "uai/assay.test.mjs",
+      "bytes": 2895,
+      "sha256": "9a1490a9a8d1bc0930b3f974fea61b347943d6d78312462cea689f82a8940897"
+    },
+    {
+      "path": "uai/authority.mjs",
+      "bytes": 1671,
+      "sha256": "6ef93c9c642efc0d4b29c5ef022aa1850b8b679c751bc0c0c3c39c0279a72373"
+    },
+    {
+      "path": "uai/authority.test.mjs",
+      "bytes": 2498,
+      "sha256": "84a879b8514273b2a4046e043f3c53915fae1c3e505ec5812dd929450650088d"
+    },
+    {
+      "path": "uai/cli.mjs",
+      "bytes": 1892,
+      "sha256": "52646700c509c8b9a49e9bed34baa0f20fb1169eb69bfeb7677c02e6ff635233"
+    },
+    {
+      "path": "uai/process-priority.mjs",
+      "bytes": 4948,
+      "sha256": "b4b3dcbf2e35eea2ba1f242e18d092a4cc903bcb329b2c6f2477409a8639c58b"
+    },
+    {
+      "path": "uai/process-priority.test.mjs",
+      "bytes": 4802,
+      "sha256": "39aa8852f0d4b49f6a7254a92fd10d430f8d77695f5b893d9b56187b98de2efd"
+    },
+    {
+      "path": "uai/README.md",
+      "bytes": 1912,
+      "sha256": "0ca2042ff9bccec5756c11fcd1b72eac0b064c995633c53241dddce9c2965285"
+    },
+    {
+      "path": "uai/transaction.mjs",
+      "bytes": 3759,
+      "sha256": "8072d8b630e4787c196542debd03ad4111f6b5c87ba71e1e60b6d34ee559c336"
+    },
+    {
+      "path": "uai/transaction.test.mjs",
+      "bytes": 3113,
+      "sha256": "d77d0a947397ddc38f40b6c666edff0a6fdb1b742d97325715a82e7a2095a7b2"
+    },
+    {
+      "path": "uai/windows-process-adapter.mjs",
+      "bytes": 4590,
+      "sha256": "acb8ced9d1c4e9e2ee0bdc9497f5048bee6bf613f397181da66cc2caaa490203"
+    },
+    {
+      "path": "uai/windows-process-adapter.test.mjs",
+      "bytes": 2284,
+      "sha256": "cf29ea835775bb79c8aabb5cbf23dd0e562bc50a982a5661ecd3e38ed73be7ac"
+    },
+    {
       "path": "words.json",
       "bytes": 2012,
       "sha256": "0c2a417145d9bb4298a4629389ef365798ab668c39ca66cd9b710d99e8478b07"
+    },
+    {
+      "path": "workbench.mjs",
+      "bytes": 3396,
+      "sha256": "b1486b11e213239b6a409237629e0ac3286b63bd7e02d8892cb111c068c5ee9d"
+    },
+    {
+      "path": "workbench.test.mjs",
+      "bytes": 2098,
+      "sha256": "b00e4e352d2a8495f4f7f1888a47a26c57dc3d9a6d4b05e255436f29eb4bd9a9"
     },
     {
       "path": "workspaces/workspaces.json",

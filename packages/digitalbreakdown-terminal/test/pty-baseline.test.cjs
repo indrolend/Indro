@@ -6,7 +6,7 @@ const WebSocket = require("ws");
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout: 20_000 }, async t => {
+test("real WebSocket and PTY preserve shell editing and recovery", { timeout: 20_000 }, async t => {
   const port = await new Promise((resolve, reject) => {
     const probe = net.createServer();
     probe.once("error", reject);
@@ -28,20 +28,31 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   assert.match(startup, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
 
   const projection = await fetch(`http://127.0.0.1:${port}/api/commandhud?limit=3`);
-  assert.ok([200, 503].includes(projection.status));
   const projectionBody = await projection.json();
+  assert.equal(projection.status, 200, JSON.stringify(projectionBody));
   assert.equal(projectionBody.sourceSystem, "commandhud");
-  if (projection.status === 200) {
-    assert.ok(Array.isArray(projectionBody.operations));
-    assert.ok(projectionBody.operations.every(operation => !("command" in operation)));
+  if (process.env.DB_TERMINAL_EXPECT_COMMANDHUD_ID) {
+    assert.equal(projectionBody.repository.identity, process.env.DB_TERMINAL_EXPECT_COMMANDHUD_ID);
   }
+  assert.ok(Array.isArray(projectionBody.operations));
+  assert.ok(projectionBody.operations.every(operation => !("command" in operation)));
 
   const socket = new WebSocket(`ws://127.0.0.1:${port}/terminal`, {
     origin: `http://127.0.0.1:${port}`
   });
   t.after(() => socket.close());
   let output = "";
-  socket.on("message", data => { output += data.toString(); });
+  let cursorReplies = 0;
+  socket.on("message", data => {
+    output += data.toString();
+    // PSReadLine asks the terminal for its cursor position on Unix PTYs.
+    // A real xterm client answers CSI 6n; this test client must do the same.
+    const requests = (output.match(/\x1b\[6n/g) || []).length;
+    while (cursorReplies < requests) {
+      cursorReplies += 1;
+      socket.send(JSON.stringify({ type: "input", data: "\x1b[1;1R" }));
+    }
+  });
   await new Promise((resolve, reject) => {
     socket.once("open", resolve);
     socket.once("error", reject);
@@ -57,7 +68,7 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   };
 
   socket.send(JSON.stringify({ type: "resize", cols: 120, rows: 35 }));
-  const promptVisible = value => /(?:> |❯ )$/.test(value);
+  const promptVisible = value => /(?:> |❯ )(?:\x1b\[[0-9;?]*[A-Za-z])*$/.test(value);
   await waitFor(promptVisible);
   assert.match(output, /\x1b\]777;[A-Za-z0-9+/=]+\x07/);
   const contextMatch = output.match(/\x1b\]777;([A-Za-z0-9+/=]+)\x07/);

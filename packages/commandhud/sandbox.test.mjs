@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -33,7 +33,18 @@ test('one CommandHUD sandbox supports iterative local development without touchi
   const source = readSandboxFile(project, created.id, 'file.txt', { startLine: 1, endLine: 1 });
   assert.equal(source.content, 'alpha');
   const search = await searchSandbox(project, created.id, 'alpha');
-  assert.equal(search.status, 'pass');
+  const rgProbe = spawnSync('rg', ['--version'], { cwd: created.workspace, encoding: 'utf8' });
+  if (rgProbe.status === 0) {
+    assert.equal(search.status, 'pass');
+    assert.equal(search.operation.executionAttempted, true);
+    assert.equal(search.operation.matchCount, 1);
+  } else {
+    assert.equal(search.status, 'blocked');
+    assert.equal(search.resultReason, 'CAPABILITY_UNAVAILABLE');
+    assert.equal(search.operation.requiredCapability, 'rg');
+    assert.equal(search.operation.capability.state, 'missing');
+    assert.equal(search.operation.executionAttempted, false);
+  }
 
   const firstPatch = await applySandboxPatch(project, created.id, [
     'diff --git a/file.txt b/file.txt',

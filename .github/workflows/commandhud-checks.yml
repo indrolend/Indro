@@ -49,5 +49,8 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install locked dependencies
+        run: npm ci
+
       - name: Verify Indro
         run: npm test

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -53,7 +53,7 @@ test('a local product clone installs one portable hud command that attaches to a
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const value = JSON.parse(result.stdout);
-    assert.equal(value.project.root, repository);
+    assert.equal(realpathSync.native(value.project.root), realpathSync.native(repository));
     assert.equal(value.git.branch, 'main');
     assert.equal(value.git.dirty, false);
   } finally {

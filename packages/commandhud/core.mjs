@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -1005,7 +1005,7 @@ export function reduceOutput(command, stdout, stderr, exitCode, { root = '', kin
 }
 
 export function classifyPowerShellShellFailure(stderr) {
-  const text = normalizeTerminalText(String(stderr || ''));
+  const text = normalizeTerminalText(String(stderr || '')).replace(/\n\s*\|\s*/g, ' ');
   const commandNotFound = firstMatch(text, [
     /^.*The term '[^']+' is not recognized as a name of a cmdlet, function, script file, or executable program.*$/im,
     /^.*CommandNotFoundException.*$/im,
@@ -1323,7 +1323,7 @@ export async function runCommand(project, tokens, {
     reduction.cause ||= capturedFailure.message || 'The shell reported that the requested operation failed.';
     reduction.classification ||= capturedFailure.classification || 'command';
   }
-  const missingCommand = exitCode !== 0 && /(?:command not found|is not recognized as (?:a name of |the name of )?a? ?(?:cmdlet|function|script file|executable program)|ENOENT)/i.test(normalizeTerminalText(`${stdout}\n${stderr}`));
+  const missingCommand = exitCode !== 0 && (capturedFailure?.kind === 'command-not-found' || /(?:command not found|is not recognized as (?:a name of |the name of )?a? ?(?:cmdlet|function|script file|executable program)|ENOENT)/i.test(normalizeTerminalText(`${stdout}\n${stderr}`)));
   const evidenceValidity = validateOperationEvidence({ stdout, stderr }, policy.requiredOutput);
   const accepted = acceptedExitCodes.includes(exitCode);
   const record = {
@@ -1340,9 +1340,9 @@ export async function runCommand(project, tokens, {
     } : null,
     startedAt: started.toISOString(), endedAt: ended.toISOString(), durationMs: ended - started,
     exitCode, processExitCode: exitCode,
-    status: timeoutRequested ? 'timeout' : cancellationRequested ? 'cancelled' : capturedFailure ? 'fail' : missingCommand ? 'blocked' : !accepted || !evidenceValidity.valid ? 'fail' : 'pass',
-    resultClassification: timeoutRequested ? 'TIMEOUT' : cancellationRequested ? 'CANCELLED' : capturedFailure ? 'FAIL' : missingCommand ? 'BLOCKED' : !accepted || !evidenceValidity.valid ? 'FAIL' : 'PASS',
-    resultReason: timeoutRequested ? 'DEADLINE_EXCEEDED' : cancellationRequested ? 'USER_CANCELLED' : capturedFailure ? (capturedFailure.reason || 'POWERSHELL_ERROR_RECORD') : missingCommand ? 'COMMAND_UNAVAILABLE' : !accepted ? 'NONZERO_EXIT' : !evidenceValidity.valid ? 'INVALID_OUTPUT' : 'ACCEPTED_EXIT_CODE',
+    status: timeoutRequested ? 'timeout' : cancellationRequested ? 'cancelled' : missingCommand ? 'blocked' : capturedFailure ? 'fail' : !accepted || !evidenceValidity.valid ? 'fail' : 'pass',
+    resultClassification: timeoutRequested ? 'TIMEOUT' : cancellationRequested ? 'CANCELLED' : missingCommand ? 'BLOCKED' : capturedFailure ? 'FAIL' : !accepted || !evidenceValidity.valid ? 'FAIL' : 'PASS',
+    resultReason: timeoutRequested ? 'DEADLINE_EXCEEDED' : cancellationRequested ? 'USER_CANCELLED' : missingCommand ? 'COMMAND_UNAVAILABLE' : capturedFailure ? (capturedFailure.reason || 'POWERSHELL_ERROR_RECORD') : !accepted ? 'NONZERO_EXIT' : !evidenceValidity.valid ? 'INVALID_OUTPUT' : 'ACCEPTED_EXIT_CODE',
     mode: policy.mode, timeoutMs: policy.timeoutMs, timedOut: timeoutRequested,
     capturedFailure,
     dirtyBefore: before.dirty, dirtyAfter: after.dirty,
@@ -1766,7 +1766,7 @@ export async function discoverShells(root = process.cwd()) {
   for (const [id, definition] of Object.entries(SHELL_DEFINITIONS)) {
     let executable = null;
     for (const candidate of definition.executables) {
-      const probe = await exec(candidate, id === 'cmd' ? ['/d', '/c', 'ver'] : candidate.toLowerCase().endsWith('wsl.exe') ? ['--status'] : ['--version'], root);
+      const probe = await exec(candidate, id === 'cmd' ? ['/d', '/c', 'ver'] : candidate.toLowerCase().endsWith('wsl.exe') ? ['--exec', 'bash', '-c', 'exit 0'] : ['--version'], root);
       if (probe.ok) { executable = candidate; break; }
     }
     shells.push({ id, label: definition.label, available: Boolean(executable), executable });
@@ -1812,7 +1812,7 @@ export async function runTerminalCommand(project, command, {
       tokens = [selected.executable, '--cd', project.root, 'bash', '--noprofile', '--norc'];
     } else {
       const start = relative(project.root, selectedCwd).replaceAll('\\', '/') || '.';
-      stdin = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\npwd -W >&3\nexit $hud_exit`;
+      stdin = `exec 3> '.git/${basename(cwdPath)}'\ncd '${start.replaceAll("'", "'\\''")}' || exit 1\n${text}\nhud_exit=$?\n${process.platform === 'win32' ? 'pwd -W' : 'pwd -P'} >&3\nexit $hud_exit`;
       tokens = [selected.executable, '--noprofile', '--norc'];
     }
   } else {
@@ -2292,7 +2292,20 @@ export async function discardSandboxJob(project, sandboxId) {
   const { record, workspace } = readSandboxRecord(project, sandboxId);
   if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, status: 'DISCARDED', alreadyAbsent: true };
   const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
-  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === workspace)) {
+  const canonicalWorkspace = existsSync(workspace) ? realpathSync(workspace) : null;
+  const canonicalParent = existsSync(dirname(workspace)) ? realpathSync(dirname(workspace)) : null;
+  const directChild = canonicalWorkspace && canonicalParent && relative(canonicalParent, canonicalWorkspace) === basename(workspace);
+  const isRegistered = registered.ok && directChild && registered.stdout.split(/\r?\n/).some((line) => {
+    if (!line.startsWith('worktree ')) return false;
+    try {
+      const candidate = line.slice(9);
+      if (realpathSync(candidate) === canonicalWorkspace) return true;
+      const expected = statSync(workspace, { bigint: true });
+      const actual = statSync(candidate, { bigint: true });
+      return expected.ino !== 0n && expected.dev === actual.dev && expected.ino === actual.ino && actual.isDirectory();
+    } catch { return false; }
+  });
+  if (!isRegistered) {
     throw new Error('Sandbox workspace is not a registered worktree of the verified source repository.');
   }
   const removed = await exec('git', ['worktree', 'remove', '--force', workspace], project.root);
@@ -2445,8 +2458,18 @@ export async function discardAgentWorkspace(project, runId) {
     throw new Error('Agent evidence does not identify a CommandHUD-owned workspace.');
   }
   if (!existsSync(worktree)) return { id: runId, status: 'DISCARDED', worktree, alreadyAbsent: true };
+  const physicalWorktree = realpathSync.native(worktree);
+  const physicalRoot = realpathSync.native(worktreesRoot);
+  const physicalWithin = relative(physicalRoot, physicalWorktree);
+  if (!physicalWithin || physicalWithin.startsWith('..') || isAbsolute(physicalWithin) || dirname(physicalWithin) !== '.') {
+    throw new Error('Agent workspace escapes the CommandHUD worktree authority.');
+  }
   const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
-  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === worktree)) {
+  const registeredWorktree = registered.ok && registered.stdout.split(/\r?\n/).some((line) => {
+    if (!line.startsWith('worktree ')) return false;
+    try { return realpathSync.native(line.slice(9)) === physicalWorktree; } catch { return false; }
+  });
+  if (!registeredWorktree) {
     throw new Error('Agent workspace is not a registered worktree of the verified source repository.');
   }
   const removed = await exec('git', ['worktree', 'remove', '--force', worktree], project.root);
