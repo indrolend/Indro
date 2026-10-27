@@ -2458,8 +2458,18 @@ export async function discardAgentWorkspace(project, runId) {
     throw new Error('Agent evidence does not identify a CommandHUD-owned workspace.');
   }
   if (!existsSync(worktree)) return { id: runId, status: 'DISCARDED', worktree, alreadyAbsent: true };
+  const physicalWorktree = realpathSync.native(worktree);
+  const physicalRoot = realpathSync.native(worktreesRoot);
+  const physicalWithin = relative(physicalRoot, physicalWorktree);
+  if (!physicalWithin || physicalWithin.startsWith('..') || isAbsolute(physicalWithin) || dirname(physicalWithin) !== '.') {
+    throw new Error('Agent workspace escapes the CommandHUD worktree authority.');
+  }
   const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
-  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === worktree)) {
+  const registeredWorktree = registered.ok && registered.stdout.split(/\r?\n/).some((line) => {
+    if (!line.startsWith('worktree ')) return false;
+    try { return realpathSync.native(line.slice(9)) === physicalWorktree; } catch { return false; }
+  });
+  if (!registeredWorktree) {
     throw new Error('Agent workspace is not a registered worktree of the verified source repository.');
   }
   const removed = await exec('git', ['worktree', 'remove', '--force', worktree], project.root);
