@@ -28,3 +28,29 @@ test('Indro proof planner produces a cold verified plan', () => {
   const plan = JSON.parse(result.stdout);
   assert.deepEqual(plan.run, ['parse', 'lint', 'build', 'test', 'smoke', 'verified']);
 });
+
+test('canonical Indro routes work and UAI fixture commands and rejects unsupported operations', () => {
+  for (const [args, expected] of [
+    [['work', 'help'], /indro work inspect/],
+    [['app', 'help'], /indro app fixture set/]
+  ]) {
+    const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, expected);
+  }
+  const mutation = spawnSync(process.execPath, [cli, 'app', 'fixture', 'set', '0.75', '--json'], { encoding: 'utf8' });
+  assert.equal(mutation.status, 0, mutation.stderr);
+  assert.equal(JSON.parse(mutation.stdout).verdict, 'STATE_CONFIRMED');
+  const rejected = spawnSync(process.execPath, [cli, 'app', 'unsupported'], { encoding: 'utf8' });
+  assert.equal(rejected.status, 2);
+  assert.match(rejected.stderr, /INDRO_ERROR/);
+});
+
+test('canonical Indro routes native verification and rejects incomplete requests', () => {
+  const help = spawnSync(process.execPath, [cli, 'help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /indro verify-native/);
+  const rejected = spawnSync(process.execPath, [cli, 'verify-native'], { encoding: 'utf8' });
+  assert.equal(rejected.status, 2);
+  assert.match(rejected.stderr, /INDRO_NATIVE_VERIFY_ERROR.*Usage:/);
+});

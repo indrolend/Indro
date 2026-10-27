@@ -12,6 +12,12 @@ Language:
   indro compile <program.indro|program.i> [compiler options]
   indro proof-plan <proof...> --state <state.json> [--cache <cache.json>]
   indro language-test
+  indro work inspect <path>
+  indro work compare <left> <right>
+  indro work evidence <id>
+  indro app help
+  indro app fixture set <number> --json  # offline fixture
+  indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
 
 Execution and evidence (CommandHUD compatibility):
   indro shell | tui | desktop
@@ -46,6 +52,15 @@ if (command === 'help' || command === '--help' || command === '-h') {
   }
 } else if (command === 'proof-plan') {
   process.exitCode = python(path.join(here, 'indro_proof.py'), args);
+} else if (command === 'work') {
+  const { runWorkbench } = await import('./workbench.mjs');
+  process.exitCode = await runWorkbench(args);
+} else if (command === 'app') {
+  const { runAppCli } = await import('./uai/cli.mjs');
+  process.exitCode = await runAppCli(args);
+} else if (command === 'verify-native') {
+  const { runNativeCli } = await import('./native-verify.mjs');
+  process.exitCode = runNativeCli(args);
 } else if (command === 'language-test') {
   process.exitCode = python(path.join(here, 'tools', 'test-all.py'), args);
 } else {
