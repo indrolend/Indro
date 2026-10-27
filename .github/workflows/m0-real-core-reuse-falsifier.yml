@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/m0-real-core-reuse-falsifier.yml'
       - 'experiments/m0-real-core-reuse-falsifier.mjs'
+      - 'experiments/m0-runtime-bound-reuse.mjs'
 permissions:
   contents: read
 jobs:
@@ -31,3 +32,4 @@ jobs:
           test "$actual" = "8dfc0c07722037d44b67782ee2a60da44cb31e76"
           cp feature-source/packages/commandhud/evidence-reuse.mjs packages/commandhud/evidence-reuse.mjs
           node experiments/m0-real-core-reuse-falsifier.mjs
+          node experiments/m0-runtime-bound-reuse.mjs
