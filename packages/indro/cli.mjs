@@ -17,6 +17,7 @@ Language:
   indro work evidence <id>
   indro app help
   indro app fixture set <number> --json  # offline fixture
+  indro app process priority --spawn --set BelowNormal --json  # owned Windows child
   indro capability list --json
   indro capability retain-paint --artifact PATH --width N --height N --app-version VERSION --json
   indro capability validate <id> --json
