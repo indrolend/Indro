@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync, chmodSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync, chmodSync, statSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -204,6 +204,10 @@ test('failed CTest never produces reusable evidence', () => {
   try {
     assert.equal(verifyNative(f).outcome, 'EXECUTED');
     writeFileSync(join(f.root, 'probe.cpp'), 'int main(){return 1;}\n');
+    // Force source mtime beyond the compiled executable on coarse-timestamp filesystems.
+    const executable = snapshotNative(f).inputs.executables[0][0];
+    const timestamp = new Date(Math.max(Date.now(), statSync(executable).mtimeMs) + 3000);
+    utimesSync(join(f.root, 'probe.cpp'), timestamp, timestamp);
     assert.equal(verifyNative(f).outcome, 'FAILED');
     assert.equal(verifyNative(f).outcome, 'FAILED');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
@@ -531,15 +535,21 @@ test('CTest executable symlink text invalidates reuse despite unchanged binary b
     assert.equal(first.outcome, 'EXECUTED');
     assert.equal(first.reusable, true);
     assert.equal(reused.outcome, 'REUSED');
+    const beforeSymlink = snapshotNative(f);
     unlinkSync(alias);
     symlinkSync('./probe', alias);
     const direct = spawnSync('ctest', ['--test-dir', f.build, '--output-on-failure'], { encoding: 'utf8' });
     assert.notEqual(direct.status, 0);
+    const afterSymlink = snapshotNative(f);
     const rerun = verifyNative(f);
     assert.equal(rerun.outcome, 'FAILED');
     assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
     assert.ok(rerun.changedInputs.includes('executables'));
-    assert.ok(rerun.changedExecutables.includes('alias'));
+    assert.ok(rerun.changedExecutables.includes('alias'), JSON.stringify({
+      changedInputs: rerun.changedInputs, changedExecutables: rerun.changedExecutables,
+      beforeExecutables: beforeSymlink.inputs.executables, afterExecutables: afterSymlink.inputs.executables,
+      beforePlan: beforeSymlink.inputs.testPlan, afterPlan: afterSymlink.inputs.testPlan
+    }));
     assert.equal(rerun.reusable, false);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
