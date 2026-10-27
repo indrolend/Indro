@@ -204,10 +204,8 @@ test('failed CTest never produces reusable evidence', () => {
   try {
     assert.equal(verifyNative(f).outcome, 'EXECUTED');
     writeFileSync(join(f.root, 'probe.cpp'), 'int main(){return 1;}\n');
-    // Force source mtime beyond the compiled executable on coarse-timestamp filesystems.
-    const executable = snapshotNative(f).inputs.executables[0][0];
-    const timestamp = new Date(Math.max(Date.now(), statSync(executable).mtimeMs) + 3000);
-    utimesSync(join(f.root, 'probe.cpp'), timestamp, timestamp);
+    // A clean rebuild is the deterministic falsifier; future mtimes can be ignored by CMake generators.
+    execFileSync('cmake', ['--build', f.build, '--target', 'clean', '--config', 'Release'], { stdio: 'pipe' });
     assert.equal(verifyNative(f).outcome, 'FAILED');
     assert.equal(verifyNative(f).outcome, 'FAILED');
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
