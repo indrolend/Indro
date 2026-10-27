@@ -1,11 +1,7 @@
 name: Native verification evidence
 on:
   push:
-    branches: [feat/native-verification-evidence]
-    paths:
-      - 'packages/indro/native-verify*'
-      - 'packages/indro/benchmark-native*'
-      - '.github/workflows/native-verification.yml'
+    branches: [main, feat/native-verification-evidence]
   pull_request:
     paths:
       - 'packages/indro/native-verify*'
