@@ -4,7 +4,12 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { persistFlReceipt } from '../fl/adapter.mjs';
-import { invokeCapability, listCapabilities, loadCapability, retainFlParameterCapability, validateCapability } from './store.mjs';
+import { invokeCapability, listCapabilities, loadCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
+
+function png(width, height) {
+  const value = Buffer.from('89504e470d0a1a0a0000000d494844520000000000000000', 'hex');
+  value.writeUInt32BE(width, 16); value.writeUInt32BE(height, 20); return value;
+}
 
 function fixture({ channel = 5, parameter = 2, plugin = 'Fruity granulizer', parameterName = 'Grain spacing' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'indro-capability-'));
@@ -97,4 +102,20 @@ test('authorization, value, verify, unchanged state, and timeout remain fail clo
   const unchanged = await invokeCapability(f.id, 0.25, { ...base, runFlCli: async (_args, out) => { out(JSON.stringify({ transaction: { verdict: 'READBACK_MISMATCH' } })); return 1; } });
   assert.equal(unchanged.code, 1);
   await assert.rejects(validateCapability(f.id, validationOptions(f, { transport: transport(f, { timeout: true }) })), /TIMEOUT_OUTCOME_UNKNOWN/);
+});
+
+test('retains Paint artifact capability in Continuum and validates exact application identity', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'indro-paint-capability-'));
+  const artifactPath = join(root, 'verified.png');
+  writeFileSync(artifactPath, png(320, 240));
+  const options = { capabilityRoot: join(root, 'capabilities') };
+  const retained = retainPaintResizeCapability({ ...options, artifactPath, width: 320, height: 240, appVersion: '11.2605.81.0' });
+  assert.equal(listCapabilities(options)[0].id, 'paint.canvas.resize-and-export-png');
+  const valid = await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' });
+  assert.equal(valid.valid, true);
+  assert.equal(valid.invocation.autonomous, false);
+  assert.deepEqual((await validateCapability(retained.capability.id, options)).issues, ['PAINT_IDENTITY_UNVERIFIED']);
+  assert.deepEqual((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '12' })).issues, ['PAINT_VERSION_MISMATCH']);
+  writeFileSync(artifactPath, png(321, 240));
+  assert.match((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' })).issues.join(','), /EVIDENCE_WIDTH_MISMATCH|EVIDENCE_ARTIFACT_DIGEST_MISMATCH/);
 });

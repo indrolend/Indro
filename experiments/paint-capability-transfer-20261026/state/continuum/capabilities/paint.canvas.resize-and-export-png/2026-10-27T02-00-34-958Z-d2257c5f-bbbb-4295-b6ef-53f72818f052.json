@@ -1,0 +1,82 @@
+{
+  "payload": {
+    "schema": "indro.capability/v1",
+    "schema_version": 1,
+    "id": "paint.canvas.resize-and-export-png",
+    "goal": "Resize a disposable Microsoft Paint canvas and export a PNG",
+    "parameters": {
+      "width": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 99999
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 99999
+      },
+      "output": {
+        "type": "new-local-file"
+      }
+    },
+    "target": {
+      "application": "microsoft-paint",
+      "app_version": "11.2605.81.0",
+      "identity_validation": "installed package version plus live accessibility window title"
+    },
+    "invocation": {
+      "adapter": "authorized-accessibility-agent",
+      "assurance": "lower",
+      "autonomous_cli": false
+    },
+    "authorization": {
+      "required": "explicit-user-write",
+      "scope": "disposable document and new output path"
+    },
+    "preconditions": [
+      "live Microsoft Paint identity revalidated",
+      "disposable document",
+      "new output path",
+      "explicit PNG export type"
+    ],
+    "postcondition": {
+      "observation": "PNG signature and IHDR dimensions"
+    },
+    "verification": {
+      "required": "independent-artifact-readback",
+      "external_effect": "artifact bytes established"
+    },
+    "dependencies": {
+      "verifier": {
+        "path": "C:\\Users\\indro\\Projects\\Indro-paint-m3\\packages\\indro\\paint\\artifact.mjs",
+        "bytes": 1328,
+        "sha256": "5adbab5d6ac2fe46e83e07260f727b77bff15600add537d5921305326684fa9a"
+      }
+    },
+    "evidence": [
+      {
+        "artifact": "C:\\Users\\indro\\Projects\\Indro-paint-m3\\experiments\\paint-capability-transfer-20261026\\artifacts\\verified-320x240.png",
+        "sha256": "359230fb09e2f60d4bc781a2ad31003d7e930e917ab13a48e1cc457e5ae152b2",
+        "bytes": 912,
+        "width": 320,
+        "height": 240
+      }
+    ],
+    "invalidation": [
+      "application version mismatch",
+      "verifier bytes changed",
+      "evidence missing or changed",
+      "accessibility recipe no longer resolves uniquely"
+    ],
+    "limitations": [
+      "agent-mediated UI invocation",
+      "checksum integrity is not authenticated provenance"
+    ],
+    "reuse_eligibility": "validate-live-identity-before-agent-mediated-invocation",
+    "retained_at": "2026-10-27T02:00:34.958Z"
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "digest": "0243134736848650ce8bbaf6df3f607f8cff79327bc1672d97f72400fe62f8f5"
+  }
+}

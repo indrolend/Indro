@@ -1,0 +1,54 @@
+{
+  "schema": "indro.capability/v1",
+  "schema_version": 1,
+  "id": "paint.canvas.resize-and-export-png",
+  "goal": "Resize a disposable Microsoft Paint canvas and export a PNG",
+  "parameters": {
+    "width": { "type": "integer", "minimum": 1, "maximum": 99999 },
+    "height": { "type": "integer", "minimum": 1, "maximum": 99999 },
+    "output": { "type": "new-local-file" }
+  },
+  "target": {
+    "application": "Microsoft.Paint",
+    "observed_version": "11.2605.81.0",
+    "identity_validation": "installed package identity plus accessibility window title"
+  },
+  "invocation": {
+    "adapter": "authorized-accessibility-agent",
+    "assurance": "lower",
+    "procedure": [
+      "Open Resize and Skew",
+      "Select Pixels and disable Maintain aspect ratio",
+      "Set Horizontal and Vertical dimensions with zero skew",
+      "Apply and observe the canvas-size label",
+      "Save As with PNG selected explicitly, not inferred from the filename extension"
+    ]
+  },
+  "authorization": { "required": "explicit-user-write", "scope": "disposable document and new output path" },
+  "postcondition": { "width": 320, "height": 240, "format": "png" },
+  "verification": {
+    "required": "independent PNG signature and IHDR dimensions",
+    "command": "indro paint verify --file <path> --width <width> --height <height> --json",
+    "external_effect": "artifact bytes independently established"
+  },
+  "evidence": [{
+    "path": "artifacts/verified-320x240.png",
+    "sha256": "359230fb09e2f60d4bc781a2ad31003d7e930e917ab13a48e1cc457e5ae152b2",
+    "bytes": 912,
+    "width": 320,
+    "height": 240
+  }],
+  "invalidation": [
+    "wrong application or version",
+    "missing accessibility labels",
+    "changed resize dialog structure",
+    "output path already exists",
+    "PNG signature, digest, or IHDR mismatch"
+  ],
+  "reuse_eligibility": "agent-mediated-after-live-identity-validation",
+  "limitations": [
+    "Microsoft Paint exposes no supported programmatic mutation API used by INDRO",
+    "the canonical CLI verifies the artifact but does not execute the UI recipe",
+    "checksum integrity is not authenticated provenance"
+  ]
+}

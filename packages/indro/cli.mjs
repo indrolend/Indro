@@ -19,8 +19,10 @@ Language:
   indro app fixture set <number> --json  # offline fixture
   indro app process priority --spawn --set BelowNormal --json
   indro capability list --json
+  indro capability retain-paint --artifact PATH --width N --height N --app-version VERSION --json
   indro capability validate <id> --json
   indro capability invoke <id> --value 0..1 --verify --authorize-write --json
+  indro paint verify --file PATH --width N --height N --json
   indro fl doctor --json
   indro fl plugin set --channel N --param N --value 0..1 --verify --json
   indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
@@ -69,6 +71,9 @@ if (command === 'help' || command === '--help' || command === '-h') {
 } else if (command === 'fl') {
   const { runFlCli } = await import('./fl/cli.mjs');
   process.exitCode = await runFlCli(args);
+} else if (command === 'paint') {
+  const { runPaintCli } = await import('./paint/cli.mjs');
+  process.exitCode = await runPaintCli(args);
 } else if (command === 'capability') {
   const { runCapabilityCli } = await import('./capability/cli.mjs');
   process.exitCode = await runCapabilityCli(args);

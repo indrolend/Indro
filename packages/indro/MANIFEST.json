@@ -96,21 +96,6 @@
       "sha256": "3c957a7f8cf15aeb8db35f9f085cff119e251bcf9704430c9a8c4cc56d54f6ee"
     },
     {
-      "path": "capability/cli.mjs",
-      "bytes": 2012,
-      "sha256": "9a139e0df49e96cc24107659217543a70d2e81753f32eac7d56f7b8ecfed592d"
-    },
-    {
-      "path": "capability/store.mjs",
-      "bytes": 9669,
-      "sha256": "06bc78d848c2d404af42e1ec14755690152cfa9d3b97ee9dedcd90fc37c13157"
-    },
-    {
-      "path": "capability/store.test.mjs",
-      "bytes": 7164,
-      "sha256": "5f6b108389a562152363e9bd3c856b0be30707de895a2447df99f1ef7ff9da78"
-    },
-    {
       "path": "calibration-gauntlet.mjs",
       "bytes": 14767,
       "sha256": "14076b40bad8110984f9e3fc8d571ed34521778273c00e3b3a8fb4b70ef3b3b1"
@@ -121,9 +106,24 @@
       "sha256": "38b0c9917aa668c8c99bc17764614676deb80fdd1be32e0e31cc591a77810c3f"
     },
     {
+      "path": "capability/cli.mjs",
+      "bytes": 2511,
+      "sha256": "ef9750df65f6fc4f376fc222769975cc5216706d0917bbae290277662d7848f1"
+    },
+    {
+      "path": "capability/store.mjs",
+      "bytes": 13563,
+      "sha256": "f0ff2d90672e6042a525b7993b86f6d47c65af218d78c7943e85e4a481f8cad8"
+    },
+    {
+      "path": "capability/store.test.mjs",
+      "bytes": 8670,
+      "sha256": "2a85dde011bf1ec611ff06196f42a91cd8956a168a8eedfcd3789cc67bc673de"
+    },
+    {
       "path": "cli.mjs",
-      "bytes": 3451,
-      "sha256": "af12c890f2949633400eb0ba5076d5d78285704334d93bc340428b100c760a03"
+      "bytes": 3749,
+      "sha256": "8cfd35d4a5b38dc83229d30113e0e2362bfc6130447ea57c15ae12a445d95394"
     },
     {
       "path": "cli.test.mjs",
@@ -252,8 +252,23 @@
     },
     {
       "path": "package.json",
-      "bytes": 369,
-      "sha256": "af8387b454506cc4405149b802b6f13574d10a422538f1066f37930dd57d5ac5"
+      "bytes": 388,
+      "sha256": "44204d9b1c21a2c99af80c3eba283e918a469a3fb2f04ea94ce815f5ee8ee3cd"
+    },
+    {
+      "path": "paint/artifact.mjs",
+      "bytes": 1328,
+      "sha256": "5adbab5d6ac2fe46e83e07260f727b77bff15600add537d5921305326684fa9a"
+    },
+    {
+      "path": "paint/artifact.test.mjs",
+      "bytes": 1294,
+      "sha256": "09a15ad466d0f6c9ad1c0d245cc476bc5a7a51fae9cc4f2decc6b0ef0aae6c98"
+    },
+    {
+      "path": "paint/cli.mjs",
+      "bytes": 1015,
+      "sha256": "9c7ec4da583675b7dca1fa16c7476cfbdb598a9265dfe2183ab3292005c769ed"
     },
     {
       "path": "README.md",

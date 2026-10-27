@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { stateRoot } from '../../commandhud/core.mjs';
 import { createFlTransport, defaultMailbox, discoverSession, latestFlReceipt, validateFlReceipt } from '../fl/adapter.mjs';
 import { runFlCli } from '../fl/cli.mjs';
+import { verifyPng } from '../paint/artifact.mjs';
 
 export const CAPABILITY_SCHEMA = 'indro.capability/v1';
 const here = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,7 @@ export function capabilityRoot(options = {}) {
 }
 
 function adapterPath() { return resolve(here, '..', 'fl', 'adapter.mjs'); }
+function paintVerifierPath() { return resolve(here, '..', 'paint', 'artifact.mjs'); }
 function bridgePath(mailbox = defaultMailbox()) {
   return join(dirname(resolve(mailbox)), 'device_FLGranulizerBridge.py');
 }
@@ -111,6 +113,63 @@ export function retainFlParameterCapability({ receiptPath, mailbox = defaultMail
   return { capability: payload, path: destination, sha256: fileIdentity(destination).sha256 };
 }
 
+export function retainPaintResizeCapability({ artifactPath, width, height, appVersion, ...options } = {}) {
+  if (!artifactPath) throw new Error('ARTIFACT_PATH_REQUIRED');
+  if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) throw new Error('INVALID_EXPECTED_DIMENSIONS');
+  if (!appVersion) throw new Error('PAINT_VERSION_REQUIRED');
+  const check = verifyPng(artifactPath, { width, height });
+  if (!check.valid) throw new Error(`SOURCE_ARTIFACT_INVALID:${check.issues.join(',')}`);
+  const payload = {
+    schema: CAPABILITY_SCHEMA,
+    schema_version: 1,
+    id: 'paint.canvas.resize-and-export-png',
+    goal: 'Resize a disposable Microsoft Paint canvas and export a PNG',
+    parameters: {
+      width: { type: 'integer', minimum: 1, maximum: 99999 },
+      height: { type: 'integer', minimum: 1, maximum: 99999 },
+      output: { type: 'new-local-file' },
+    },
+    target: {
+      application: 'microsoft-paint', app_version: appVersion,
+      identity_validation: 'installed package version plus live accessibility window title',
+    },
+    invocation: { adapter: 'authorized-accessibility-agent', assurance: 'lower', autonomous_cli: false },
+    authorization: { required: 'explicit-user-write', scope: 'disposable document and new output path' },
+    preconditions: ['live Microsoft Paint identity revalidated', 'disposable document', 'new output path', 'explicit PNG export type'],
+    postcondition: { observation: 'PNG signature and IHDR dimensions' },
+    verification: { required: 'independent-artifact-readback', external_effect: 'artifact bytes established' },
+    dependencies: { verifier: fileIdentity(paintVerifierPath()) },
+    evidence: [{ artifact: check.artifact.path, sha256: check.artifact.sha256, bytes: check.artifact.bytes, width, height }],
+    invalidation: ['application version mismatch', 'verifier bytes changed', 'evidence missing or changed', 'accessibility recipe no longer resolves uniquely'],
+    limitations: ['agent-mediated UI invocation', 'checksum integrity is not authenticated provenance'],
+    reuse_eligibility: 'validate-live-identity-before-agent-mediated-invocation',
+    retained_at: new Date().toISOString(),
+  };
+  const directory = join(capabilityRoot(options), payload.id);
+  mkdirSync(directory, { recursive: true });
+  const destination = join(directory, `${payload.retained_at.replace(/[:.]/g, '-')}-${randomUUID()}.json`);
+  writeFileSync(destination, `${JSON.stringify(envelope(payload), null, 2)}\n`, { flag: 'wx' });
+  return { capability: payload, path: destination, sha256: fileIdentity(destination).sha256 };
+}
+
+function validatePaintCapability(record, options) {
+  const issues = [];
+  if (record.target.application !== 'microsoft-paint') issues.push('WRONG_APPLICATION_IDENTITY');
+  if (!options.paintAppVersion) issues.push('PAINT_IDENTITY_UNVERIFIED');
+  else if (options.paintAppVersion !== record.target.app_version) issues.push('PAINT_VERSION_MISMATCH');
+  try {
+    if (record.dependencies.verifier.sha256 !== fileIdentity(paintVerifierPath()).sha256) issues.push('VERIFIER_FINGERPRINT_MISMATCH');
+  } catch { issues.push('VERIFIER_UNAVAILABLE'); }
+  const evidence = record.evidence?.[0];
+  if (!evidence?.artifact) issues.push('EVIDENCE_MISSING');
+  else {
+    const check = verifyPng(evidence.artifact, { width: evidence.width, height: evidence.height, sha256: evidence.sha256 });
+    issues.push(...check.issues.map(issue => `EVIDENCE_${issue}`));
+  }
+  return { valid: issues.length === 0, reusable: issues.length === 0, issues, capability: record,
+    invocation: { autonomous: false, requires: 'authorized-accessibility-agent' } };
+}
+
 async function requestResult(transport, operation, args = {}, target = {}) {
   const value = await transport.request(operation, { arguments: args, target, authorization: 'read-only' });
   if (value.response.error) throw new Error(value.response.error);
@@ -119,6 +178,7 @@ async function requestResult(transport, operation, args = {}, target = {}) {
 
 export async function validateCapability(id, options = {}) {
   const record = loadCapability(id, options);
+  if (record.target.application === 'microsoft-paint') return validatePaintCapability(record, options);
   const issues = [];
   let session;
   try { session = (options.discoverSession ?? discoverSession)({ mailbox: options.mailbox ?? defaultMailbox() }); }
