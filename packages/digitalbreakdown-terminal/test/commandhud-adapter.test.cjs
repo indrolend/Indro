@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { existsSync } = require("node:fs");
-const { resolve } = require("node:path");
+const { existsSync, mkdtempSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
+const { join, resolve } = require("node:path");
 const { boundedLimit, configuration, createCommandHudReader, evidenceMode, projectKey } = require("../commandhud-adapter.cjs");
 
 test("CommandHUD projection bounds history without changing source authority", () => {
@@ -40,4 +41,11 @@ test("explicit project and core overrides remain authoritative", () => {
 test("invalid evidence identities are rejected before any source access", async () => {
   const reader = createCommandHudReader({ load: async () => { throw new Error("must not load"); } });
   await assert.rejects(reader.evidence("../unscoped"), /Invalid retained evidence identity/);
+});
+
+test("explicit non-repository root fails closed instead of falling back", async t => {
+  const outside = mkdtempSync(join(tmpdir(), "indro-terminal-unregistered-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  const reader = createCommandHudReader({ env: { DB_COMMANDHUD_ROOT: outside } });
+  await assert.rejects(reader.snapshot(1), /No Git repository found/);
 });
