@@ -1,6 +1,8 @@
 name: Terminal authority integration
 
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - "packages/digitalbreakdown-terminal/**"

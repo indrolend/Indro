@@ -13,15 +13,6 @@ on:
       - ".github/workflows/commandhud-checks.yml"
   push:
     branches: [main]
-    paths:
-      - "packages/commandhud/**"
-      - "packages/indro/**"
-      - "Indro.cmd"
-      - "i.cmd"
-      - "CommandHUD*.cmd"
-      - "hud.cmd"
-      - "package.json"
-      - ".github/workflows/commandhud-checks.yml"
   workflow_dispatch:
 
 permissions:

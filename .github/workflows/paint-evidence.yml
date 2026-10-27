@@ -6,11 +6,7 @@ on:
       - 'packages/indro/capability/**'
       - '.github/workflows/paint-evidence.yml'
   push:
-    branches: [fix/paint-evidence-container-validation-20261027]
-    paths:
-      - 'packages/indro/paint/**'
-      - 'packages/indro/capability/**'
-      - '.github/workflows/paint-evidence.yml'
+    branches: [main, fix/paint-evidence-container-validation-20261027]
 permissions:
   contents: read
 jobs:
