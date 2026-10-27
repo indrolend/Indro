@@ -117,8 +117,8 @@
     },
     {
       "path": "capability/store.test.mjs",
-      "bytes": 8670,
-      "sha256": "2a85dde011bf1ec611ff06196f42a91cd8956a168a8eedfcd3789cc67bc673de"
+      "bytes": 8529,
+      "sha256": "369e8a76aaa85ca85654c8e07e852786718b23c9047d2b8bb8896eaaed5a7df1"
     },
     {
       "path": "cli.mjs",
@@ -257,18 +257,23 @@
     },
     {
       "path": "paint/artifact.mjs",
-      "bytes": 1328,
-      "sha256": "5adbab5d6ac2fe46e83e07260f727b77bff15600add537d5921305326684fa9a"
+      "bytes": 2723,
+      "sha256": "a66663a429d325b1440ac538d2036a83279e9fb826bc3527abf8d8792c4da40f"
     },
     {
       "path": "paint/artifact.test.mjs",
-      "bytes": 1294,
-      "sha256": "09a15ad466d0f6c9ad1c0d245cc476bc5a7a51fae9cc4f2decc6b0ef0aae6c98"
+      "bytes": 2041,
+      "sha256": "d77ed82161411d7c22beb1a0f78be6d426c9edb55daa081fe538c30e47b9f56f"
     },
     {
       "path": "paint/cli.mjs",
       "bytes": 1015,
       "sha256": "9c7ec4da583675b7dca1fa16c7476cfbdb598a9265dfe2183ab3292005c769ed"
+    },
+    {
+      "path": "paint/png-fixture.test-helper.mjs",
+      "bytes": 934,
+      "sha256": "93eecddc0b0906276cda118a2838b94539b9800dae9fab64c7ed5ac048b247eb"
     },
     {
       "path": "README.md",

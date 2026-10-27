@@ -4,12 +4,9 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { persistFlReceipt } from '../fl/adapter.mjs';
+import { png } from '../paint/png-fixture.test-helper.mjs';
 import { invokeCapability, listCapabilities, loadCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
 
-function png(width, height) {
-  const value = Buffer.from('89504e470d0a1a0a0000000d494844520000000000000000', 'hex');
-  value.writeUInt32BE(width, 16); value.writeUInt32BE(height, 20); return value;
-}
 
 function fixture({ channel = 5, parameter = 2, plugin = 'Fruity granulizer', parameterName = 'Grain spacing' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'indro-capability-'));
