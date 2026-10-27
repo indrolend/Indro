@@ -65,7 +65,7 @@ test("real WebSocket and PTY preserve shell editing and recovery", { timeout: 20
   };
 
   socket.send(JSON.stringify({ type: "resize", cols: 120, rows: 35 }));
-  const promptVisible = value => /(?:> |❯ )$/.test(value);
+  const promptVisible = value => /(?:> |❯ )(?:\x1b\[[0-9;?]*[A-Za-z])*$/.test(value);
   await waitFor(promptVisible);
   assert.match(output, /\x1b\]777;[A-Za-z0-9+/=]+\x07/);
   const contextMatch = output.match(/\x1b\]777;([A-Za-z0-9+/=]+)\x07/);
