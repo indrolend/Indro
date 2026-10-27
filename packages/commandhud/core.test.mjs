@@ -318,6 +318,7 @@ function fixture() {
   execFileSync('git', ['init', '-b', 'main'], { cwd: root });
   execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
   execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: root });
   writeFileSync(join(root, 'file.txt'), 'initial\n');
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', ['commit', '-m', 'fixture'], { cwd: root });
