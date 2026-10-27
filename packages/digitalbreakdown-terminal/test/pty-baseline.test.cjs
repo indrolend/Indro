@@ -6,7 +6,7 @@ const WebSocket = require("ws");
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout: 20_000 }, async t => {
+test("real WebSocket and PTY preserve shell editing and recovery", { timeout: 20_000 }, async t => {
   const port = await new Promise((resolve, reject) => {
     const probe = net.createServer();
     probe.once("error", reject);
@@ -39,7 +39,17 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   });
   t.after(() => socket.close());
   let output = "";
-  socket.on("message", data => { output += data.toString(); });
+  let cursorReplies = 0;
+  socket.on("message", data => {
+    output += data.toString();
+    // PSReadLine asks the terminal for its cursor position on Unix PTYs.
+    // A real xterm client answers CSI 6n; this test client must do the same.
+    const requests = (output.match(/\\x1b\\[6n/g) || []).length;
+    while (cursorReplies < requests) {
+      cursorReplies += 1;
+      socket.send(JSON.stringify({ type: "input", data: "\\x1b[1;1R" }));
+    }
+  });
   await new Promise((resolve, reject) => {
     socket.once("open", resolve);
     socket.once("error", reject);
