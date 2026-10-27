@@ -1594,7 +1594,7 @@ test('terminal commands preserve exact intent and working directory across avail
   for (const shell of shells.filter((entry) => entry.available)) {
     const example = cases[shell.id];
     const record = await runTerminalCommand(project, example.command, { shell: shell.id });
-    assert.equal(record.status, 'pass', `${shell.id}: ${readFileSync(record.stderrPath, 'utf8')}`);
+    assert.equal(record.status, 'pass', `${shell.id}: ${JSON.stringify({ executable: shell.executable, exitCode: record.exitCode, processExitCode: record.processExitCode, reason: record.reason ?? record.reduction?.reason ?? null, stdout: readFileSync(record.stdoutPath, 'utf8').slice(0, 2000), stderr: readFileSync(record.stderrPath, 'utf8').slice(0, 2000), operation: record.operation })}`);
     assert.equal(record.command, example.command);
     assert.equal(record.inputText, example.command);
     assert.equal(record.operationId, record.id);
