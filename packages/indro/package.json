@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test ./cli.test.mjs && python tools/test-all.py"
+    "test": "node --test ./cli.test.mjs ./native-verify.test.mjs && python tools/test-all.py"
   },
   "engines": {
     "node": ">=20"

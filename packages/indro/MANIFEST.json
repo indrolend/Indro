@@ -36,6 +36,16 @@
   },
   "files": [
     {
+      "path": "benchmark-native.mjs",
+      "bytes": 7916,
+      "sha256": "87d398333567c5d4004c9b8fd1749b12b7af3270efa08179dfe801a98a8ecfd3"
+    },
+    {
+      "path": "benchmark-native.test.mjs",
+      "bytes": 3683,
+      "sha256": "e9668c25f429218b5bdd6863d82ac5f94de9e2c50112b43a7a245dac835d1158"
+    },
+    {
       "path": "benchmarks/crosscheck.json",
       "bytes": 140,
       "sha256": "95c65f2449c999eaef42752fc31aea745dedab0fc7a81901f5dc69a7d91e662d"
@@ -97,8 +107,8 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 1859,
-      "sha256": "73a8e6e5facc3d5c5648ed52eeb123d348e63fce5cc3f1802178db640b59e7ca"
+      "bytes": 2094,
+      "sha256": "fbcb5e0801a88b261c8560223cbab22cd5e4e8d3701060f358e99638c09048a1"
     },
     {
       "path": "cli.test.mjs",
@@ -171,9 +181,24 @@
       "sha256": "df5911cbee9b31b8ec0e03fbd0b4554643b76f1a66974b2d70bc9f32f95dec10"
     },
     {
+      "path": "native-verify.md",
+      "bytes": 2824,
+      "sha256": "b1571bc8ab97363a71fef599ac34b59483fcd0b15d1eb913fd6fbfb245b463f5"
+    },
+    {
+      "path": "native-verify.mjs",
+      "bytes": 20008,
+      "sha256": "494959064cc7c6a796805f32a85b6deb12d9e203377455947e434970dfe283b2"
+    },
+    {
+      "path": "native-verify.test.mjs",
+      "bytes": 35757,
+      "sha256": "15fdbc1791891df044ef35929835f819df1bb7c738e58380aef89f287b64e414"
+    },
+    {
       "path": "package.json",
-      "bytes": 231,
-      "sha256": "231f585de5068ccd1f8718bef9ae275942009b9d2e711d342d5fd203b6dd9a79"
+      "bytes": 256,
+      "sha256": "84b67ab646038cfffbb23a0f2b6c2d209d90fe2f811e5c151c1ae9cab61c4d79"
     },
     {
       "path": "README.md",
