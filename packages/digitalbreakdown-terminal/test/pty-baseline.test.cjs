@@ -28,13 +28,11 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   assert.match(startup, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
 
   const projection = await fetch(`http://127.0.0.1:${port}/api/commandhud?limit=3`);
-  assert.ok([200, 503].includes(projection.status));
   const projectionBody = await projection.json();
+  assert.equal(projection.status, 200, JSON.stringify(projectionBody));
   assert.equal(projectionBody.sourceSystem, "commandhud");
-  if (projection.status === 200) {
-    assert.ok(Array.isArray(projectionBody.operations));
-    assert.ok(projectionBody.operations.every(operation => !("command" in operation)));
-  }
+  assert.ok(Array.isArray(projectionBody.operations));
+  assert.ok(projectionBody.operations.every(operation => !("command" in operation)));
 
   const socket = new WebSocket(`ws://127.0.0.1:${port}/terminal`, {
     origin: `http://127.0.0.1:${port}`
