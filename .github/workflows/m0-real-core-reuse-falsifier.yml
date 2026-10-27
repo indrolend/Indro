@@ -5,6 +5,7 @@ on:
       - '.github/workflows/m0-real-core-reuse-falsifier.yml'
       - 'experiments/m0-real-core-reuse-falsifier.mjs'
       - 'experiments/m0-runtime-bound-reuse.mjs'
+      - 'experiments/m0-dirty-content-dependency.mjs'
 permissions:
   contents: read
 jobs:
@@ -33,3 +34,4 @@ jobs:
           cp feature-source/packages/commandhud/evidence-reuse.mjs packages/commandhud/evidence-reuse.mjs
           node experiments/m0-real-core-reuse-falsifier.mjs
           node experiments/m0-runtime-bound-reuse.mjs
+          node experiments/m0-dirty-content-dependency.mjs
