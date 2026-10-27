@@ -36,6 +36,16 @@
   },
   "files": [
     {
+      "path": "benchmark-native.mjs",
+      "bytes": 7916,
+      "sha256": "87d398333567c5d4004c9b8fd1749b12b7af3270efa08179dfe801a98a8ecfd3"
+    },
+    {
+      "path": "benchmark-native.test.mjs",
+      "bytes": 3683,
+      "sha256": "e9668c25f429218b5bdd6863d82ac5f94de9e2c50112b43a7a245dac835d1158"
+    },
+    {
       "path": "benchmarks/crosscheck.json",
       "bytes": 140,
       "sha256": "95c65f2449c999eaef42752fc31aea745dedab0fc7a81901f5dc69a7d91e662d"
