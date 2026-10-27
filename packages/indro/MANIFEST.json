@@ -247,8 +247,8 @@
     },
     {
       "path": "native-verify.test.mjs",
-      "bytes": 36657,
-      "sha256": "149c10be0e7d0cd8dc8f2841e24effa2697ff1e5dd678fb76bcc473f20173645"
+      "bytes": 36561,
+      "sha256": "4c6973615ac843f2ad7d31ea9cce30be57c5be8ab1a58c8290f2f17c6f46057e"
     },
     {
       "path": "package.json",
@@ -427,8 +427,8 @@
     },
     {
       "path": "uai/process-priority.test.mjs",
-      "bytes": 4091,
-      "sha256": "9dd7babb5db49b0855a446773b1301965d76da242077472c5adf56e5d4f64b86"
+      "bytes": 4802,
+      "sha256": "39aa8852f0d4b49f6a7254a92fd10d430f8d77695f5b893d9b56187b98de2efd"
     },
     {
       "path": "uai/README.md",
