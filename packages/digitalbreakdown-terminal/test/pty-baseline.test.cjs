@@ -31,6 +31,9 @@ test("real WebSocket and PTY preserve shell editing and recovery", { timeout: 20
   const projectionBody = await projection.json();
   assert.equal(projection.status, 200, JSON.stringify(projectionBody));
   assert.equal(projectionBody.sourceSystem, "commandhud");
+  if (process.env.DB_TERMINAL_EXPECT_COMMANDHUD_ID) {
+    assert.equal(projectionBody.repository.identity, process.env.DB_TERMINAL_EXPECT_COMMANDHUD_ID);
+  }
   assert.ok(Array.isArray(projectionBody.operations));
   assert.ok(projectionBody.operations.every(operation => !("command" in operation)));
 
