@@ -252,8 +252,8 @@
     },
     {
       "path": "package.json",
-      "bytes": 471,
-      "sha256": "262740326a03752a27c6fa0c96c2b259da09fc268e3060e3091f9a1f89e41715"
+      "bytes": 496,
+      "sha256": "369e4bcc9d79f2fd9ca2d3eedc318609f8a05fd2a31d217a5dd5c92955e99eac"
     },
     {
       "path": "paint/artifact.mjs",
@@ -404,6 +404,16 @@
       "path": "uai/assay.test.mjs",
       "bytes": 2895,
       "sha256": "9a1490a9a8d1bc0930b3f974fea61b347943d6d78312462cea689f82a8940897"
+    },
+    {
+      "path": "uai/authority.mjs",
+      "bytes": 1671,
+      "sha256": "6ef93c9c642efc0d4b29c5ef022aa1850b8b679c751bc0c0c3c39c0279a72373"
+    },
+    {
+      "path": "uai/authority.test.mjs",
+      "bytes": 2498,
+      "sha256": "84a879b8514273b2a4046e043f3c53915fae1c3e505ec5812dd929450650088d"
     },
     {
       "path": "uai/cli.mjs",
