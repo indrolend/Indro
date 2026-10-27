@@ -44,10 +44,10 @@ test("real WebSocket and PTY preserve shell editing and recovery", { timeout: 20
     output += data.toString();
     // PSReadLine asks the terminal for its cursor position on Unix PTYs.
     // A real xterm client answers CSI 6n; this test client must do the same.
-    const requests = (output.match(/\\x1b\\[6n/g) || []).length;
+    const requests = (output.match(/\x1b\[6n/g) || []).length;
     while (cursorReplies < requests) {
       cursorReplies += 1;
-      socket.send(JSON.stringify({ type: "input", data: "\\x1b[1;1R" }));
+      socket.send(JSON.stringify({ type: "input", data: "\x1b[1;1R" }));
     }
   });
   await new Promise((resolve, reject) => {
