@@ -54,6 +54,16 @@ test('probe failure does not falsely confirm owned-child cleanup', async () => {
   assert.equal(JSON.parse(readFileSync(result.evidence.path)).cleanup.confirmed, false);
 });
 
+
+test('Windows CI performs an owned disposable priority transition and confirms cleanup', { skip: process.platform !== 'win32', timeout: 30000 }, async () => {
+  const result = await runSpawnedPriority({ evidenceRoot: mkdtempSync(join(tmpdir(), 'indro-windows-live-')) });
+  assert.equal(result.transaction.verdict, 'STATE_CONFIRMED', JSON.stringify(result.transaction.limitations));
+  assert.equal(result.transaction.post_observation?.value, 'BelowNormal');
+  assert.equal(result.transaction.post_observation?.secondary_observation?.consistency, 'CONSISTENT');
+  assert.equal(result.cleanup.confirmed, true, JSON.stringify(result.cleanup));
+  assert.equal(result.provenance.independence_verified, false);
+});
+
 function fakeChild(pid, stopped) {
   const child = Object.assign(new EventEmitter(), { pid, exitCode: null });
   child.kill = () => { stopped(); child.exitCode = 0; queueMicrotask(() => child.emit('exit', 0)); return true; };
