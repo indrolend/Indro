@@ -54,3 +54,24 @@ test('canonical Indro routes native verification and rejects incomplete requests
   assert.equal(rejected.status, 2);
   assert.match(rejected.stderr, /INDRO_NATIVE_VERIFY_ERROR.*Usage:/);
 });
+
+test('canonical INDRO routes retained capabilities and rejects unverified operations', () => {
+  const invoke = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  const help = invoke('help');
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /indro capability list/);
+  assert.match(help.stdout, /indro paint verify/);
+  assert.match(help.stdout, /indro fl plugin set/);
+  const fl = invoke('fl', 'help');
+  assert.equal(fl.status, 0, fl.stderr);
+  assert.match(fl.stdout, /indro fl plugin set/);
+  const list = invoke('capability', 'list', '--json');
+  assert.equal(list.status, 0, list.stderr);
+  assert.ok(Array.isArray(JSON.parse(list.stdout).capabilities));
+  const paint = invoke('paint', 'verify', '--json');
+  assert.equal(paint.status, 1);
+  assert.ok(JSON.parse(paint.stdout).error);
+  const denied = invoke('capability', 'invoke', 'missing', '--value', '0.5', '--authorize-write', '--json');
+  assert.equal(denied.status, 1);
+  assert.equal(JSON.parse(denied.stdout).error, 'CAPABILITY_WRITE_REQUIRES_VERIFY');
+});
