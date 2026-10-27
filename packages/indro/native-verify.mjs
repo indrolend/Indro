@@ -215,9 +215,15 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
 export function changedExecutablePaths(recorded, current, build) {
   if (!Array.isArray(recorded) || !Array.isArray(current)) return [];
   const previous = new Map(recorded), latest = new Map(current);
+  const physicalBuild = existsSync(build) ? realpathSync(build) : resolve(build);
   return [...new Set([...previous.keys(), ...latest.keys()])]
     .filter(path => previous.get(path) !== latest.get(path))
-    .map(path => relative(build, path).replaceAll('\\', '/')).sort();
+    // Canonicalize the parent, not the executable: preserve the symlink basename.
+    .map(path => {
+      const parent = dirname(path);
+      const physicalParent = existsSync(parent) ? realpathSync(parent) : resolve(parent);
+      return relative(physicalBuild, join(physicalParent, basename(path))).replaceAll('\\', '/');
+    }).sort();
 }
 function readReceipt(path) {
   try {

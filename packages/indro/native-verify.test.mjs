@@ -320,6 +320,17 @@ test('executable diagnostics identify changed, added and removed binaries', () =
   assert.deepEqual(changedExecutablePaths(null, [], build), []);
 });
 
+test('changed executable diagnostics normalize parent aliases but preserve executable names', { skip: process.platform === 'win32' }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indro-native-path-alias-'));
+  try {
+    const build = join(dir, 'build'), alias = join(dir, 'build-link');
+    mkdirSync(build);
+    symlinkSync('build', alias);
+    const declared = join(alias, 'probe');
+    assert.deepEqual(changedExecutablePaths([[declared, 'old']], [[declared, 'new']], build), ['probe']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('same-byte source symlink retarget invalidates native evidence', { skip: process.platform === 'win32' }, () => {
   const f = fixture();
   try {
@@ -535,21 +546,16 @@ test('CTest executable symlink text invalidates reuse despite unchanged binary b
     assert.equal(first.outcome, 'EXECUTED');
     assert.equal(first.reusable, true);
     assert.equal(reused.outcome, 'REUSED');
-    const beforeSymlink = snapshotNative(f);
     unlinkSync(alias);
     symlinkSync('./probe', alias);
     const direct = spawnSync('ctest', ['--test-dir', f.build, '--output-on-failure'], { encoding: 'utf8' });
     assert.notEqual(direct.status, 0);
-    const afterSymlink = snapshotNative(f);
     const rerun = verifyNative(f);
     assert.equal(rerun.outcome, 'FAILED');
     assert.equal(rerun.reuseDecision, 'INPUT_CHANGED');
     assert.ok(rerun.changedInputs.includes('executables'));
-    assert.ok(rerun.changedExecutables.includes('alias'), JSON.stringify({
-      changedInputs: rerun.changedInputs, changedExecutables: rerun.changedExecutables,
-      beforeExecutables: beforeSymlink.inputs.executables, afterExecutables: afterSymlink.inputs.executables,
-      beforePlan: beforeSymlink.inputs.testPlan, afterPlan: afterSymlink.inputs.testPlan
-    }));
+    assert.ok(rerun.changedExecutables.includes('alias'));
+
     assert.equal(rerun.reusable, false);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
