@@ -36,26 +36,6 @@
   },
   "files": [
     {
-      "path": "DOGFOOD.md",
-      "bytes": 3817,
-      "sha256": "5bb1774bd0f4a28feb662ae9d05b5317f9fa73c6671053d80968e5b41f8d2a9a"
-    },
-    {
-      "path": "Indro.psm1",
-      "bytes": 14823,
-      "sha256": "9ec7ad6b57b1e296f164d773c406736533782bf67ff6764407bf11e8d2255023"
-    },
-    {
-      "path": "README.md",
-      "bytes": 6854,
-      "sha256": "001f04c9420932d2ab529068e4d492d2de75ad0a131d0881b2bdd393f52bcd18"
-    },
-    {
-      "path": "SPEC.md",
-      "bytes": 4676,
-      "sha256": "10755b8c4ff3fb52c4bb0e181fa382c7963f0ec3b43e9b8ff567a76849a4b462"
-    },
-    {
       "path": "benchmark-native.mjs",
       "bytes": 7916,
       "sha256": "87d398333567c5d4004c9b8fd1749b12b7af3270efa08179dfe801a98a8ecfd3"
@@ -64,11 +44,6 @@
       "path": "benchmark-native.test.mjs",
       "bytes": 3683,
       "sha256": "e9668c25f429218b5bdd6863d82ac5f94de9e2c50112b43a7a245dac835d1158"
-    },
-    {
-      "path": "benchmarks/README.md",
-      "bytes": 852,
-      "sha256": "b3810891094797fbc93b4940ab12840f5c8745943effa2283762d7d3eedb9a4f"
     },
     {
       "path": "benchmarks/crosscheck.json",
@@ -104,6 +79,11 @@
       "path": "benchmarks/learn-v05.txt",
       "bytes": 4703,
       "sha256": "4f546766b8b98f928a40c8b99a21d4848fbf5e121c8685f1b6c488cada7ce656"
+    },
+    {
+      "path": "benchmarks/README.md",
+      "bytes": 852,
+      "sha256": "b3810891094797fbc93b4940ab12840f5c8745943effa2283762d7d3eedb9a4f"
     },
     {
       "path": "benchmarks/repeated-performance.txt",
@@ -142,18 +122,23 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 3363,
-      "sha256": "014dcd6b568049373d1adf27aa4ac5427eb8f4e5b2becb429bb57c76374fd8c0"
+      "bytes": 3702,
+      "sha256": "216ffc1d680b9d726772aaa62ecfd9062550ecac41411a1b24af92497c704d77"
     },
     {
       "path": "cli.test.mjs",
-      "bytes": 3805,
-      "sha256": "86052e9c868621e9a741015ca718f0003227d602e0c383861b8707552ceaba2f"
+      "bytes": 4404,
+      "sha256": "759c27cef90710cf993fc84226483ac1568a83db0ba7340c82084caaafb27dc7"
     },
     {
       "path": "doctor.ps1",
       "bytes": 559,
       "sha256": "a9234fdb74e854b06085429b1e75a7c2e3cf57b1b5b444bf0cef5801ff4f87a2"
+    },
+    {
+      "path": "DOGFOOD.md",
+      "bytes": 3817,
+      "sha256": "5bb1774bd0f4a28feb662ae9d05b5317f9fa73c6671053d80968e5b41f8d2a9a"
     },
     {
       "path": "examples/digital-breakdown-convergence.indro",
@@ -216,9 +201,14 @@
       "sha256": "28c576b9f3c96f60f01d4f393d39f6ab723f3bb693874fadf51c6feaaa3c8484"
     },
     {
-      "path": "indro.py",
-      "bytes": 3779,
-      "sha256": "58102d974b641fe7da871dcda57f874c667bc95b10b8804a0c5a0ee6276e4e83"
+      "path": "godot-replay.mjs",
+      "bytes": 15265,
+      "sha256": "8513c93f99955be790dbeaba766beab16d528e7093c7d66c5fed43f9717a395a"
+    },
+    {
+      "path": "godot-replay.test.mjs",
+      "bytes": 3862,
+      "sha256": "9a2f7435fd10b056ec925777a3f08596705fffc4a0dce02345885ede450a5e1e"
     },
     {
       "path": "indro_lang.py",
@@ -229,6 +219,16 @@
       "path": "indro_proof.py",
       "bytes": 4277,
       "sha256": "f563815923ea4a9463da389fc641321c78297483f1bb8e3b915576963348585a"
+    },
+    {
+      "path": "Indro.psm1",
+      "bytes": 14823,
+      "sha256": "9ec7ad6b57b1e296f164d773c406736533782bf67ff6764407bf11e8d2255023"
+    },
+    {
+      "path": "indro.py",
+      "bytes": 3779,
+      "sha256": "58102d974b641fe7da871dcda57f874c667bc95b10b8804a0c5a0ee6276e4e83"
     },
     {
       "path": "install.ps1",
@@ -252,8 +252,8 @@
     },
     {
       "path": "package.json",
-      "bytes": 447,
-      "sha256": "e02b9d61f5acbb81d0fd0e508dfe71bb52d0a1fe4e5d1c08facfae9676cf2393"
+      "bytes": 471,
+      "sha256": "262740326a03752a27c6fa0c96c2b259da09fc268e3060e3091f9a1f89e41715"
     },
     {
       "path": "paint/artifact.mjs",
@@ -276,9 +276,9 @@
       "sha256": "93eecddc0b0906276cda118a2838b94539b9800dae9fab64c7ed5ac048b247eb"
     },
     {
-      "path": "runtime/MagicFunnel.psm1",
-      "bytes": 7249,
-      "sha256": "8e610f53a6a7c2b4875faa071b303a54b7cd09ed7863c276842c946e06fa0b02"
+      "path": "README.md",
+      "bytes": 6854,
+      "sha256": "001f04c9420932d2ab529068e4d492d2de75ad0a131d0881b2bdd393f52bcd18"
     },
     {
       "path": "runtime/dbdev.ps1",
@@ -286,9 +286,19 @@
       "sha256": "c1946cd4ec8d1980620f55c3ab883d311922c70b9a189bc185347150a34cfe18"
     },
     {
+      "path": "runtime/MagicFunnel.psm1",
+      "bytes": 7249,
+      "sha256": "8e610f53a6a7c2b4875faa071b303a54b7cd09ed7863c276842c946e06fa0b02"
+    },
+    {
       "path": "runtime/ollama-playtest.py",
       "bytes": 4764,
       "sha256": "1ac8a7afda63782aa87a8fa0f8387a5abf2c92780bda1e3cc63c2321d12cb32b"
+    },
+    {
+      "path": "SPEC.md",
+      "bytes": 4676,
+      "sha256": "10755b8c4ff3fb52c4bb0e181fa382c7963f0ec3b43e9b8ff567a76849a4b462"
     },
     {
       "path": "tools/benchmark-compact.py",
@@ -376,11 +386,6 @@
       "sha256": "7c27ddd40a655ee1cea1e06656c5e3b179ac7766e8685bf127291f62ebc9f210"
     },
     {
-      "path": "uai/README.md",
-      "bytes": 1912,
-      "sha256": "0ca2042ff9bccec5756c11fcd1b72eac0b064c995633c53241dddce9c2965285"
-    },
-    {
       "path": "uai/assay.mjs",
       "bytes": 2307,
       "sha256": "4df54e1a5b48ef087033623ac3d17f9cadd0b671ba2af2aaf085948c6916cc78"
@@ -394,6 +399,11 @@
       "path": "uai/cli.mjs",
       "bytes": 1105,
       "sha256": "3ee08da4c774f77b1a8cb97b29395bc71b6dc19ebb23cdf6c688761540f54b71"
+    },
+    {
+      "path": "uai/README.md",
+      "bytes": 1912,
+      "sha256": "0ca2042ff9bccec5756c11fcd1b72eac0b064c995633c53241dddce9c2965285"
     },
     {
       "path": "uai/transaction.mjs",

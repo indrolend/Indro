@@ -75,3 +75,14 @@ test('canonical INDRO routes retained capabilities and rejects unverified operat
   assert.equal(denied.status, 1);
   assert.equal(JSON.parse(denied.stdout).error, 'CAPABILITY_WRITE_REQUIRES_VERIFY');
 });
+
+test('canonical INDRO routes Godot replay and rejects unsupported scenarios and unintegrated commands', () => {
+  const invoke = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  assert.match(invoke('help').stdout, /indro godot replay/);
+  const rejected = invoke('godot', 'replay', '--scenario', 'unknown');
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /Unknown Godot replay scenario/);
+  const unsupported = invoke('godot', 'benchmark');
+  assert.equal(unsupported.status, 2);
+  assert.match(unsupported.stderr, /supports replay only/);
+});

@@ -25,6 +25,7 @@ Language:
   indro fl doctor --json
   indro fl plugin set --channel N --param N --value 0..1 --verify --json
   indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
+  indro godot replay --scenario smoke [--capture]
 
 Execution and evidence (CommandHUD compatibility):
   indro shell | tui | desktop
@@ -77,6 +78,14 @@ if (command === 'help' || command === '--help' || command === '-h') {
 } else if (command === 'verify-native') {
   const { runNativeCli } = await import('./native-verify.mjs');
   process.exitCode = runNativeCli(args);
+} else if (command === 'godot') {
+  if (args[0] !== 'replay') {
+    console.error('INDRO_ERROR godot currently supports replay only.');
+    process.exitCode = 2;
+  } else {
+    const { runGodotCli } = await import('./godot-replay.mjs');
+    process.exitCode = await runGodotCli(args);
+  }
 } else if (command === 'language-test') {
   process.exitCode = python(path.join(here, 'tools', 'test-all.py'), args);
 } else {
