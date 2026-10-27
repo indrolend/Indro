@@ -4,7 +4,8 @@ on:
     branches: [feat/uai-transaction-kernel]
   pull_request:
     paths:
-      - 'packages/indro/uai/**'\n      - 'packages/indro/workbench*.mjs'
+      - 'packages/indro/uai/**'
+      - 'packages/indro/workbench*.mjs'
       - 'packages/indro/cli.mjs'
       - '.github/workflows/uai-kernel.yml'
 jobs:
@@ -15,6 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test packages/indro/uai/*.test.mjs packages/indro/workbench.test.mjs\n      - run: node packages/indro/cli.mjs work help
+      - run: node --test packages/indro/uai/*.test.mjs packages/indro/workbench.test.mjs
+      - run: node packages/indro/cli.mjs work help
       - run: node packages/indro/cli.mjs app help
       - run: node packages/indro/cli.mjs app fixture set 0.75 --json
