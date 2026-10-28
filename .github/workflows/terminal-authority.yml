@@ -51,7 +51,7 @@ jobs:
         env:
           DB_COMMANDHUD_ROOT: ${{ runner.temp }}/indro-terminal-override
           DB_TERMINAL_EXPECT_COMMANDHUD_ID: local/indro-terminal-override
-        run: npm test
+        run: npm test -- --test-concurrency=1
       - name: Verify real xterm browser and PowerShell OSC provenance
         working-directory: packages/digitalbreakdown-terminal
         run: node --test e2e/browser-xterm-osc.mjs
