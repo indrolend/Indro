@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -145,4 +146,61 @@ test('changed or missing source receipt rejects FL reuse before any host probe o
   assert.deepEqual(unavailable.issues, ['SOURCE_RECEIPT_UNAVAILABLE']);
   assert.equal(unavailable.reusable, false);
   assert.equal(probes, 0);
+});
+
+test('fresh Node process reuses retained FL capability and rejects stale source before simulated write', () => {
+  const f = fixture();
+  const moduleUrl = new URL('./store.mjs', import.meta.url).href;
+  const childSource = [
+    'import { invokeCapability, listCapabilities } from ' + JSON.stringify(moduleUrl) + ';',
+    'const [capabilityRoot, mailbox, id, sessionText] = process.argv.slice(1);',
+    'const session = JSON.parse(sessionText);',
+    'let probes = 0, writes = 0;',
+    'const transport = { name: "fresh-process-fixture", async request(operation) {',
+    '  probes++;',
+    '  const result = operation === "status" ? { selected: { channel: 5 } } :',
+    '    operation === "plugins.list" ? { plugins: [{ channel: 5, plugin_name: "Fruity granulizer", plugin_valid: true }] } :',
+    '    { parameters: [{ index: 2, name: "Grain spacing", value: 0.5 }] };',
+    '  return { response: { result } };',
+    '} };',
+    'try {',
+    '  const invoked = await invokeCapability(id, 0.25, {',
+    '    capabilityRoot, mailbox, discoverSession: () => session, transport, authorization: "explicit-user-write",',
+    '    runFlCli: async (args, out) => {',
+    '      writes++;',
+    '      if (args.join(" ") !== "plugin set --channel 5 --param 2 --value 0.25 --verify --json") throw new Error("WRONG_TARGET");',
+    '      out(JSON.stringify({ transaction: { verdict: "STATE_CONFIRMED", state_transition_observed: true } }));',
+    '      return 0;',
+    '    },',
+    '  });',
+    '  console.log(JSON.stringify({ code: invoked.code, verdict: invoked.result.transaction.verdict, probes, writes, ids: listCapabilities({ capabilityRoot }).map(x => x.id) }));',
+    '} catch (error) {',
+    '  console.log(JSON.stringify({ error: error.message, probes, writes, ids: listCapabilities({ capabilityRoot }).map(x => x.id) }));',
+    '  process.exitCode = 1;',
+    '}',
+  ].join('\n');
+  const run = (root = f.options.capabilityRoot) => {
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource, root, f.mailbox, f.id, JSON.stringify(f.session)], { encoding: 'utf8' });
+    assert.equal(child.error, undefined);
+    assert.ok(child.stdout.trim(), child.stderr);
+    return { status: child.status, ...JSON.parse(child.stdout.trim()) };
+  };
+  const reused = run();
+  assert.equal(reused.status, 0);
+  assert.equal(reused.verdict, 'STATE_CONFIRMED');
+  assert.equal(reused.probes, 3);
+  assert.equal(reused.writes, 1);
+  assert.deepEqual(reused.ids, [f.id]);
+  const noMemory = run(join(f.root, 'empty-capability-root'));
+  assert.equal(noMemory.status, 1);
+  assert.match(noMemory.error, /CAPABILITY_NOT_FOUND/);
+  assert.equal(noMemory.probes, 0);
+  assert.equal(noMemory.writes, 0);
+  const receiptPath = f.retained.capability.evidence[0].receipt;
+  writeFileSync(receiptPath, readFileSync(receiptPath, 'utf8') + '\n');
+  const stale = run();
+  assert.equal(stale.status, 1);
+  assert.match(stale.error, /CAPABILITY_NOT_REUSABLE:SOURCE_RECEIPT_FINGERPRINT_MISMATCH/);
+  assert.equal(stale.probes, 0);
+  assert.equal(stale.writes, 0);
 });

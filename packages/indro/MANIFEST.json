@@ -117,8 +117,8 @@
     },
     {
       "path": "capability/store.test.mjs",
-      "bytes": 10038,
-      "sha256": "5544b24be9ffb9f401f2b07fdef52f0b8923a41f1b6d6c62c464a070a4fe2652"
+      "bytes": 13156,
+      "sha256": "d8c9e15e1c7368156ec11747680a5c8975742146460c4f6393a0402e0b201b03"
     },
     {
       "path": "cli.mjs",
