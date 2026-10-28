@@ -111,6 +111,26 @@ test('hud doctor returns a tiny bounded summary and retained evidence', () => {
   }
 });
 
+test('global --root selects a repository before the command from outside Git', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-global-root-repository-'));
+  const outside = mkdtempSync(join(tmpdir(), 'commandhud-global-root-outside-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const result = spawnSync(process.execPath, [cli, '--root', root, 'state', '--json'], {
+      cwd: outside, encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, HUD_STATE_ROOT: join(outside, '.state') },
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(JSON.parse(result.stdout).project.root, root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('hud run JSON is pure for passing and failing commands', () => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-json-route-'));
   try {

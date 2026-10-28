@@ -1,7 +1,9 @@
 Set-StrictMode -Version Latest
 
-$script:DigitalBreakdownRoot = 'C:\Users\indro\Projects\db-enemy-motor-runtime'
-$script:ProjectsRoot = 'C:\Users\indro\Projects'
+$script:ProjectsRoot = if ($env:INDRO_PROJECTS_ROOT) { $env:INDRO_PROJECTS_ROOT } else { Join-Path $HOME 'Projects' }
+$script:DataGameRoot = if ($env:INDRO_DATA_GAME_ROOT) { $env:INDRO_DATA_GAME_ROOT } else { Join-Path $script:ProjectsRoot 'data-game' }
+$script:DataGameToolsRoot = if ($env:INDRO_DATA_GAME_TOOLS_ROOT) { $env:INDRO_DATA_GAME_TOOLS_ROOT } else { Join-Path $script:ProjectsRoot 'data-game-tools' }
+$script:IndroRoot = if ($env:INDRO_ROOT) { $env:INDRO_ROOT } else { Join-Path $script:ProjectsRoot 'Indro' }
 
 function Get-MagicCommandState {
     param([Parameter(Mandatory)][string]$Name)
@@ -11,6 +13,17 @@ function Get-MagicCommandState {
         Ready = $null -ne $command
         Path = if ($command) { $command.Source } else { $null }
     }
+}
+
+function Invoke-CommandHud {
+    [CmdletBinding()]
+    param([Parameter(ValueFromRemainingArguments = $true)][object[]]$RemainingArguments)
+
+    $cli = Join-Path $script:IndroRoot 'packages\commandhud\cli.mjs'
+    if (-not (Test-Path -LiteralPath $cli)) { throw "CommandHUD authority is missing: $cli" }
+    $node = Get-Command node -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $node) { throw 'CommandHUD requires Node.js.' }
+    & $node.Source $cli @RemainingArguments
 }
 
 function Get-ProjectRepository {
@@ -51,54 +64,80 @@ function Enter-Project {
 function Enter-DigitalBreakdown {
     [CmdletBinding()]
     param()
-    if (-not (Test-Path -LiteralPath $script:DigitalBreakdownRoot)) {
-        throw "Digital Breakdown authority is missing: $script:DigitalBreakdownRoot"
+    if (-not (Test-Path -LiteralPath $script:DataGameRoot)) {
+        throw "Data authority is missing: $script:DataGameRoot"
     }
-    Set-Location -LiteralPath $script:DigitalBreakdownRoot
+    Set-Location -LiteralPath $script:DataGameRoot
+}
+
+function Enter-DataGameTools {
+    [CmdletBinding()]
+    param()
+    if (-not (Test-Path -LiteralPath $script:DataGameToolsRoot)) {
+        throw "Data Game Tools authority is missing: $script:DataGameToolsRoot"
+    }
+    Set-Location -LiteralPath $script:DataGameToolsRoot
 }
 
 function Invoke-DBDev {
     [CmdletBinding()]
     param(
-        [Parameter(Position = 0)][string]$Command = 'status',
+        [Parameter(Position = 0)][ValidateSet('status','configure','build','test','smoke','evidence')][string]$Command = 'status',
         [Parameter(ValueFromRemainingArguments = $true)][object[]]$RemainingArguments
     )
-    $entrypoint = Join-Path $script:DigitalBreakdownRoot 'tools\dbdev.ps1'
-    if (-not (Test-Path -LiteralPath $entrypoint)) { throw "Missing developer entrypoint: $entrypoint" }
-    if ($RemainingArguments) { & $entrypoint $Command @RemainingArguments }
-    else { & $entrypoint $Command }
+    $entrypoint = Join-Path $script:DataGameToolsRoot 'Invoke-DataGame.ps1'
+    if (-not (Test-Path -LiteralPath $entrypoint)) { throw "Missing Data Game Tools entrypoint: $entrypoint" }
+    if ($RemainingArguments) {
+        & $entrypoint -GameRoot $script:DataGameRoot -Action $Command @RemainingArguments
+    } else {
+        & $entrypoint -GameRoot $script:DataGameRoot -Action $Command
+    }
+}
+
+function Invoke-Dev {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)][string]$Action = 'help',
+        [Parameter(ValueFromRemainingArguments = $true)][object[]]$RemainingArguments
+    )
+    $entrypoint = Join-Path $script:DataGameToolsRoot 'Dev.ps1'
+    if (-not (Test-Path -LiteralPath $entrypoint)) { throw "Missing SSH-first development entrypoint: $entrypoint" }
+    if ($RemainingArguments) {
+        & $entrypoint $Action @RemainingArguments
+    } else {
+        & $entrypoint $Action
+    }
 }
 
 function Show-WorkstationFunnel {
     [CmdletBinding()]
     param()
 
-    $repoReady = Test-Path -LiteralPath (Join-Path $script:DigitalBreakdownRoot '.git')
+    $repoReady = Test-Path -LiteralPath (Join-Path $script:DataGameRoot '.git')
+    $toolsReady = Test-Path -LiteralPath (Join-Path $script:DataGameToolsRoot 'Invoke-DataGame.ps1')
     $commands = 'git','gh','rg','fd','fzf','jq','node','npm','cmake','codex','starship','docker','wsl' |
         ForEach-Object { Get-MagicCommandState $_ }
 
     Write-Host 'MAGIC FUNNEL' -ForegroundColor Magenta
     Write-Host ("PowerShell       {0}" -f $PSVersionTable.PSVersion)
-    Write-Host ("Digital Breakdown {0}" -f $(if ($repoReady) { 'ready' } else { 'missing' }))
+    Write-Host ("Data             {0}" -f $(if ($repoReady) { 'ready' } else { 'missing' }))
+    Write-Host ("Data Game Tools  {0}" -f $(if ($toolsReady) { 'ready' } else { 'missing' }))
     Write-Host ("Core commands     {0}/{1} ready" -f @($commands | Where-Object Ready).Count, $commands.Count)
     Write-Host ''
     Write-Host 'Fast paths' -ForegroundColor Cyan
-    Write-Host '  status           repo status
-  audit            authority + scope evidence
-  save             non-destructive checkpoint
-  verify           diffcheck + build + tests + smoke + scope
-  play             verify + launch
-  agent            local Qwen playtest
-  ship             verify + Windows package
-  handoff          portable workspace evidence ZIP
-  db               lower-level repo command'
-    Write-Host '  db doctor        environment diagnosis'
-    Write-Host '  db desktop-build native build'
-    Write-Host '  db desktop-test  gameplay verification'
-    Write-Host '  db playtest      build and launch'
-    Write-Host '  cdb              enter Digital Breakdown authority'
+    Write-Host '  status           exact Data revision and dirty state'
+    Write-Host '  build            configure and build Data'
+    Write-Host '  test             build and run Data tests'
+    Write-Host '  smoke            build and run the product smoke test'
+    Write-Host '  evidence         run enemy-obstruction visual evidence'
+    Write-Host '  db <action>      status|configure|build|test|smoke|evidence'
+    Write-Host '  dev <action>     SSH-safe status|projects|worktrees|build|tests|evidence|doctor'
+    Write-Host '  cdb              enter Data product authority'
+    Write-Host '  cdtools          enter Data Game Tools authority'
     Write-Host '  cproj [name]     fuzzy-enter a local repository'
+    Write-Host '  hudremote        status|start|stop|restart|ui for the CommandHUD Remote tunnel'
     Write-Host '  wdoctor          full workstation readiness table'
+    Write-Host '  daily            workstation readiness + INDRO/Data state and probes'
 }
 
 function Test-WorkstationFunnel {
@@ -112,55 +151,119 @@ function Test-WorkstationFunnel {
     Write-Host ''
     Write-Host 'Project authority' -ForegroundColor Cyan
     [pscustomobject]@{
-        Name = 'Digital Breakdown'
-        Ready = Test-Path -LiteralPath (Join-Path $script:DigitalBreakdownRoot 'tools\dbdev.ps1')
-        Path = $script:DigitalBreakdownRoot
+        Name = 'Data'
+        Ready = Test-Path -LiteralPath (Join-Path $script:DataGameRoot 'CMakeLists.txt')
+        Path = $script:DataGameRoot
     } | Format-Table -AutoSize
 }
 
+function Invoke-DailyDevelopment {
+    [CmdletBinding()]
+    param([switch]$PassThru)
+
+    $started = [System.Diagnostics.Stopwatch]::StartNew()
+    $originalLocation = (Get-Location).Path
+    $results = [System.Collections.Generic.List[object]]::new()
+
+    Test-WorkstationFunnel | Out-Host
+    if (-not (Get-Command hud -ErrorAction SilentlyContinue)) {
+        throw 'CommandHUD is unavailable. Load the workstation PowerShell profile before running daily.'
+    }
+
+    foreach ($project in @(
+        [pscustomobject]@{ Name = 'INDRO'; Root = $script:IndroRoot },
+        [pscustomobject]@{ Name = 'DIGITAL BREAKDOWN'; Root = $script:DataGameRoot }
+    )) {
+        Write-Host ''
+        Write-Host $project.Name -ForegroundColor Cyan
+
+        $stateOutput = & hud --root $project.Root state 2>&1
+        $stateExit = $LASTEXITCODE
+        $stateOutput | ForEach-Object { Write-Host $_ }
+        $doctorOutput = & hud --root $project.Root doctor 2>&1
+        $doctorExit = $LASTEXITCODE
+        $doctorOutput | ForEach-Object { Write-Host $_ }
+        $results.Add([pscustomobject]@{
+            Project = $project.Name
+            Root = $project.Root
+            StateExitCode = $stateExit
+            DoctorExitCode = $doctorExit
+            Ready = $stateExit -eq 0 -and $doctorExit -eq 0
+        })
+    }
+
+    if ((Get-Location).Path -ne $originalLocation) {
+        throw "daily changed the caller's working directory from $originalLocation to $((Get-Location).Path)."
+    }
+
+    $started.Stop()
+    $ready = @($results | Where-Object Ready).Count
+    $status = if ($ready -eq $results.Count) { 'PASS' } else { 'ATTENTION' }
+    Write-Host ''
+    Write-Host ("DAILY {0} repositories={1}/{2} elapsed={3:N1}s" -f $status, $ready, $results.Count, $started.Elapsed.TotalSeconds) -ForegroundColor $(if ($status -eq 'PASS') { 'Green' } else { 'Yellow' })
+    $summary = [pscustomobject]@{
+        Status = $status
+        ReadyRepositories = $ready
+        RepositoryCount = $results.Count
+        DurationMs = [math]::Round($started.Elapsed.TotalMilliseconds)
+        Projects = @($results)
+    }
+    $global:LASTEXITCODE = if ($status -eq 'PASS') { 0 } else { 1 }
+    if ($PassThru) { $summary }
+}
+
 Set-Alias -Name db -Value Invoke-DBDev
+Set-Alias -Name dev -Value Invoke-Dev
+Set-Alias -Name hud -Value Invoke-CommandHud
 Set-Alias -Name cdb -Value Enter-DigitalBreakdown
+Set-Alias -Name cdtools -Value Enter-DataGameTools
 Set-Alias -Name cproj -Value Enter-Project
 Set-Alias -Name magic -Value Show-WorkstationFunnel
 Set-Alias -Name wdoctor -Value Test-WorkstationFunnel
+Set-Alias -Name daily -Value Invoke-DailyDevelopment
 
-Export-ModuleMember -Function Get-ProjectRepository,Enter-Project,Enter-DigitalBreakdown,Invoke-DBDev,Show-WorkstationFunnel,Test-WorkstationFunnel -Alias db,cdb,cproj,magic,wdoctor
+function Get-CommandHudRemoteRoot {
+    <#
+        Locates the CommandHUD Remote repository under the projects root by
+        the presence of its operator control script, rather than a hardcoded
+        path, so this module keeps working if the repository moves.
+    #>
+    [CmdletBinding()]
+    param()
+    if (-not (Test-Path -LiteralPath $script:ProjectsRoot)) { return $null }
+    Get-ChildItem -LiteralPath $script:ProjectsRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'plugins\commandhud-remote\service\CommandHudRemoteControl.ps1') } |
+        Select-Object -First 1 -ExpandProperty FullName
+}
+
+function Invoke-CommandHudRemote {
+    <#
+        Bounded status/start/stop/restart/ui operator surface for CommandHUD
+        Remote's durable tunnel service, dispatched to the repository-owned
+        control script; this module does not duplicate its logic.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)][ValidateSet('status', 'start', 'stop', 'restart', 'ui')]
+        [string]$Action = 'status'
+    )
+    $root = Get-CommandHudRemoteRoot
+    if (-not $root) { throw "CommandHUD Remote repository was not found under $script:ProjectsRoot." }
+    & (Join-Path $root 'plugins\commandhud-remote\service\CommandHudRemoteControl.ps1') $Action
+}
+
+Set-Alias -Name hudremote -Value Invoke-CommandHudRemote
+
+Export-ModuleMember -Function Get-CommandHudRemoteRoot,Invoke-CommandHudRemote -Alias hudremote
+
+Export-ModuleMember -Function Get-ProjectRepository,Enter-Project,Enter-DigitalBreakdown,Enter-DataGameTools,Invoke-CommandHud,Invoke-DBDev,Invoke-Dev,Show-WorkstationFunnel,Test-WorkstationFunnel,Invoke-DailyDevelopment -Alias hud,db,dev,cdb,cdtools,cproj,magic,wdoctor,daily
 
 # INDRO: one stable development intention = one word.
 # These verbs intentionally do not commit, push, merge, rebase, or clean implicitly.
 function status { Invoke-DBDev status }
-function audit { Invoke-DBDev audit }
-function save { Invoke-DBDev checkpoint }
-function verify { Invoke-DBDev verify }
-function build { Invoke-DBDev desktop-build }
-function test { Invoke-DBDev desktop-test }
-function smoke { Invoke-DBDev desktop-smoke }
-function play { Invoke-DBDev play }
-function doctor { Invoke-DBDev doctor }
-function agent {
-    [CmdletBinding()]
-    param(
-        [ValidateRange(1,1000)][int]$Turns = 30,
-        [ValidateSet('qwen2.5:7b','phi3:latest')][string]$Model = 'qwen2.5:7b'
-    )
-    Invoke-DBDev agent -Turns $Turns -Model $Model
-}
-function ship { Invoke-DBDev ship }
-function handoff {
-    [CmdletBinding()]
-    param([string]$Path = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'workspace-handoff.zip'))
-    Invoke-DBDev checkpoint
-    $temp = Join-Path $env:TEMP ('db-handoff-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Force -Path $temp | Out-Null
-    try {
-        & git -C $script:DigitalBreakdownRoot archive --format=zip --output=(Join-Path $temp 'db-tracked.zip') HEAD
-        & git -C $script:DigitalBreakdownRoot diff --binary | Set-Content -Encoding UTF8 (Join-Path $temp 'db-working.diff')
-        & git -C $script:DigitalBreakdownRoot status --porcelain=v2 --branch | Set-Content -Encoding UTF8 (Join-Path $temp 'db-status.txt')
-        Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $temp 'MagicFunnel.psm1')
-        if (Test-Path -LiteralPath $PROFILE) { Copy-Item -LiteralPath $PROFILE -Destination (Join-Path $temp 'Microsoft.PowerShell_profile.ps1') }
-        Compress-Archive -Path (Join-Path $temp '*') -DestinationPath $Path -Force
-        Write-Host "HANDOFF_OK path=$Path" -ForegroundColor Green
-    } finally { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue }
-}
+function build { Invoke-DBDev build }
+function test { Invoke-DBDev test }
+function smoke { Invoke-DBDev smoke }
+function evidence { Invoke-DBDev evidence }
 
-Export-ModuleMember -Function status,audit,save,verify,build,test,smoke,play,doctor,agent,ship,handoff
+Export-ModuleMember -Function status,build,test,smoke,evidence

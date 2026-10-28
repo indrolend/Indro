@@ -48,6 +48,11 @@ Use --root <path> to select an explicit Git repository.`;
 function parse(argv) {
   const args = [...argv];
   const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false, follow: false };
+  let leadingRoot = null;
+  if (args[0] === '--root') {
+    if (args.length < 2 || args[1].startsWith('--')) throw new Error('--root requires a value.');
+    leadingRoot = args.splice(0, 2)[1];
+  }
   const command = args.shift() || 'context';
   const positionals = [];
   const usedOptions = new Set();
@@ -82,6 +87,11 @@ function parse(argv) {
     else if (value.startsWith('-')) throw new Error(`Unknown hud option: ${value}`);
     else if (command === 'run') { positionals.push(...args.slice(index)); break; }
     else positionals.push(value);
+  }
+  if (leadingRoot !== null) {
+    if (usedOptions.has('root')) throw new Error('--root may be specified only once.');
+    options.root = leadingRoot;
+    usedOptions.add('root');
   }
   return { command, args: positionals, options, usedOptions };
 }

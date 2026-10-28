@@ -236,6 +236,11 @@
       "sha256": "df5911cbee9b31b8ec0e03fbd0b4554643b76f1a66974b2d70bc9f32f95dec10"
     },
     {
+      "path": "magic-funnel.test.mjs",
+      "bytes": 4559,
+      "sha256": "dc2f1e2b910425b568f4cb79964d93ad82b05c4d582a22180dc79ebc55f26537"
+    },
+    {
       "path": "native-verify.md",
       "bytes": 2824,
       "sha256": "b1571bc8ab97363a71fef599ac34b59483fcd0b15d1eb913fd6fbfb245b463f5"
@@ -252,8 +257,8 @@
     },
     {
       "path": "package.json",
-      "bytes": 567,
-      "sha256": "8b45511bce0b80a7bae0938636f0cb7a226a1f4e64e7a481c0622e63fadbc070"
+      "bytes": 591,
+      "sha256": "78df04825b2dc304c11bf10ed3ad0e1f0974c18d763cdfe4a847f37185cef56c"
     },
     {
       "path": "paint/artifact.mjs",
@@ -286,9 +291,14 @@
       "sha256": "c1946cd4ec8d1980620f55c3ab883d311922c70b9a189bc185347150a34cfe18"
     },
     {
+      "path": "runtime/Install-MagicFunnel.ps1",
+      "bytes": 5487,
+      "sha256": "557384c89ea837fb8ee18389639483afea86fd58cf40c876fec74bb266029579"
+    },
+    {
       "path": "runtime/MagicFunnel.psm1",
-      "bytes": 7249,
-      "sha256": "8e610f53a6a7c2b4875faa071b303a54b7cd09ed7863c276842c946e06fa0b02"
+      "bytes": 11663,
+      "sha256": "bca1e5123583f6e35944879a380477fa273182af9f48d33853435cf556e96cc1"
     },
     {
       "path": "runtime/ollama-playtest.py",
