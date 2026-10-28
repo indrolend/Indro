@@ -54,4 +54,4 @@ jobs:
         run: npm test
       - name: Verify real xterm browser and PowerShell OSC provenance
         working-directory: packages/digitalbreakdown-terminal
-        run: node --test test/browser-xterm-osc.mjs
+        run: node --test e2e/browser-xterm-osc.mjs
