@@ -25,8 +25,8 @@ test("shell context decodes without interpreting terminal text", () => {
 
 test("context view handles clean, dirty, and non-Git locations", () => {
   assert.equal(contextView({ cwd: "/tmp", repository: null }, {}).repository, "NO REPOSITORY");
-  assert.equal(contextView({ cwd: "/repo", repository: "repo", dirty: false }, {}).dirty, "CLEAN");
-  assert.equal(contextView({ cwd: "/repo", repository: "repo", dirty: true }, {}).dirty, "DIRTY");
+  assert.equal(contextView({ cwd: "/repo", repository: "repo", dirty: false }, {}).dirty, "REPORTED CLEAN");
+  assert.equal(contextView({ cwd: "/repo", repository: "repo", dirty: true }, {}).dirty, "REPORTED DIRTY");
 });
 
 test("malformed metadata is ignored", () => {
