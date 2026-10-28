@@ -31,6 +31,24 @@ function fixture(overrides = {}) {
 }
 
 test('accepts complete schema-4 smoke evidence', () => assert.equal(validateReplay(fixture()).valid, true));
+
+test('rejects PASS evidence for a different assertion despite matching count', () => {
+  const value = fixture();
+  value.stdout = value.stdout.replace('expectations="room=1"', 'expectations="room=999"');
+  assert.ok(validateReplay(value).errors.includes('ASSERTION_RESULTS_INCOMPLETE'));
+});
+
+test('binds ordered PASS records to ordered requested assertions', () => {
+  const value = fixture();
+  value.commandsText = 'observe\\nstep frames=1\\nassert room=1\\nassert grounded=1\\n'.replaceAll('\\n', '\n');
+  const expected = 'AGENT_ASSERT_PASS frame=1 expectations="room=1"';
+  const second = 'AGENT_ASSERT_PASS frame=1 expectations="grounded=1"';
+  value.stdout = value.stdout.replace(expected, expected + '\n' + second);
+  assert.equal(validateReplay(value).valid, true);
+  value.stdout = value.stdout.replace(expected + '\n' + second, second + '\n' + expected);
+  assert.ok(validateReplay(value).errors.includes('ASSERTION_RESULTS_INCOMPLETE'));
+});
+
 test('rejects missing protocol output despite exit zero', () => assert.deepEqual(validateReplay(fixture({ stdout: '' })).errors, ['MISSING_OR_INVALID_READY', 'MISSING_OBSERVATIONS', 'MISSING_SUCCESSFUL_TERMINATION', 'ASSERTION_RESULTS_INCOMPLETE', 'CAPTURE_COUNT_MISMATCH']));
 test('rejects failed assertion', () => { const value = fixture(); value.stdout = value.stdout.replace('AGENT_ASSERT_PASS frame=1 expectations="room=1"', 'AGENT_PLAYTEST_ERROR reason=assertion_failed'); value.exitCode = 4; assert.match(validateReplay(value).errors.join(), /EXIT_CODE_4.*PROTOCOL_ERROR.*ASSERTION_RESULTS_INCOMPLETE/); });
 test('rejects missing screenshot', () => { const value = fixture(); value.captureDir = path.join(value.captureDir, 'missing'); assert.match(validateReplay(value).errors.join(), /CAPTURE_COUNT_MISMATCH/); });

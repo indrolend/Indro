@@ -202,13 +202,13 @@
     },
     {
       "path": "godot-replay.mjs",
-      "bytes": 15362,
-      "sha256": "a7a3a21b0b0b908675a9ec05975f94208faa78841a572a862e3f123fbc345c10"
+      "bytes": 15615,
+      "sha256": "7652645b228d320eed8621d1dfc27ea1535b7cbb21fdffdbcefaca630ebfdf57"
     },
     {
       "path": "godot-replay.test.mjs",
-      "bytes": 5214,
-      "sha256": "aae71d7b46a3a0f92dbfa8f0b9d7de34375f4b8e6db88c6a7608c327427d874d"
+      "bytes": 6172,
+      "sha256": "ff2f842c0b3b2f95a22d287e51c9af5d8335716b7104f3a8ad28d9ac8bde095f"
     },
     {
       "path": "indro_lang.py",
