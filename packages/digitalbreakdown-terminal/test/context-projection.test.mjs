@@ -43,7 +43,8 @@ test("untrusted shell metadata is displayed as reported rather than verified", (
     exitCode: 0
   }));
   const view = contextView(spoofed, { connected: true, execution: "reported ready" });
-  assert.equal(view.repository, "fabricated");
+  assert.equal(view.repository, "REPORTED fabricated");
+  assert.equal(view.branch, "REPORTED main");
   assert.equal(view.dirty, "REPORTED CLEAN");
   assert.equal(view.exit, "REPORTED EXIT 0");
   assert.equal(view.execution, "REPORTED READY");
