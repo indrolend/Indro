@@ -41,10 +41,10 @@ export function contextView(context, options = {}) {
   const location = compactPath(context?.cwd, context?.repositoryRoot, options.home);
   const repository = context?.repository || "NO REPOSITORY";
   const branch = context?.branch || "NO BRANCH";
-  const dirty = context?.repository ? (context.dirty ? "DIRTY" : "CLEAN") : "DETACHED";
+  const dirty = context?.repository ? (context.dirty ? "REPORTED DIRTY" : "REPORTED CLEAN") : "DETACHED";
   const exit = context?.exitCode === null || context?.exitCode === undefined
     ? "EXIT —"
-    : `EXIT ${context.exitCode}`;
+    : `REPORTED EXIT ${context.exitCode}`;
   return Object.freeze({
     location,
     repository,
