@@ -606,15 +606,33 @@ export function workingValue(project, field) {
   return readProjectState(project)[field] || null;
 }
 
-function meaningfulRun(record) {
+function meaningfulRun(record, root = null) {
+  if (record.operation?.type === 'probe') return false;
+  if (root && resolve(record.root || '') !== resolve(root)) return false;
   const command = record.command || '';
   return !/^(?:(?:hud\s+)?(?:context|status|history|packet|last|tools|continue)|git\s+(?:status|rev-parse))(?:\s|$)/i.test(command);
+}
+
+function recentMeaningfulRuns(project, limit = 10) {
+  const { root, ids } = runIdsNewest(project);
+  const records = [];
+  for (const id of ids) {
+    const record = readJson(join(root, id, 'run.json'));
+    if (!record || !meaningfulRun(record, project.root)) continue;
+    records.push(record);
+    if (records.length >= limit) break;
+  }
+  return records;
+}
+
+export function lastMeaningfulRun(project) {
+  return recentMeaningfulRuns(project, 1)[0] || null;
 }
 
 export async function continuation(project, limit = 10) {
   const [git, currency] = await Promise.all([gitSnapshot(project.root), repositoryCurrency(project.root, project.identity.id)]);
   const state = readProjectState(project);
-  const runs = listRuns(project, limit).filter(meaningfulRun);
+  const runs = recentMeaningfulRuns(project, limit);
   const recentEvidence = runs.map((record) => ({
     runId: record.id, command: record.command, objective: record.objective,
     status: record.status.toUpperCase(), cause: record.reduction?.cause || null,

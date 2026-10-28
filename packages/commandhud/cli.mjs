@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
-import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastMeaningfulRun, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 Run from any Git repository:
@@ -572,8 +572,8 @@ async function main() {
     return;
   }
   if (command === 'handoff') {
-    const record = lastRun(project);
-    if (!record) throw new Error('No recorded run exists for this project.');
+    const record = lastMeaningfulRun(project);
+    if (!record) throw new Error('No recorded run exists for this repository checkout with a meaningful operation.');
     const context = await buildCurrentOperationContext(project, record);
     if (options.json) return console.log(JSON.stringify({ runId: record.id, ...context }, null, 2));
     const handoff = context.handoff;

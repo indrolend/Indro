@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
+import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lastMeaningfulRun, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -1723,9 +1723,12 @@ test('continuation reports current success, current failure, and stale evidence 
   assert.equal(value.workingState.objective, null);
   assert.equal(value.workingState.frontier, null);
   const pass = await runCommand(project, [process.execPath, '-e', 'console.log("ok")'], { stream: false });
+  await doctor(project);
   value = await continuation(project);
   assert.equal(value.lastMeaningfulRun.runId, pass.id);
   assert.equal(value.lastMeaningfulRun.evidence, 'CURRENT');
+  assert.equal(value.recentEvidence.length, 1);
+  assert.equal(lastMeaningfulRun(project).id, pass.id);
   const fail = await runCommand(project, [process.execPath, '-e', 'console.error("Error: fixture"); process.exit(4)'], { stream: false });
   value = await continuation(project);
   assert.equal(value.lastFailure.runId, fail.id);
@@ -1734,4 +1737,18 @@ test('continuation reports current success, current failure, and stale evidence 
   value = await continuation(project);
   assert.equal(value.recentEvidence[0].evidence, 'STALE');
   assert.equal(value.counts.stale, 2);
+});
+
+test('continuation and handoff selection ignore another checkout sharing project evidence', async () => {
+  const project = await fixtureProject();
+  const current = await runCommand(project, [process.execPath, '-e', 'console.log("current checkout")'], { stream: false });
+  const otherRoot = mkdtempSync(join(tmpdir(), 'commandhud-other-checkout-'));
+  execFileSync('git', ['clone', '--quiet', project.root, otherRoot]);
+  const other = await resolveProject({ cwd: otherRoot, env: { ...process.env, HUD_STATE_ROOT: project.store } });
+  const foreign = await runCommand(other, [process.execPath, '-e', 'console.log("other checkout")'], { stream: false });
+  assert.notEqual(foreign.root, project.root);
+  const value = await continuation(project);
+  assert.equal(value.lastMeaningfulRun.runId, current.id);
+  assert.equal(value.recentEvidence.some((item) => item.runId === foreign.id), false);
+  assert.equal(lastMeaningfulRun(project).id, current.id);
 });

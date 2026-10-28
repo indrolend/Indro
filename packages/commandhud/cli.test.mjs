@@ -131,6 +131,35 @@ test('global --root selects a repository before the command from outside Git', (
   }
 });
 
+test('handoff skips later diagnostic probes and remains scoped to the checkout', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-handoff-meaningful-'));
+  const state = mkdtempSync(join(tmpdir(), 'commandhud-handoff-state-'));
+  const env = { ...process.env, HUD_STATE_ROOT: state };
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const operation = spawnSync(process.execPath, [cli, 'run', '--root', root, '--quiet', '--json', '--', process.execPath, '-e', 'console.log("meaningful")'], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(operation.status, 0, operation.stderr || operation.stdout);
+    const runId = JSON.parse(operation.stdout).runId;
+    const probes = spawnSync(process.execPath, [cli, 'doctor', '--root', root, '--json'], {
+      cwd: root, encoding: 'utf8', timeout: 15_000, env,
+    });
+    assert.equal(probes.status, 0, probes.stderr || probes.stdout);
+    const handoff = spawnSync(process.execPath, [cli, 'handoff', '--root', root, '--json'], {
+      cwd: root, encoding: 'utf8', timeout: 10_000, env,
+    });
+    assert.equal(handoff.status, 0, handoff.stderr || handoff.stdout);
+    assert.equal(JSON.parse(handoff.stdout).runId, runId);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(state, { recursive: true, force: true });
+  }
+});
+
 test('hud run JSON is pure for passing and failing commands', () => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-json-route-'));
   try {
