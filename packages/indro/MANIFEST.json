@@ -237,8 +237,8 @@
     },
     {
       "path": "magic-funnel.test.mjs",
-      "bytes": 4559,
-      "sha256": "dc2f1e2b910425b568f4cb79964d93ad82b05c4d582a22180dc79ebc55f26537"
+      "bytes": 4731,
+      "sha256": "08dfc1168c1ff71729b4992a7ccc8b7aa2b4d61a498ee6da2805c63587a3e1cf"
     },
     {
       "path": "native-verify.md",
@@ -297,8 +297,8 @@
     },
     {
       "path": "runtime/MagicFunnel.psm1",
-      "bytes": 11663,
-      "sha256": "bca1e5123583f6e35944879a380477fa273182af9f48d33853435cf556e96cc1"
+      "bytes": 11892,
+      "sha256": "1ac56d13b35d95731a126804970f3bc3bdb3cb961e69aa0a0ac92cb4412ff536"
     },
     {
       "path": "runtime/ollama-playtest.py",

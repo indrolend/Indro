@@ -137,7 +137,7 @@ function Show-WorkstationFunnel {
     Write-Host '  cproj [name]     fuzzy-enter a local repository'
     Write-Host '  hudremote        status|start|stop|restart|ui for the CommandHUD Remote tunnel'
     Write-Host '  wdoctor          full workstation readiness table'
-    Write-Host '  daily            workstation readiness + INDRO/Data state and probes'
+    Write-Host '  daily [-Quick]   workstation readiness + INDRO/Data state; full mode runs probes'
 }
 
 function Test-WorkstationFunnel {
@@ -159,7 +159,10 @@ function Test-WorkstationFunnel {
 
 function Invoke-DailyDevelopment {
     [CmdletBinding()]
-    param([switch]$PassThru)
+    param(
+        [switch]$Quick,
+        [switch]$PassThru
+    )
 
     $started = [System.Diagnostics.Stopwatch]::StartNew()
     $originalLocation = (Get-Location).Path
@@ -180,15 +183,18 @@ function Invoke-DailyDevelopment {
         $stateOutput = & hud --root $project.Root state 2>&1
         $stateExit = $LASTEXITCODE
         $stateOutput | ForEach-Object { Write-Host $_ }
-        $doctorOutput = & hud --root $project.Root doctor 2>&1
-        $doctorExit = $LASTEXITCODE
-        $doctorOutput | ForEach-Object { Write-Host $_ }
+        $doctorExit = $null
+        if (-not $Quick) {
+            $doctorOutput = & hud --root $project.Root doctor 2>&1
+            $doctorExit = $LASTEXITCODE
+            $doctorOutput | ForEach-Object { Write-Host $_ }
+        }
         $results.Add([pscustomobject]@{
             Project = $project.Name
             Root = $project.Root
             StateExitCode = $stateExit
             DoctorExitCode = $doctorExit
-            Ready = $stateExit -eq 0 -and $doctorExit -eq 0
+            Ready = $stateExit -eq 0 -and ($Quick -or $doctorExit -eq 0)
         })
     }
 
@@ -200,9 +206,11 @@ function Invoke-DailyDevelopment {
     $ready = @($results | Where-Object Ready).Count
     $status = if ($ready -eq $results.Count) { 'PASS' } else { 'ATTENTION' }
     Write-Host ''
-    Write-Host ("DAILY {0} repositories={1}/{2} elapsed={3:N1}s" -f $status, $ready, $results.Count, $started.Elapsed.TotalSeconds) -ForegroundColor $(if ($status -eq 'PASS') { 'Green' } else { 'Yellow' })
+    $mode = if ($Quick) { 'quick' } else { 'full' }
+    Write-Host ("DAILY {0} mode={1} repositories={2}/{3} elapsed={4:N1}s" -f $status, $mode, $ready, $results.Count, $started.Elapsed.TotalSeconds) -ForegroundColor $(if ($status -eq 'PASS') { 'Green' } else { 'Yellow' })
     $summary = [pscustomobject]@{
         Status = $status
+        Mode = $mode
         ReadyRepositories = $ready
         RepositoryCount = $results.Count
         DurationMs = [math]::Round($started.Elapsed.TotalMilliseconds)

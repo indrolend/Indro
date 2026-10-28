@@ -72,6 +72,8 @@ test('versioned Magic Funnel preserves the workstation command interface without
       `$aliases = 'hud','db','dev','cdb','cdtools','cproj','magic','wdoctor','daily'`,
       `$missing = @($aliases | Where-Object { -not (Get-Alias $_ -ErrorAction SilentlyContinue) })`,
       `if ($missing.Count) { throw ('Missing aliases: ' + ($missing -join ',')) }`,
+      `$daily = Get-Command Invoke-DailyDevelopment`,
+      `if (-not $daily.Parameters.Quick -or -not $daily.Parameters.PassThru) { throw 'daily switches are missing' }`,
       `hud --root '${fixture.replaceAll("'", "''")}' state --json`,
     ].join('; ');
     const result = spawnSync(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
