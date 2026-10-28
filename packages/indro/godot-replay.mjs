@@ -96,7 +96,7 @@ export function validateReplay({ stdout, stderr = '', exitCode, captureDir, comm
   const captures = existsSync(captureDir) ? readdirSync(captureDir).filter((name) => name.toLowerCase().endsWith('.png')).sort() : [];
   if (requireCapture && captures.length !== observations.length) errors.push('CAPTURE_COUNT_MISMATCH');
   for (const [index, row] of observations.entries()) {
-    if (requireCapture && (row.frame_capture !== '1' || !captures[index])) errors.push('CAPTURE_RECORD_INVALID');
+    if (requireCapture && (row.frame_capture !== '1' || !captures[index] || !row.frame_file || path.resolve(row.frame_file) !== path.resolve(captureDir, captures[index]))) errors.push('CAPTURE_RECORD_INVALID');
     if (captures[index]) {
       const file = path.join(captureDir, captures[index]);
       if (!verifyPng(file).valid) errors.push('CAPTURE_FILE_INVALID');

@@ -13,7 +13,8 @@ function fixture(overrides = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'indro-godot-test-'));
   const captures = path.join(root, 'captures');
   mkdirSync(captures);
-  for (let index = 0; index < 3; index += 1) writeFileSync(path.join(captures, `frame-00${index}-tick-00000${index === 2 ? 1 : 0}.png`), png);
+  const captureFile = (index) => path.join(captures, `frame-00${index}-tick-00000${index === 2 ? 1 : 0}.png`);
+  for (let index = 0; index < 3; index += 1) writeFileSync(captureFile(index), png);
   const stdout = [
     'Godot Engine v4.7.2.stable.official.ed1daf0bf',
     'AGENT_PLAYTEST_READY schema=4 fixed_dt=0.016666667',
@@ -22,7 +23,10 @@ function fixture(overrides = {}) {
     'AGENT_STATE schema=4 command_id=cmd-0001 frame=1 room=1 frame_capture=1 frame_file="c.png"',
     'AGENT_ASSERT_PASS frame=1 expectations="room=1"',
     'AGENT_PLAYTEST_EOF frame=1',
-  ].join('\n');
+  ].join('\n')
+    .replace('frame_file="a.png"', `frame_file="${captureFile(0)}"`)
+    .replace('frame_file="b.png"', `frame_file="${captureFile(1)}"`)
+    .replace('frame_file="c.png"', `frame_file="${captureFile(2)}"`);
   return { stdout, stderr: '', exitCode: 0, captureDir: captures, commandsText: commands, ...overrides };
 }
 
@@ -40,4 +44,28 @@ test('rejects signature-only truncated PNG even when capture count and protocol 
   const value = fixture();
   writeFileSync(path.join(value.captureDir, 'frame-001-tick-000000.png'), Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001', 'hex'));
   assert.ok(validateReplay(value).errors.includes('CAPTURE_FILE_INVALID'));
+});
+
+test('rejects a forged capture path despite valid screenshot files', () => {
+  const value = fixture();
+  value.stdout = value.stdout.replace(/frame_file="[^"]+"/, 'frame_file="/unrelated/forged.png"');
+  assert.ok(validateReplay(value).errors.includes('CAPTURE_RECORD_INVALID'));
+});
+
+test('rejects screenshots attributed to the wrong observation', () => {
+  const value = fixture();
+  const rows = value.stdout.split('\n');
+  const first = rows.findIndex((row) => row.startsWith('AGENT_STATE '));
+  const a = rows[first].match(/frame_file="([^"]+)"/)[1];
+  const b = rows[first + 1].match(/frame_file="([^"]+)"/)[1];
+  rows[first] = rows[first].replace(a, b);
+  rows[first + 1] = rows[first + 1].replace(b, a);
+  value.stdout = rows.join('\n');
+  assert.ok(validateReplay(value).errors.includes('CAPTURE_RECORD_INVALID'));
+});
+
+test('rejects a missing capture reference despite matching screenshot count', () => {
+  const value = fixture();
+  value.stdout = value.stdout.replace(/ frame_file="[^"]+"/, '');
+  assert.ok(validateReplay(value).errors.includes('CAPTURE_RECORD_INVALID'));
 });
