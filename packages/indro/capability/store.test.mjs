@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { persistFlReceipt } from '../fl/adapter.mjs';
@@ -115,4 +115,34 @@ test('retains Paint artifact capability in Continuum and validates exact applica
   assert.deepEqual((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '12' })).issues, ['PAINT_VERSION_MISMATCH']);
   writeFileSync(artifactPath, png(321, 240));
   assert.match((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' })).issues.join(','), /EVIDENCE_WIDTH_MISMATCH|EVIDENCE_ARTIFACT_DIGEST_MISMATCH/);
+});
+
+test('changed or missing source receipt rejects FL reuse before any host probe or write', async () => {
+  const changed = fixture();
+  const before = await validateCapability(changed.id, validationOptions(changed));
+  assert.equal(before.valid, true);
+  const receiptPath = changed.retained.capability.evidence[0].receipt;
+  writeFileSync(receiptPath, readFileSync(receiptPath, 'utf8') + '\n');
+  let probes = 0;
+  let writes = 0;
+  const noProbe = { name: 'negative-control', async request() { probes++; throw new Error('UNEXPECTED_HOST_PROBE'); } };
+  const options = validationOptions(changed, { transport: noProbe });
+  const invalid = await validateCapability(changed.id, options);
+  assert.deepEqual(invalid.issues, ['SOURCE_RECEIPT_FINGERPRINT_MISMATCH']);
+  assert.equal(invalid.reusable, false);
+  await assert.rejects(
+    invokeCapability(changed.id, 0.25, {
+      ...options, authorization: 'explicit-user-write',
+      runFlCli: async () => { writes++; throw new Error('UNEXPECTED_HOST_WRITE'); },
+    }),
+    /CAPABILITY_NOT_REUSABLE:SOURCE_RECEIPT_FINGERPRINT_MISMATCH/
+  );
+  assert.equal(probes, 0);
+  assert.equal(writes, 0);
+  const missing = fixture();
+  unlinkSync(missing.retained.capability.evidence[0].receipt);
+  const unavailable = await validateCapability(missing.id, validationOptions(missing, { transport: noProbe }));
+  assert.deepEqual(unavailable.issues, ['SOURCE_RECEIPT_UNAVAILABLE']);
+  assert.equal(unavailable.reusable, false);
+  assert.equal(probes, 0);
 });
