@@ -31,3 +31,10 @@ test("terminal uses a true monospace stack and responsive chrome", () => {
   assert.match(html, /@media \(max-width: 560px\)/);
   assert.match(html, /text-overflow: ellipsis/);
 });
+
+test("OSC shell metadata cannot unconditionally overwrite transport execution state", () => {
+  assert.match(client, /if \(!decoded \|\| !connected\) return false;/);
+  assert.match(client, /executionState = "reported ready";/);
+  assert.doesNotMatch(client, /executionState = "ready";\s*renderContext\(\);/);
+  assert.match(client, /executionState = "disconnected";/);
+});

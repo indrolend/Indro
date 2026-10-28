@@ -39,12 +39,12 @@ export function contextView(context, options = {}) {
   const evidenceAvailable = options.evidenceAvailable === true;
   const execution = options.execution || "ready";
   const location = compactPath(context?.cwd, context?.repositoryRoot, options.home);
-  const repository = context?.repository || "NO REPOSITORY";
-  const branch = context?.branch || "NO BRANCH";
-  const dirty = context?.repository ? (context.dirty ? "DIRTY" : "CLEAN") : "DETACHED";
+  const repository = context?.repository ? `REPORTED ${context.repository}` : "NO REPOSITORY";
+  const branch = context?.branch ? `REPORTED ${context.branch}` : "NO BRANCH";
+  const dirty = context?.repository ? (context.dirty ? "REPORTED DIRTY" : "REPORTED CLEAN") : "DETACHED";
   const exit = context?.exitCode === null || context?.exitCode === undefined
     ? "EXIT —"
-    : `EXIT ${context.exitCode}`;
+    : `REPORTED EXIT ${context.exitCode}`;
   return Object.freeze({
     location,
     repository,
