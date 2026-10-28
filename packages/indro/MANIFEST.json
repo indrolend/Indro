@@ -112,13 +112,13 @@
     },
     {
       "path": "capability/store.mjs",
-      "bytes": 13563,
-      "sha256": "f0ff2d90672e6042a525b7993b86f6d47c65af218d78c7943e85e4a481f8cad8"
+      "bytes": 13917,
+      "sha256": "e5266fdb5066c6916c62141b89b85c9f5944665b3daef3bb755645fdb99ee9ad"
     },
     {
       "path": "capability/store.test.mjs",
-      "bytes": 8529,
-      "sha256": "369e8a76aaa85ca85654c8e07e852786718b23c9047d2b8bb8896eaaed5a7df1"
+      "bytes": 10038,
+      "sha256": "5544b24be9ffb9f401f2b07fdef52f0b8923a41f1b6d6c62c464a070a4fe2652"
     },
     {
       "path": "cli.mjs",
