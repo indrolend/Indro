@@ -295,7 +295,7 @@ socket.addEventListener("close", () => {
 });
 
 terminal.onData(data => {
-	if (data.includes("\r")) {
+	if (socket.readyState === WebSocket.OPEN && data.includes("\r")) {
 		executionState = "running";
 		renderContext();
 	}
