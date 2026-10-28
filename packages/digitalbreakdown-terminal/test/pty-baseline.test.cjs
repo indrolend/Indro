@@ -68,29 +68,38 @@ test("real WebSocket and PTY preserve shell editing and recovery", { timeout: 20
   };
 
   socket.send(JSON.stringify({ type: "resize", cols: 120, rows: 35 }));
-  const promptVisible = value => /(?:> |❯ )(?:\x1b\[[0-9;?]*[A-Za-z])*$/.test(value);
-  await waitFor(promptVisible);
-  assert.match(output, /\x1b\]777;[A-Za-z0-9+/=]+\x07/);
+  const promptCount = value => (value.match(/\x1b\]777;[A-Za-z0-9+/=]+\x07/g) || []).length;
+  await waitFor(value => promptCount(value) >= 1 && /PS [^\r\n]*> /.test(value.slice(-500)));
   const contextMatch = output.match(/\x1b\]777;([A-Za-z0-9+/=]+)\x07/);
   const context = JSON.parse(Buffer.from(contextMatch[1], "base64").toString("utf8"));
   assert.equal(context.repository, "Indro");
   assert.match(context.cwd.replaceAll("\\", "/"), /packages\/digitalbreakdown-terminal$/);
   assert.equal(typeof context.dirty, "boolean");
-  send("Write-Output $env:TERM\r");
-  await waitFor(value => value.includes("xterm-256color"));
-  send("Get-Command hud -ErrorAction Stop | Select-Object -ExpandProperty CommandType\r");
-  await waitFor(value => value.includes("Function"));
-  send("Write-Outp\t \"DB_BASELINE_α\"\r");
-  await waitFor(value => value.includes("DB_BASELINE_α"));
-  send("Write-Output \"BAD\x7f\x7f\x7fDB_EDIT_GOOD\"\r");
-  await waitFor(value => value.includes("DB_EDIT_GOOD"));
+
+  // Echoed input is not proof that a command completed. Each prompt emits a
+  // fresh OSC marker; wait for that temporal boundary before the next input.
+  const sendAndWait = async data => {
+    const before = promptCount(output);
+    send(data);
+    await waitFor(value => promptCount(value) > before);
+  };
+  await sendAndWait("Write-Output $env:TERM\r");
+  assert.match(output, /xterm-256color/);
+  await sendAndWait("Get-Command hud -ErrorAction Stop | Select-Object -ExpandProperty CommandType\r");
+  assert.match(output, /Function/);
+  await sendAndWait("Write-Outp\t \"DB_BASELINE_α\"\r");
+  assert.match(output, /DB_BASELINE_α/);
+  await sendAndWait("Write-Output \"BAD\x7f\x7f\x7fDB_EDIT_GOOD\"\r");
+  assert.match(output, /DB_EDIT_GOOD/);
   const beforeHistory = (output.match(/DB_EDIT_GOOD/g) || []).length;
-  send("\x1b[A\r");
+  send("\x1b[A");
   await waitFor(value => (value.match(/DB_EDIT_GOOD/g) || []).length > beforeHistory);
+  await sendAndWait("\r");
+  const beforeInterrupt = promptCount(output);
   send("Start-Sleep -Seconds 20\r");
   await delay(400);
   send("\x03");
-  await waitFor(value => promptVisible(value.slice(-300)));
-  send("Write-Output \"RECOVERED\"\r");
-  await waitFor(value => value.includes("RECOVERED"));
+  await waitFor(value => promptCount(value) > beforeInterrupt);
+  await sendAndWait("Write-Output \"RECOVERED\"\r");
+  assert.match(output, /RECOVERED/);
 });
