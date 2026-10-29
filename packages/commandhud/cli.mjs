@@ -643,6 +643,7 @@ async function main() {
   if (command === 'output') {
     let lastDisplayedId = null;
     let displayed = false;
+    let startedEmpty = false;
     const seenRunIds = new Set();
     const safe = (value) => String(value)
       .replaceAll('\r\n', '\n')
@@ -662,10 +663,18 @@ async function main() {
     };
     const showLatest = () => {
       const runs = listRuns(project, options.follow ? 100 : 1);
-      if (!runs.length) return;
+      if (!runs.length) {
+        if (!lastDisplayedId) startedEmpty = true;
+        return;
+      }
       if (!lastDisplayedId) {
         for (const run of runs) seenRunIds.add(run.id);
-        return showRun(runs[0]);
+        const initial = options.follow && startedEmpty ? [...runs].sort((left, right) => {
+          const time = Date.parse(left.endedAt || left.startedAt || '') - Date.parse(right.endedAt || right.startedAt || '');
+          return time || left.id.localeCompare(right.id, 'en');
+        }) : [runs[0]];
+        for (const run of initial) showRun(run);
+        return;
       }
       if (!runs.some((run) => run.id === lastDisplayedId)) {
         process.stdout.write('\n— OUTPUT GAP · more than 100 completed runs arrived before polling\n');
