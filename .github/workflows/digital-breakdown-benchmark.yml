@@ -3,6 +3,8 @@ on:
   push:
     branches: [feat/native-verification-evidence]
     paths: ['.github/workflows/digital-breakdown-benchmark.yml']
+  pull_request:
+    paths: ['.github/workflows/digital-breakdown-benchmark.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,7 +19,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: indrolend/data-game
-          ref: 18b19807333be6b1c83f0a39ae08084978285aeb
+          ref: ad659b36f83ae19d0add44d5c2273f6bbe2f25ee
           path: game
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -43,7 +45,7 @@ jobs:
             $r = Get-Content $path -Raw | ConvertFrom-Json
             @(
               '## Digital Breakdown CTest benchmark'
-              "Source: indrolend/data-game @ 18b19807333be6b1c83f0a39ae08084978285aeb"
+              "Source: indrolend/data-game @ ad659b36f83ae19d0add44d5c2273f6bbe2f25ee"
               "Reuse status: $($r.reuseStatus)"
               "Ordinary median (ms): $($r.ordinaryMedianMs)"
               "INDRO median (ms): $($r.reuseMedianMs)"
@@ -69,11 +71,11 @@ jobs:
           $raw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
           if ($LASTEXITCODE -ne 0) { throw 'Real CTest corruption probe failed to execute' }
           $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
-          if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'RECEIPT_CORRUPT' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Unexpected fail-closed result: $($result | ConvertTo-Json -Compress)" }
+          if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'RECEIPT_CORRUPT' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Unexpected fail-closed result: $($result | ConvertTo-Json -Compress)" }
           if ((Get-FileHash -LiteralPath $corrupt -Algorithm SHA256).Hash -ne $originalHash) { throw 'Original corrupt evidence was overwritten' }
           if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected append-only replacement receipt' }
           $result | ConvertTo-Json -Depth 10 | Set-Content benchmark-corruption-result.json
-          "Real 55-test CTest receipt corruption: $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "Real 57-test CTest receipt corruption: $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Prove tracked source invalidation on real CTest suite
         shell: pwsh
         run: |
@@ -88,7 +90,7 @@ jobs:
             $firstRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
             if ($LASTEXITCODE -ne 0) { throw 'Initial real-game verification failed' }
             $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw "Unexpected initial verification: $($first | ConvertTo-Json -Compress)" }
+            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw "Unexpected initial verification: $($first | ConvertTo-Json -Compress)" }
             $receipt = Join-Path $store $first.receipt
             $originalReceiptHash = (Get-FileHash -LiteralPath $receipt -Algorithm SHA256).Hash
             $reuseRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
@@ -99,11 +101,11 @@ jobs:
             $raw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
             if ($LASTEXITCODE -ne 0) { throw 'Source invalidation did not complete real CTest verification' }
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'source' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Incorrect source invalidation: $($result | ConvertTo-Json -Compress)" }
+            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'source' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Incorrect source invalidation: $($result | ConvertTo-Json -Compress)" }
             if ((Get-FileHash -LiteralPath $receipt -Algorithm SHA256).Hash -ne $originalReceiptHash) { throw 'Original verification receipt was modified' }
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected append-only source invalidation receipt' }
             $result | ConvertTo-Json -Depth 10 | Set-Content benchmark-source-invalidation-result.json
-            "Real 55-test source mutation: $($reuse.outcome) -> $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test source mutation: $($reuse.outcome) -> $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $backup -Destination $source -Force
             if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $originalSourceHash) { throw 'Disposable checkout source restoration failed' }
@@ -118,7 +120,7 @@ jobs:
           $firstRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
           if ($LASTEXITCODE -ne 0) { throw 'Initial binary provenance verification failed' }
           $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw 'Initial 55-test receipt was not reusable' }
+          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw 'Initial 57-test receipt was not reusable' }
           $receiptPath = Join-Path $store $first.receipt
           $receiptHash = (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
           $reuseRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
@@ -140,7 +142,7 @@ jobs:
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
             $postBuildHash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
             if ($result.outcome -eq 'EXECUTED') {
-              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'executables' -or $result.testCount -ne 55 -or $result.exitCode -ne 0) { throw 'Changed binary did not invalidate correctly' }
+              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'executables' -or $result.testCount -ne 57 -or $result.exitCode -ne 0) { throw 'Changed binary did not invalidate correctly' }
               $classification = 'BINARY_CHANGED_INVALIDATED'
             } elseif ($result.outcome -eq 'REUSED') {
               if ($postBuildHash -ne $originalHash) { throw 'Unsafe reuse of changed executable bytes' }
@@ -151,7 +153,7 @@ jobs:
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne $expectedReceipts) { throw 'Unexpected append-only receipt count' }
             [pscustomobject]@{ classification = $classification; result = $result; originalBinarySha256 = $originalHash; postBuildBinarySha256 = $postBuildHash } |
               ConvertTo-Json -Depth 15 | Set-Content benchmark-binary-invalidation-result.json
-            "Real 55-test binary challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test binary challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $backup -Destination $binary -Force
             if ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable binary restoration failed' }
@@ -166,7 +168,7 @@ jobs:
           $firstRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
           if ($LASTEXITCODE -ne 0) { throw 'Initial build graph verification failed' }
           $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw 'Initial 55-test graph receipt was not reusable' }
+          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw 'Initial 57-test graph receipt was not reusable' }
           $receiptPath = Join-Path $store $first.receipt
           $receiptHash = (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
           $reuseRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
@@ -192,7 +194,7 @@ jobs:
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
             $postBuildHash = (Get-FileHash -LiteralPath $graph.FullName -Algorithm SHA256).Hash
             if ($result.outcome -eq 'EXECUTED') {
-              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'buildGraph' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw 'Changed generated build graph did not invalidate correctly' }
+              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'buildGraph' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw 'Changed generated build graph did not invalidate correctly' }
               $classification = 'BUILD_GRAPH_CHANGED_INVALIDATED'
             } elseif ($result.outcome -eq 'REUSED') {
               if ($postBuildHash -ne $originalHash -or $result.receipt -ne $first.receipt) { throw 'Unsafe reuse of changed generated build graph' }
@@ -203,7 +205,7 @@ jobs:
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne $expectedReceipts) { throw 'Unexpected append-only graph receipt count' }
             [pscustomobject]@{ classification = $classification; result = $result; originalGraphSha256 = $originalHash; postBuildGraphSha256 = $postBuildHash; graphPath = $relativeGraph } |
               ConvertTo-Json -Depth 15 | Set-Content benchmark-graph-invalidation-result.json
-            "Real 55-test generated build graph challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test generated build graph challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $backup -Destination $graph.FullName -Force
             if ((Get-FileHash -LiteralPath $graph.FullName -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable build graph restoration failed' }
@@ -242,11 +244,102 @@ jobs:
               $negative = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
               if ($LASTEXITCODE -eq 0 -or $negative -notmatch 'MODEL_VALIDATION_FAILED') { throw 'External runtime dependency not causally observed' }
             } finally { [IO.File]::WriteAllBytes($external, $modelBytes) }
+            # Deliberately omit a real external test dependency. Future fail-closed behavior is valid.
+            $omissionStore = Join-Path $env:GITHUB_WORKSPACE 'benchmark-runtime-omission'
+            $omissionArgs = @('packages/indro/cli.mjs','verify-native','--root',$game,'--build',$build,'--store',$omissionStore,'--configuration','Release','--declare-runtime-closure')
+            $omissionFirstRaw = node @omissionArgs
+            if ($LASTEXITCODE -ne 0) { throw 'Omission-control initial CTest failed' }
+            $omissionFirst = $omissionFirstRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($omissionFirst.outcome -ne 'EXECUTED' -or $omissionFirst.testCount -ne 57) { throw 'Omission-control baseline invalid' }
+            $omissionReceiptPath = Join-Path $omissionStore $omissionFirst.receipt
+            $omissionReceiptHash = (Get-FileHash -LiteralPath $omissionReceiptPath -Algorithm SHA256).Hash
+            $omissionBefore = Get-Content -LiteralPath $omissionReceiptPath -Raw | ConvertFrom-Json
+            if (@($omissionBefore.snapshot.inputs.runtime).Count -ne 0) { throw 'Omission-control accidentally declared runtime file' }
+            $omissionUnchangedRaw = node @omissionArgs
+            if ($LASTEXITCODE -ne 0) { throw 'Omission-control unchanged reuse failed' }
+            $omissionUnchanged = $omissionUnchangedRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($omissionUnchanged.outcome -ne 'REUSED') { throw 'Omission-control unchanged case did not reuse' }
+            [IO.File]::WriteAllBytes($external, $broken)
+            try {
+              $omissionChangedRaw = node @omissionArgs
+              $omissionExit = $LASTEXITCODE
+              $omissionChanged = $omissionChangedRaw | Select-Object -Last 1 | ConvertFrom-Json
+              $classification = if ($omissionChanged.outcome -eq 'REUSED' -and $omissionExit -eq 0) {
+                'FALSE_REUSE_UNDECLARED_RUNTIME'
+              } elseif ($omissionChanged.outcome -eq 'FAILED' -and $omissionExit -eq 1) {
+                'FAIL_CLOSED_REEXECUTED'
+              } else { throw "Unexpected omission-control outcome: $($omissionChanged | ConvertTo-Json -Compress)" }
+              if ($classification -eq 'FALSE_REUSE_UNDECLARED_RUNTIME' -and $omissionChanged.receipt -ne $omissionFirst.receipt) { throw 'False reuse did not retain original receipt' }
+              if ((Get-FileHash -LiteralPath $omissionReceiptPath -Algorithm SHA256).Hash -ne $omissionReceiptHash) { throw 'Omission-control mutated original evidence' }
+              # Bounded Windows OS-level file-access inventory. This is diagnostic only:
+              # a missing or unsupported audit must never be interpreted as runtime closure.
+              $audit = [ordered]@{ status = 'UNAVAILABLE'; controlRead = $false; testRead = $false; undeclaredRuntime = $true; error = $null }
+              $directRan = $false
+              $auditAdded = $false
+              $policyEnabled = $false
+              try {
+                $sid = (whoami /user /fo csv | ConvertFrom-Csv | Select-Object -First 1).SID
+                if (-not $sid) { throw 'Unable to resolve runner SID' }
+                $auditUser = '{' + $sid + '}'
+                $previousPolicy = auditpol /get /subcategory:'File System' /r | Out-String
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect file auditing policy' }
+                if ($previousPolicy -notmatch 'Success') {
+                  auditpol /set /subcategory:'File System' /success:enable | Out-Null
+                  if ($LASTEXITCODE -ne 0) { throw 'Cannot enable file auditing' }
+                  $policyEnabled = $true
+                }
+                auditpol /resourceSACL /set /type:File /user:$auditUser /success /access:FR | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot install global file-read SACL' }
+                $auditAdded = $true
+                $since = (Get-Date).AddSeconds(-1)
+                [void][IO.File]::ReadAllBytes($external)
+                $direct = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
+                $directExit = $LASTEXITCODE
+                $directRan = $true
+                $plan = ctest --test-dir $build -C Release --show-only=json-v1 | ConvertFrom-Json
+                $test = @($plan.tests | Where-Object { $_.name -eq 'ModelDataTest' })
+                if ($test.Count -ne 1 -or -not $test[0].command[0]) { throw 'Cannot identify ModelDataTest executable' }
+                $testExe = [IO.Path]::GetFullPath([string]$test[0].command[0])
+                $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4663; StartTime = $since } -ErrorAction Stop)
+                foreach ($event in $events) {
+                  [xml]$xml = $event.ToXml()
+                  $fields = @{}
+                  foreach ($field in $xml.Event.EventData.Data) { $fields[[string]$field.Name] = [string]$field.'#text' }
+                  if ($fields.ObjectName -ine $external) { continue }
+                  if ($fields.ProcessName -match 'pwsh.exe$') { $audit.controlRead = $true }
+                  if ($fields.ProcessName -ieq $testExe) { $audit.testRead = $true }
+                }
+                $audit.status = if ($audit.controlRead -and $audit.testRead) { 'OBSERVED_UNDECLARED_RUNTIME' } else { 'INCOMPLETE_TRACE' }
+              } catch {
+                $audit.status = 'UNAVAILABLE_OR_INCOMPLETE'
+                $audit.error = $_.Exception.Message
+              } finally {
+                if ($auditAdded) { auditpol /resourceSACL /remove /type:File /user:$auditUser | Out-Null }
+                if ($policyEnabled) { auditpol /set /subcategory:'File System' /success:disable | Out-Null }
+              }
+              if (-not $directRan) {
+                $direct = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
+                $directExit = $LASTEXITCODE
+              }
+              if ($directExit -eq 0 -or $direct -notmatch 'MODEL_VALIDATION_FAILED') { throw 'Omitted dependency did not change actual test outcome' }
+              $audit | ConvertTo-Json -Depth 5 | Set-Content benchmark-runtime-access-audit.json
+              "Windows file-access inventory: $($audit.status) (known read=$($audit.controlRead), CTest read=$($audit.testRead))" | Add-Content $env:GITHUB_STEP_SUMMARY
+              [pscustomobject]@{
+                classification = $classification
+                verification = $omissionChanged
+                directCTest = 'MODEL_VALIDATION_FAILED'
+                declaredRuntimeFiles = @($omissionBefore.snapshot.inputs.runtime).Count
+                originalReceiptPreserved = $true
+                sourceFingerprint = $omissionBefore.snapshot.inputs.source
+                limitation = 'Operator falsely declared closure; no automatic dependency discovery'
+              } | ConvertTo-Json -Depth 12 | Set-Content benchmark-runtime-omission-result.json
+              "Undeclared real model dependency: $classification (direct ModelDataTest fails)" | Add-Content $env:GITHUB_STEP_SUMMARY
+            } finally { [IO.File]::WriteAllBytes($external, $modelBytes) }
             $args = @('packages/indro/cli.mjs','verify-native','--root',$game,'--build',$build,'--store',$store,'--configuration','Release','--runtime-file',$external,'--declare-runtime-closure')
             $firstRaw = node @args
             if ($LASTEXITCODE -ne 0) { throw 'Initial runtime-declared CTest failed' }
             $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw 'Expected reusable 55-test baseline' }
+            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw 'Expected reusable 57-test baseline' }
             $receiptPath = Join-Path $store $first.receipt
             $receiptHash = (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
             $before = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
@@ -262,14 +355,14 @@ jobs:
             $raw = node @args
             if ($LASTEXITCODE -ne 0) { throw 'External-runtime invalidation CTest failed' }
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'runtime' -or @($result.changedInputs) -contains 'source' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Runtime-only invalidation failed: $($result | ConvertTo-Json -Compress)" }
+            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'runtime' -or @($result.changedInputs) -contains 'source' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Runtime-only invalidation failed: $($result | ConvertTo-Json -Compress)" }
             if ((Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash -ne $receiptHash) { throw 'Prior receipt mutated' }
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected appended runtime receipt' }
             $after = Get-Content -LiteralPath (Join-Path $store $result.receipt) -Raw | ConvertFrom-Json
             if ($after.snapshot.inputs.source -ne $before.snapshot.inputs.source) { throw 'Runtime experiment unexpectedly changed Git source fingerprint' }
             [pscustomobject]@{ negativeControl = 'MODEL_VALIDATION_FAILED'; result = $result; runtimeFile = $external; runtimeSha256Before = $before.snapshot.inputs.runtime[0].sha256; runtimeSha256After = $after.snapshot.inputs.runtime[0].sha256 } |
               ConvertTo-Json -Depth 12 | Set-Content benchmark-runtime-invalidation-result.json
-            "Real 55-test external runtime dependency: observed -> REUSED -> INPUT_CHANGED(runtime) -> EXECUTED" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test external runtime dependency: observed -> REUSED -> INPUT_CHANGED(runtime) -> EXECUTED" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $cmakeBackup -Destination $cmakeFile -Force
             if ((Get-FileHash -LiteralPath $cmakeFile -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable CMake source restoration failed' }
@@ -294,4 +387,7 @@ jobs:
             benchmark-graph-invalidation/*.json
             benchmark-runtime-invalidation-result.json
             benchmark-runtime-invalidation/*.json
+            benchmark-runtime-omission-result.json
+            benchmark-runtime-access-audit.json
+            benchmark-runtime-omission/*.json
           if-no-files-found: warn
