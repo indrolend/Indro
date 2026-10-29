@@ -118,7 +118,7 @@ jobs:
           name: ndra-m4-total-cost
           path: ndra-m4-evidence/
           if-no-files-found: warn
-real-repository-counterbalanced:
+  real-repository-counterbalanced:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
