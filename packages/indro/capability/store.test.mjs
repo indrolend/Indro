@@ -219,3 +219,72 @@ test('retained FL invocation carries the verified parameter name to the host wri
   assert.equal(result.code, 0);
   assert.equal(received, 'Grain spacing');
 });
+
+test('fresh-session retained reuse versus successful no-memory discovery measures total host cost', () => {
+  const f = fixture();
+  const moduleUrl = new URL('./store.mjs', import.meta.url).href;
+  const childSource = `
+    import { invokeCapability } from ${JSON.stringify(moduleUrl)};
+    const [capabilityRoot, mailbox, id, sessionText, mode] = process.argv.slice(1);
+    const session = JSON.parse(sessionText);
+    let probes = 0, writes = 0, value = 0.5;
+    const transport = { name: 'cost-fixture', async request(operation) {
+      probes++;
+      const result = operation === 'status' ? { selected: { channel: 5 } } :
+        operation === 'plugins.list' ? { plugins: [{ channel: 5, plugin_name: 'Fruity granulizer', plugin_valid: true }] } :
+        operation === 'plugin.params' ? { parameters: [{ index: 2, name: 'Grain spacing', value }] } :
+        operation === 'plugin.get' ? { value } : {};
+      return { response: { result } };
+    } };
+    const write = async (args, out) => {
+      if (args.join(' ') !== 'plugin set --channel 5 --param 2 --value 0.25 --verify --json') throw Error('WRONG_TARGET');
+      writes++; value = 0.25;
+      out(JSON.stringify({ transaction: { verdict: 'STATE_CONFIRMED', state_transition_observed: true } }));
+      return 0;
+    };
+    const started = process.hrtime.bigint();
+    let code, verdict;
+    if (mode === 'retained') {
+      const result = await invokeCapability(id, 0.25, { capabilityRoot, mailbox,
+        discoverSession: () => session, transport, authorization: 'explicit-user-write', runFlCli: write });
+      code = result.code; verdict = result.result.transaction.verdict;
+    } else {
+      const status = (await transport.request('status')).response.result;
+      const plugins = (await transport.request('plugins.list')).response.result.plugins
+        .filter(x => x.plugin_name === 'Fruity granulizer');
+      if (plugins.length !== 1) throw Error('AMBIGUOUS_PLUGIN');
+      const params = (await transport.request('plugin.params')).response.result.parameters
+        .filter(x => x.name === 'Grain spacing');
+      if (params.length !== 1) throw Error('AMBIGUOUS_PARAMETER');
+      const output = [];
+      code = await write(['plugin', 'set', '--channel', String(plugins[0].channel),
+        '--param', String(params[0].index), '--value', '0.25', '--verify', '--json'], x => output.push(x));
+      verdict = JSON.parse(output.at(-1)).transaction.verdict;
+      if (status.selected.channel !== 5) throw Error('WRONG_SELECTED_CHANNEL');
+    }
+    const observed = (await transport.request('plugin.get')).response.result.value;
+    const elapsed_ms = Number(process.hrtime.bigint() - started) / 1e6;
+    console.log(JSON.stringify({ mode, code, verdict, probes, writes, observed, elapsed_ms }));
+  `;
+  const run = mode => {
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource,
+      f.options.capabilityRoot, f.mailbox, f.id, JSON.stringify(f.session), mode], { encoding: 'utf8' });
+    assert.equal(child.status, 0, child.stderr);
+    return JSON.parse(child.stdout.trim());
+  };
+  const retained = Array.from({ length: 5 }, () => run('retained'));
+  const baseline = Array.from({ length: 5 }, () => run('baseline'));
+  for (const result of [...retained, ...baseline]) {
+    assert.equal(result.code, 0);
+    assert.equal(result.verdict, 'STATE_CONFIRMED');
+    assert.equal(result.observed, 0.25);
+    assert.equal(result.probes, 4);
+    assert.equal(result.writes, 1);
+  }
+  const median = values => values.map(x => x.elapsed_ms).sort((a, b) => a - b)[2];
+  console.log('M2_CONTROLLED_COST ' + JSON.stringify({
+    retained_median_ms: median(retained), no_memory_median_ms: median(baseline),
+    retained_probes: 4, no_memory_probes: 4, retained_writes: 1, no_memory_writes: 1,
+    limitation: 'simulated host and write; timing is not a live FL Studio benchmark'
+  }));
+});
