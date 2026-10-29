@@ -439,13 +439,12 @@ test('hud output --follow covers 101 completions after running-only history with
       writeFileSync(join(directory, 'run.json'), JSON.stringify(record));
       return record;
     };
+    for (let i = 0; i < 100; i++) makeRecord(i, 'running');
     follower = spawn(process.execPath, [cli, 'output', '--follow'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     follower.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     follower.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    for (let i = 0; i < 100; i++) makeRecord(i, 'running');
     await new Promise((resolve) => setTimeout(resolve, 1800));
     assert.doesNotMatch(stdout, /OUTPUT GAP|OUTPUT COVERAGE UNCERTAIN/);
     for (let i = 0; i < 100; i++) makeRecord(i, 'pass');
