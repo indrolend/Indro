@@ -271,8 +271,59 @@ jobs:
               } else { throw "Unexpected omission-control outcome: $($omissionChanged | ConvertTo-Json -Compress)" }
               if ($classification -eq 'FALSE_REUSE_UNDECLARED_RUNTIME' -and $omissionChanged.receipt -ne $omissionFirst.receipt) { throw 'False reuse did not retain original receipt' }
               if ((Get-FileHash -LiteralPath $omissionReceiptPath -Algorithm SHA256).Hash -ne $omissionReceiptHash) { throw 'Omission-control mutated original evidence' }
-              $direct = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
-              if ($LASTEXITCODE -eq 0 -or $direct -notmatch 'MODEL_VALIDATION_FAILED') { throw 'Omitted dependency did not change actual test outcome' }
+              # Bounded Windows OS-level file-access inventory. This is diagnostic only:
+              # a missing or unsupported audit must never be interpreted as runtime closure.
+              $audit = [ordered]@{ status = 'UNAVAILABLE'; controlRead = $false; testRead = $false; undeclaredRuntime = $true; error = $null }
+              $directRan = $false
+              $auditAdded = $false
+              $policyEnabled = $false
+              try {
+                $sid = (whoami /user /fo csv | ConvertFrom-Csv | Select-Object -First 1).SID
+                if (-not $sid) { throw 'Unable to resolve runner SID' }
+                $auditUser = '{' + $sid + '}'
+                $previousPolicy = auditpol /get /subcategory:'File System' /r | Out-String
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect file auditing policy' }
+                if ($previousPolicy -notmatch 'Success') {
+                  auditpol /set /subcategory:'File System' /success:enable | Out-Null
+                  if ($LASTEXITCODE -ne 0) { throw 'Cannot enable file auditing' }
+                  $policyEnabled = $true
+                }
+                auditpol /resourceSACL /set /type:File /user:$auditUser /success /access:FR | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot install global file-read SACL' }
+                $auditAdded = $true
+                $since = (Get-Date).AddSeconds(-1)
+                [void][IO.File]::ReadAllBytes($external)
+                $direct = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
+                $directExit = $LASTEXITCODE
+                $directRan = $true
+                $plan = ctest --test-dir $build -C Release --show-only=json-v1 | ConvertFrom-Json
+                $test = @($plan.tests | Where-Object { $_.name -eq 'ModelDataTest' })
+                if ($test.Count -ne 1 -or -not $test[0].command[0]) { throw 'Cannot identify ModelDataTest executable' }
+                $testExe = [IO.Path]::GetFullPath([string]$test[0].command[0])
+                $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4663; StartTime = $since } -ErrorAction Stop)
+                foreach ($event in $events) {
+                  [xml]$xml = $event.ToXml()
+                  $fields = @{}
+                  foreach ($field in $xml.Event.EventData.Data) { $fields[[string]$field.Name] = [string]$field.'#text' }
+                  if ($fields.ObjectName -ine $external) { continue }
+                  if ($fields.ProcessName -match 'pwsh.exe$') { $audit.controlRead = $true }
+                  if ($fields.ProcessName -ieq $testExe) { $audit.testRead = $true }
+                }
+                $audit.status = if ($audit.controlRead -and $audit.testRead) { 'OBSERVED_UNDECLARED_RUNTIME' } else { 'INCOMPLETE_TRACE' }
+              } catch {
+                $audit.status = 'UNAVAILABLE_OR_INCOMPLETE'
+                $audit.error = $_.Exception.Message
+              } finally {
+                if ($auditAdded) { auditpol /resourceSACL /remove /type:File /user:$auditUser | Out-Null }
+                if ($policyEnabled) { auditpol /set /subcategory:'File System' /success:disable | Out-Null }
+              }
+              if (-not $directRan) {
+                $direct = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
+                $directExit = $LASTEXITCODE
+              }
+              if ($directExit -eq 0 -or $direct -notmatch 'MODEL_VALIDATION_FAILED') { throw 'Omitted dependency did not change actual test outcome' }
+              $audit | ConvertTo-Json -Depth 5 | Set-Content benchmark-runtime-access-audit.json
+              "Windows file-access inventory: $($audit.status) (known read=$($audit.controlRead), CTest read=$($audit.testRead))" | Add-Content $env:GITHUB_STEP_SUMMARY
               [pscustomobject]@{
                 classification = $classification
                 verification = $omissionChanged
@@ -337,5 +388,6 @@ jobs:
             benchmark-runtime-invalidation-result.json
             benchmark-runtime-invalidation/*.json
             benchmark-runtime-omission-result.json
+            benchmark-runtime-access-audit.json
             benchmark-runtime-omission/*.json
           if-no-files-found: warn
