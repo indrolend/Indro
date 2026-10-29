@@ -250,3 +250,147 @@ jobs:
           name: ndra-m4-real-repository-cost
           path: ndra-m4-real-evidence/
           if-no-files-found: warn
+
+  real-counterexample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out pinned INDRO source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify existing NDRA semantic and safety controls
+        run: python3 packages/indro/tools/test-ndra-repo-gauntlet.py
+      - name: Compare real upstream counterexample with audit-inclusive cost
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, runpy, subprocess, sys, time
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "indro-ndra-m4-counterexample"
+          root.mkdir(parents=True, exist_ok=True)
+          repo = root / "algorithms"
+          sha = "a6831c898a12e568c2e611d457dd71bd89488ce2"
+          start = time.perf_counter_ns()
+          subprocess.run(["git", "clone", "--quiet", "https://github.com/TheAlgorithms/Python.git", str(repo)], check=True, timeout=180)
+          subprocess.run(["git", "-C", str(repo), "checkout", "--quiet", "--detach", sha], check=True)
+          def git(*args):
+              return subprocess.check_output(["git", "-C", str(repo), *args], text=True).strip()
+          assert git("rev-parse", "HEAD") == sha
+          assert not git("status", "--porcelain")
+          parent = git("rev-parse", "HEAD^")
+          assert "maths/greatest_common_divisor.py" in git("diff", "--name-only", parent, sha)
+          clone_ms = (time.perf_counter_ns() - start) / 1e6
+          source = pathlib.Path("packages/indro/tools/ndra_repo_gauntlet.py").read_text()
+          parser_needle = 'p.add_argument("--repos",nargs="+",choices=sorted(REPOS)'
+          order_needle = 'for strategy in ("full","exact-cache","ndra-proof-reuse"):'
+          assert source.count(parser_needle) == source.count(order_needle) == 1
+          source = source.replace(parser_needle, 'p.add_argument("--repos",nargs="+",choices=sorted((*REPOS,"algorithms"))', 1)
+          orders = [
+              ("full", "exact-cache", "ndra-proof-reuse"),
+              ("exact-cache", "ndra-proof-reuse", "full"),
+              ("ndra-proof-reuse", "full", "exact-cache"),
+          ]
+          evidence = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "ndra-m4-counterexample-evidence"
+          evidence.mkdir(exist_ok=True)
+          rotations = []
+          semantic_reference = None
+          for index, order in enumerate(orders):
+              script = root / f"ndra-order-{index}.py"
+              script.write_text(source.replace(order_needle, f"for strategy in {order!r}:", 1))
+              output = evidence / f"rotation-{index}"
+              cmd = [sys.executable, str(script), "--repos", "algorithms",
+                     "--workspace", str(root), "--output", str(output),
+                     "--history", "1", "--max-inputs", "256", "--trials", "5"]
+              started = time.perf_counter_ns()
+              subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=180)
+              wall_ms = (time.perf_counter_ns() - started) / 1e6
+              report = json.loads((output / "results.json").read_text())
+              assert report["repositories"][0]["head"] == sha
+              assert report["repositories"][0]["adjacent_pairs"] == 1
+              assert report["audit"]["false_skips"] == 0
+              assert report["audit"]["all_changed_functions_accounted"]
+              rows = report["comparisons"]
+              gcd = [r for r in rows if r["function_before"] == "greatest_common_divisor"
+                     and r["function_after"] == "greatest_common_divisor"]
+              assert len(gcd) == 1, gcd
+              row = gcd[0]
+              assert row["verdict"] == "COUNTEREXAMPLE", row
+              assert row["witness"]["arguments"] == {"a": 0, "b": -2}, row["witness"]
+              assert row["witness"]["before"] == {"kind": "return", "value": -2}
+              assert row["witness"]["after"] == {"kind": "return", "value": 2}
+              semantics = json.dumps([{k: r.get(k) for k in
+                  ("repo", "before", "after", "function_before", "function_after",
+                   "before_source_hash", "after_source_hash", "verdict", "reason", "witness")}
+                  for r in rows], sort_keys=True)
+              if semantic_reference is None:
+                  semantic_reference = semantics
+              else:
+                  assert semantics == semantic_reference, "order changed semantic results"
+              metrics = {}
+              for name, data in report["benchmark"].items():
+                  samples = data["samples"]
+                  assert len(samples) == 10 and data["false_skips"] == 0
+                  assert all(s["elapsed_ns"] > 0 and s["audit_ns_excluded"] >= 0 for s in samples)
+                  audit = sum(s["audit_ns_excluded"] for s in samples)
+                  assert audit == data["audit_ns_excluded"]
+                  metrics[name] = {
+                      "sample_total_ms": round(sum(s["elapsed_ns"] + s["audit_ns_excluded"] for s in samples) / 1e6, 6),
+                      "sample_audit_ms": round(audit / 1e6, 6),
+                      "evaluations": data["verification_evaluations"],
+                      "reuses": data["reuses"],
+                  }
+              rotations.append({
+                  "order": order, "wall_ms": round(wall_ms, 4),
+                  "parse_ms": round(sum(r["parse_ns"] for r in report["repositories"]) / 1e6, 4),
+                  "comparisons": len(rows), "verdicts": report["counts"]["verdicts"],
+                  "gcd_witness": row["witness"], "strategies": metrics,
+              })
+          # Independent positive/negative observation controls: run only INDRO's
+          # bounded interpreter on Git blobs; never import upstream code.
+          safe = runpy.run_path(str(root / "ndra-order-0.py"), run_name="indro_audit")
+          path = "maths/greatest_common_divisor.py"
+          before_bytes = subprocess.check_output(["git", "-C", str(repo), "show", f"{parent}:{path}"])
+          after_bytes = subprocess.check_output(["git", "-C", str(repo), "show", f"{sha}:{path}"])
+          before = safe["parse_functions"](path, before_bytes)[0]["greatest_common_divisor"]
+          after = safe["parse_functions"](path, after_bytes)[0]["greatest_common_divisor"]
+          observe = safe["observe"]
+          assert observe(before, (0, -2)) == {"kind": "return", "value": -2}
+          assert observe(after, (0, -2)) == {"kind": "return", "value": 2}
+          assert observe(before, (0, 2)) == observe(after, (0, 2)) == {"kind": "return", "value": 2}
+          assert safe["compare_functions"](before, before, 256)["verdict"] == "EQUIVALENT"
+          aggregate = {name: {
+              "sample_total_ms": round(sum(r["strategies"][name]["sample_total_ms"] for r in rotations), 6),
+              "audit_ms": round(sum(r["strategies"][name]["sample_audit_ms"] for r in rotations), 6),
+              "evaluations": sum(r["strategies"][name]["evaluations"] for r in rotations),
+              "reuses": sum(r["strategies"][name]["reuses"] for r in rotations),
+          } for name in orders[0]}
+          summary = {
+              "schema": "indro.ndra-real-counterexample-cost/v1",
+              "source": "TheAlgorithms/Python", "source_commit": sha, "parent_commit": parent,
+              "source_file": path, "source_before_sha256": hashlib.sha256(before_bytes).hexdigest(),
+              "source_after_sha256": hashlib.sha256(after_bytes).hexdigest(),
+              "clone_ms": round(clone_ms, 4), "rotations": rotations, "aggregate": aggregate,
+              "positive_control": "gcd(0,-2): before=-2, after=2",
+              "negative_controls": ["gcd(0,2): before=after=2", "identical AST: EQUIVALENT",
+                                    "zero false skips", "semantic invariance across strategy orders"],
+              "limitations": ["bounded static interpreter, not upstream runtime execution",
+                              "independent observation uses the same INDRO interpreter",
+                              "clone, parse and process wall are separately measured shared overhead"],
+          }
+          (evidence / "summary.json").write_text(json.dumps(summary, indent=2))
+          print(json.dumps({"source": sha, "verdicts": rotations[0]["verdicts"],
+                            "aggregate": aggregate, "clone_ms": summary["clone_ms"],
+                            "process_wall_ms": [r["wall_ms"] for r in rotations]}, indent=2))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## Pinned real-repository counterexample\n\n")
+              f.write("TheAlgorithms/Python gcd(0,-2): before=-2, after=2; zero false skips.\n\n")
+              f.write("| Strategy | Audit-inclusive sample total ms | Evaluations | Reuses |\n|---|---:|---:|---:|\n")
+              for name, m in aggregate.items():
+                  f.write(f"| {name} | {m['sample_total_ms']} | {m['evaluations']} | {m['reuses']} |\n")
+          PY
+      - name: Retain real counterexample and raw cost evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndra-m4-real-counterexample-cost
+          path: ndra-m4-counterexample-evidence/
+          if-no-files-found: warn
