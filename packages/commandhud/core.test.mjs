@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
+import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, projectRunOutput, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -422,6 +422,27 @@ test('recorded evidence supports raw and bounded projections without rerunning',
     { number: 1, text: 'alpha' }, { number: 2, text: 'needle' }, { number: 3, text: 'omega' },
   ]);
   assert.equal(readFileSync(marker, 'utf8'), '1');
+});
+
+test('ordered output preserves split UTF-8 across interleaved streams and rejects tampering', async () => {
+  const project = await fixtureProject();
+  const script = [
+    'process.stdout.write(Buffer.from([0xe2]));',
+    "setTimeout(() => process.stderr.write('between\\n'), 80);",
+    'setTimeout(() => process.stdout.write(Buffer.from([0x82, 0xac])), 160);',
+  ].join('');
+  const record = await runCommand(project, [process.execPath, '-e', script], { stream: false, shell: false, mode: 'probe' });
+  assert.equal(record.status, 'pass');
+  const events = readFileSync(record.outputPath, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(events.map((event) => event.stream), ['stdout', 'stderr', 'stdout']);
+  assert.deepEqual(events.filter((event) => event.stream === 'stdout').map((event) => Buffer.from(event.data, 'base64').toString('hex')), ['e2', '82ac']);
+  assert.equal(readFileSync(record.stdoutPath, 'utf8'), '€');
+  const projection = projectRunOutput(project, record.id);
+  assert.equal(projection.ordered, true);
+  assert.equal(projection.chunks.filter((chunk) => chunk.stream === 'stdout').map((chunk) => chunk.content).join(''), '€');
+  assert.equal(projection.chunks.filter((chunk) => chunk.stream === 'stderr').map((chunk) => chunk.content).join(''), 'between\n');
+  writeFileSync(record.outputPath, `${readFileSync(record.outputPath, 'utf8')}\n`);
+  assert.throws(() => projectRunOutput(project, record.id), /failed integrity verification/);
 });
 
 test('recorded evidence projections reject missing runs and invalid requests', async () => {
