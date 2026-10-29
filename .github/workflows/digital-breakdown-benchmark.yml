@@ -244,6 +244,46 @@ jobs:
               $negative = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
               if ($LASTEXITCODE -eq 0 -or $negative -notmatch 'MODEL_VALIDATION_FAILED') { throw 'External runtime dependency not causally observed' }
             } finally { [IO.File]::WriteAllBytes($external, $modelBytes) }
+            # Deliberately omit a real external test dependency. Future fail-closed behavior is valid.
+            $omissionStore = Join-Path $env:GITHUB_WORKSPACE 'benchmark-runtime-omission'
+            $omissionArgs = @('packages/indro/cli.mjs','verify-native','--root',$game,'--build',$build,'--store',$omissionStore,'--configuration','Release','--declare-runtime-closure')
+            $omissionFirstRaw = node @omissionArgs
+            if ($LASTEXITCODE -ne 0) { throw 'Omission-control initial CTest failed' }
+            $omissionFirst = $omissionFirstRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($omissionFirst.outcome -ne 'EXECUTED' -or $omissionFirst.testCount -ne 57) { throw 'Omission-control baseline invalid' }
+            $omissionReceiptPath = Join-Path $omissionStore $omissionFirst.receipt
+            $omissionReceiptHash = (Get-FileHash -LiteralPath $omissionReceiptPath -Algorithm SHA256).Hash
+            $omissionBefore = Get-Content -LiteralPath $omissionReceiptPath -Raw | ConvertFrom-Json
+            if (@($omissionBefore.snapshot.inputs.runtime).Count -ne 0) { throw 'Omission-control accidentally declared runtime file' }
+            $omissionUnchangedRaw = node @omissionArgs
+            if ($LASTEXITCODE -ne 0) { throw 'Omission-control unchanged reuse failed' }
+            $omissionUnchanged = $omissionUnchangedRaw | Select-Object -Last 1 | ConvertFrom-Json
+            if ($omissionUnchanged.outcome -ne 'REUSED') { throw 'Omission-control unchanged case did not reuse' }
+            [IO.File]::WriteAllBytes($external, $broken)
+            try {
+              $omissionChangedRaw = node @omissionArgs
+              $omissionExit = $LASTEXITCODE
+              $omissionChanged = $omissionChangedRaw | Select-Object -Last 1 | ConvertFrom-Json
+              $classification = if ($omissionChanged.outcome -eq 'REUSED' -and $omissionExit -eq 0) {
+                'FALSE_REUSE_UNDECLARED_RUNTIME'
+              } elseif ($omissionChanged.outcome -eq 'FAILED' -and $omissionExit -eq 1) {
+                'FAIL_CLOSED_REEXECUTED'
+              } else { throw "Unexpected omission-control outcome: $($omissionChanged | ConvertTo-Json -Compress)" }
+              if ($classification -eq 'FALSE_REUSE_UNDECLARED_RUNTIME' -and $omissionChanged.receipt -ne $omissionFirst.receipt) { throw 'False reuse did not retain original receipt' }
+              if ((Get-FileHash -LiteralPath $omissionReceiptPath -Algorithm SHA256).Hash -ne $omissionReceiptHash) { throw 'Omission-control mutated original evidence' }
+              $direct = ctest --test-dir $build -C Release -R '^ModelDataTest$' --output-on-failure 2>&1 | Out-String
+              if ($LASTEXITCODE -eq 0 -or $direct -notmatch 'MODEL_VALIDATION_FAILED') { throw 'Omitted dependency did not change actual test outcome' }
+              [pscustomobject]@{
+                classification = $classification
+                verification = $omissionChanged
+                directCTest = 'MODEL_VALIDATION_FAILED'
+                declaredRuntimeFiles = @($omissionBefore.snapshot.inputs.runtime).Count
+                originalReceiptPreserved = $true
+                sourceFingerprint = $omissionBefore.snapshot.inputs.source
+                limitation = 'Operator falsely declared closure; no automatic dependency discovery'
+              } | ConvertTo-Json -Depth 12 | Set-Content benchmark-runtime-omission-result.json
+              "Undeclared real model dependency: $classification (direct ModelDataTest fails)" | Add-Content $env:GITHUB_STEP_SUMMARY
+            } finally { [IO.File]::WriteAllBytes($external, $modelBytes) }
             $args = @('packages/indro/cli.mjs','verify-native','--root',$game,'--build',$build,'--store',$store,'--configuration','Release','--runtime-file',$external,'--declare-runtime-closure')
             $firstRaw = node @args
             if ($LASTEXITCODE -ne 0) { throw 'Initial runtime-declared CTest failed' }
@@ -296,4 +336,6 @@ jobs:
             benchmark-graph-invalidation/*.json
             benchmark-runtime-invalidation-result.json
             benchmark-runtime-invalidation/*.json
+            benchmark-runtime-omission-result.json
+            benchmark-runtime-omission/*.json
           if-no-files-found: warn
