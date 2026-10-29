@@ -683,6 +683,16 @@ async function main() {
     const showLatest = () => {
       let limit = options.follow ? 100 : 30;
       let records = listRuns(project, limit);
+      if (!initialized && options.follow) {
+        while (records.length === limit && records.some((run) => run.status === 'running' || run.status === 'pending') && limit < 1600) {
+          limit = Math.min(limit * 2, 1600);
+          records = listRuns(project, limit);
+        }
+        if (records.length === limit && records.some((run) => run.status === 'running' || run.status === 'pending')) {
+          process.stdout.write('\n— OUTPUT COVERAGE UNCERTAIN · startup pending history exceeds 1600 records\n');
+          coverageWarned = true;
+        }
+      }
       if (initialized && options.follow) {
         const covered = () => {
           const ids = new Set(records.map((run) => run.id));
