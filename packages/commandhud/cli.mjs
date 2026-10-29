@@ -680,7 +680,7 @@ async function main() {
       displayed = true;
     };
     const showLatest = () => {
-      const runs = listRuns(project, options.follow ? 100 : 1)
+      const runs = listRuns(project, options.follow ? 100 : 30)
         .filter((run) => run.status !== 'running' && run.status !== 'pending');
       if (!initialized) {
         initialized = true;
