@@ -3,6 +3,8 @@ on:
   push:
     branches: [feat/native-verification-evidence]
     paths: ['.github/workflows/digital-breakdown-benchmark.yml']
+  pull_request:
+    paths: ['.github/workflows/digital-breakdown-benchmark.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,7 +19,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: indrolend/data-game
-          ref: 18b19807333be6b1c83f0a39ae08084978285aeb
+          ref: ad659b36f83ae19d0add44d5c2273f6bbe2f25ee
           path: game
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -43,7 +45,7 @@ jobs:
             $r = Get-Content $path -Raw | ConvertFrom-Json
             @(
               '## Digital Breakdown CTest benchmark'
-              "Source: indrolend/data-game @ 18b19807333be6b1c83f0a39ae08084978285aeb"
+              "Source: indrolend/data-game @ ad659b36f83ae19d0add44d5c2273f6bbe2f25ee"
               "Reuse status: $($r.reuseStatus)"
               "Ordinary median (ms): $($r.ordinaryMedianMs)"
               "INDRO median (ms): $($r.reuseMedianMs)"
@@ -69,11 +71,11 @@ jobs:
           $raw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
           if ($LASTEXITCODE -ne 0) { throw 'Real CTest corruption probe failed to execute' }
           $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
-          if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'RECEIPT_CORRUPT' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Unexpected fail-closed result: $($result | ConvertTo-Json -Compress)" }
+          if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'RECEIPT_CORRUPT' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Unexpected fail-closed result: $($result | ConvertTo-Json -Compress)" }
           if ((Get-FileHash -LiteralPath $corrupt -Algorithm SHA256).Hash -ne $originalHash) { throw 'Original corrupt evidence was overwritten' }
           if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected append-only replacement receipt' }
           $result | ConvertTo-Json -Depth 10 | Set-Content benchmark-corruption-result.json
-          "Real 55-test CTest receipt corruption: $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "Real 57-test CTest receipt corruption: $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Prove tracked source invalidation on real CTest suite
         shell: pwsh
         run: |
@@ -88,7 +90,7 @@ jobs:
             $firstRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
             if ($LASTEXITCODE -ne 0) { throw 'Initial real-game verification failed' }
             $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw "Unexpected initial verification: $($first | ConvertTo-Json -Compress)" }
+            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw "Unexpected initial verification: $($first | ConvertTo-Json -Compress)" }
             $receipt = Join-Path $store $first.receipt
             $originalReceiptHash = (Get-FileHash -LiteralPath $receipt -Algorithm SHA256).Hash
             $reuseRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
@@ -99,11 +101,11 @@ jobs:
             $raw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
             if ($LASTEXITCODE -ne 0) { throw 'Source invalidation did not complete real CTest verification' }
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'source' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Incorrect source invalidation: $($result | ConvertTo-Json -Compress)" }
+            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'source' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Incorrect source invalidation: $($result | ConvertTo-Json -Compress)" }
             if ((Get-FileHash -LiteralPath $receipt -Algorithm SHA256).Hash -ne $originalReceiptHash) { throw 'Original verification receipt was modified' }
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected append-only source invalidation receipt' }
             $result | ConvertTo-Json -Depth 10 | Set-Content benchmark-source-invalidation-result.json
-            "Real 55-test source mutation: $($reuse.outcome) -> $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test source mutation: $($reuse.outcome) -> $($result.reuseDecision) -> $($result.outcome)" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $backup -Destination $source -Force
             if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $originalSourceHash) { throw 'Disposable checkout source restoration failed' }
@@ -118,7 +120,7 @@ jobs:
           $firstRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
           if ($LASTEXITCODE -ne 0) { throw 'Initial binary provenance verification failed' }
           $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw 'Initial 55-test receipt was not reusable' }
+          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw 'Initial 57-test receipt was not reusable' }
           $receiptPath = Join-Path $store $first.receipt
           $receiptHash = (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
           $reuseRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
@@ -140,7 +142,7 @@ jobs:
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
             $postBuildHash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
             if ($result.outcome -eq 'EXECUTED') {
-              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'executables' -or $result.testCount -ne 55 -or $result.exitCode -ne 0) { throw 'Changed binary did not invalidate correctly' }
+              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'executables' -or $result.testCount -ne 57 -or $result.exitCode -ne 0) { throw 'Changed binary did not invalidate correctly' }
               $classification = 'BINARY_CHANGED_INVALIDATED'
             } elseif ($result.outcome -eq 'REUSED') {
               if ($postBuildHash -ne $originalHash) { throw 'Unsafe reuse of changed executable bytes' }
@@ -151,7 +153,7 @@ jobs:
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne $expectedReceipts) { throw 'Unexpected append-only receipt count' }
             [pscustomobject]@{ classification = $classification; result = $result; originalBinarySha256 = $originalHash; postBuildBinarySha256 = $postBuildHash } |
               ConvertTo-Json -Depth 15 | Set-Content benchmark-binary-invalidation-result.json
-            "Real 55-test binary challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test binary challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $backup -Destination $binary -Force
             if ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable binary restoration failed' }
@@ -166,7 +168,7 @@ jobs:
           $firstRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
           if ($LASTEXITCODE -ne 0) { throw 'Initial build graph verification failed' }
           $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw 'Initial 55-test graph receipt was not reusable' }
+          if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw 'Initial 57-test graph receipt was not reusable' }
           $receiptPath = Join-Path $store $first.receipt
           $receiptHash = (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
           $reuseRaw = node packages/indro/cli.mjs verify-native --root $game --build $build --store $store --configuration Release --declare-runtime-closure
@@ -192,7 +194,7 @@ jobs:
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
             $postBuildHash = (Get-FileHash -LiteralPath $graph.FullName -Algorithm SHA256).Hash
             if ($result.outcome -eq 'EXECUTED') {
-              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'buildGraph' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw 'Changed generated build graph did not invalidate correctly' }
+              if ($result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'buildGraph' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw 'Changed generated build graph did not invalidate correctly' }
               $classification = 'BUILD_GRAPH_CHANGED_INVALIDATED'
             } elseif ($result.outcome -eq 'REUSED') {
               if ($postBuildHash -ne $originalHash -or $result.receipt -ne $first.receipt) { throw 'Unsafe reuse of changed generated build graph' }
@@ -203,7 +205,7 @@ jobs:
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne $expectedReceipts) { throw 'Unexpected append-only graph receipt count' }
             [pscustomobject]@{ classification = $classification; result = $result; originalGraphSha256 = $originalHash; postBuildGraphSha256 = $postBuildHash; graphPath = $relativeGraph } |
               ConvertTo-Json -Depth 15 | Set-Content benchmark-graph-invalidation-result.json
-            "Real 55-test generated build graph challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test generated build graph challenge: $classification" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $backup -Destination $graph.FullName -Force
             if ((Get-FileHash -LiteralPath $graph.FullName -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable build graph restoration failed' }
@@ -246,7 +248,7 @@ jobs:
             $firstRaw = node @args
             if ($LASTEXITCODE -ne 0) { throw 'Initial runtime-declared CTest failed' }
             $first = $firstRaw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 55 -or $first.reusable -ne $true) { throw 'Expected reusable 55-test baseline' }
+            if ($first.outcome -ne 'EXECUTED' -or $first.testCount -ne 57 -or $first.reusable -ne $true) { throw 'Expected reusable 57-test baseline' }
             $receiptPath = Join-Path $store $first.receipt
             $receiptHash = (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
             $before = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
@@ -262,14 +264,14 @@ jobs:
             $raw = node @args
             if ($LASTEXITCODE -ne 0) { throw 'External-runtime invalidation CTest failed' }
             $result = $raw | Select-Object -Last 1 | ConvertFrom-Json
-            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'runtime' -or @($result.changedInputs) -contains 'source' -or $result.testCount -ne 55 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Runtime-only invalidation failed: $($result | ConvertTo-Json -Compress)" }
+            if ($result.outcome -ne 'EXECUTED' -or $result.reuseDecision -ne 'INPUT_CHANGED' -or @($result.changedInputs) -notcontains 'runtime' -or @($result.changedInputs) -contains 'source' -or $result.testCount -ne 57 -or $result.exitCode -ne 0 -or $result.reusable -ne $true) { throw "Runtime-only invalidation failed: $($result | ConvertTo-Json -Compress)" }
             if ((Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash -ne $receiptHash) { throw 'Prior receipt mutated' }
             if (@(Get-ChildItem $store -Filter '*.json').Count -ne 2) { throw 'Expected appended runtime receipt' }
             $after = Get-Content -LiteralPath (Join-Path $store $result.receipt) -Raw | ConvertFrom-Json
             if ($after.snapshot.inputs.source -ne $before.snapshot.inputs.source) { throw 'Runtime experiment unexpectedly changed Git source fingerprint' }
             [pscustomobject]@{ negativeControl = 'MODEL_VALIDATION_FAILED'; result = $result; runtimeFile = $external; runtimeSha256Before = $before.snapshot.inputs.runtime[0].sha256; runtimeSha256After = $after.snapshot.inputs.runtime[0].sha256 } |
               ConvertTo-Json -Depth 12 | Set-Content benchmark-runtime-invalidation-result.json
-            "Real 55-test external runtime dependency: observed -> REUSED -> INPUT_CHANGED(runtime) -> EXECUTED" | Add-Content $env:GITHUB_STEP_SUMMARY
+            "Real 57-test external runtime dependency: observed -> REUSED -> INPUT_CHANGED(runtime) -> EXECUTED" | Add-Content $env:GITHUB_STEP_SUMMARY
           } finally {
             Copy-Item -LiteralPath $cmakeBackup -Destination $cmakeFile -Force
             if ((Get-FileHash -LiteralPath $cmakeFile -Algorithm SHA256).Hash -ne $originalHash) { throw 'Disposable CMake source restoration failed' }
