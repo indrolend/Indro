@@ -327,8 +327,8 @@
     },
     {
       "path": "tools/ndra_repo_gauntlet.py",
-      "bytes": 24038,
-      "sha256": "f55642618d1f6e095aed0faa754867c82522295248e5c70b46cb0a30caf4fb92"
+      "bytes": 24648,
+      "sha256": "eafccd46b678ac6b4ed07d2e9a4d84361e770ed855d269dd736ff1e72ddb6476"
     },
     {
       "path": "tools/suggest-words.py",
