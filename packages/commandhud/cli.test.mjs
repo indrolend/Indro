@@ -244,6 +244,48 @@ test('hud output --follow observes commands from an independent process', async 
   }
 });
 
+test('hud output follower retains a cold-start burst without replaying preexisting history', () => {
+  // Exercise the exact CLI dispatch with deterministic listRuns snapshots.
+  // The separate cross-process test covers actual persisted command evidence.
+  const source = readFileSync(cli, 'utf8');
+  const start = source.indexOf("  if (command === 'output') {");
+  const end = source.indexOf("  if (command === 'workflow') {", start);
+  assert.ok(start >= 0 && end > start, 'output dispatch must be present');
+  const dispatch = new Function(
+    'command', 'project', 'options', 'listRuns', 'projectRunOutput',
+    'process', 'setInterval', 'clearInterval', source.slice(start, end),
+  );
+  const A = { id: 'A', endedAt: '2026-10-28T20:00:01Z', content: 'OUTPUT_A\n' };
+  const B = { id: 'B', endedAt: '2026-10-28T20:00:02Z', content: 'OUTPUT_B\n' };
+  const C = { id: 'C', endedAt: '2026-10-28T20:00:03Z', content: 'OUTPUT_C\n' };
+  const all = [C, B, A];
+  const simulate = (initial, after, follow = true) => {
+    let runs = initial;
+    let output = '';
+    let poll;
+    dispatch(
+      'output', {}, { follow }, (project, limit) => runs.slice(0, limit),
+      (project, id) => {
+        const run = all.find((value) => value.id === id);
+        return { runId: id, status: 'pass', exitCode: 0, ordered: true, chunks: [{ content: run.content }] };
+      },
+      { stdout: { write: (chunk) => { output += chunk; } }, once() {}, exitCode: 0 },
+      (callback) => { poll = callback; return 1; }, () => {},
+    );
+    runs = after;
+    poll?.();
+    poll?.(); // polling the same snapshot must not duplicate output
+    return {
+      labels: [...output.matchAll(/^OUTPUT_([ABC])$/gm)].map((match) => match[1]),
+      completions: (output.match(/— PASS exit=0 · run:/g) || []).length,
+    };
+  };
+  assert.deepEqual(simulate([], all), { labels: ['A', 'B', 'C'], completions: 3 });
+  assert.deepEqual(simulate([A], all), { labels: ['A', 'B', 'C'], completions: 3 });
+  assert.deepEqual(simulate(all, all), { labels: ['C'], completions: 1 });
+  assert.deepEqual(simulate(all, all, false), { labels: ['C'], completions: 1 });
+});
+
 test('hud input keeps command output in evidence and prints only compact completion', () => {
   const root = mkdtempSync(join(tmpdir(), 'commandhud-input-'));
   try {
