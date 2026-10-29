@@ -118,3 +118,135 @@ jobs:
           name: ndra-m4-total-cost
           path: ndra-m4-evidence/
           if-no-files-found: warn
+real-repository-counterbalanced:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out pinned INDRO source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compare audit-inclusive cost on pinned real Python histories
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, sys, time
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "indro-ndra-m4-real"
+          root.mkdir(parents=True, exist_ok=True)
+          evidence = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "ndra-m4-real-evidence"
+          evidence.mkdir(exist_ok=True)
+          sources = {
+              "toolz": ("https://github.com/pytoolz/toolz.git", "451af60dec590a6010e2babdbf391ea8f815122f"),
+              "boltons": ("https://github.com/mahmoud/boltons.git", "d31d821d56c8f7756af9c30a864077f2e5855321"),
+          }
+          setup_start = time.perf_counter_ns()
+          for name, (url, sha) in sources.items():
+              dest = root / name
+              subprocess.run(["git", "clone", "--quiet", url, str(dest)], check=True, timeout=180)
+              subprocess.run(["git", "-C", str(dest), "checkout", "--quiet", "--detach", sha], check=True)
+              actual = subprocess.check_output(["git", "-C", str(dest), "rev-parse", "HEAD"], text=True).strip()
+              assert actual == sha, (name, actual)
+              assert not subprocess.check_output(["git", "-C", str(dest), "status", "--porcelain"], text=True).strip()
+          clone_ms = (time.perf_counter_ns() - setup_start) / 1e6
+          source = pathlib.Path("packages/indro/tools/ndra_repo_gauntlet.py").read_text()
+          needle = 'for strategy in ("full","exact-cache","ndra-proof-reuse"):'
+          assert source.count(needle) == 1, "benchmark strategy loop changed"
+          orders = [
+              ("full", "exact-cache", "ndra-proof-reuse"),
+              ("exact-cache", "ndra-proof-reuse", "full"),
+              ("ndra-proof-reuse", "full", "exact-cache"),
+          ]
+          rotations = []
+          expected_semantics = None
+          for index, order in enumerate(orders):
+              script = root / f"ndra-rotation-{index}.py"
+              script.write_text(source.replace(needle, f"for strategy in {order!r}:", 1))
+              output = evidence / f"rotation-{index}"
+              cmd = [sys.executable, str(script), "--repos", "toolz", "boltons",
+                     "--workspace", str(root), "--output", str(output),
+                     "--history", "20", "--max-inputs", "256", "--trials", "5"]
+              start = time.perf_counter_ns()
+              subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=360)
+              wall_ms = (time.perf_counter_ns() - start) / 1e6
+              report = json.loads((output / "results.json").read_text())
+              assert report["audit"]["false_skips"] == 0
+              assert report["audit"]["all_changed_functions_accounted"]
+              semantics = json.dumps([
+                  {k: row.get(k) for k in ("repo", "before", "after", "function_before",
+                      "function_after", "before_source_hash", "after_source_hash",
+                      "verdict", "reason", "witness")}
+                  for row in report["comparisons"]
+              ], sort_keys=True)
+              if expected_semantics is None:
+                  expected_semantics = semantics
+              else:
+                  assert semantics == expected_semantics, "strategy order changed semantic results"
+              metrics = {}
+              for name, data in report["benchmark"].items():
+                  samples = data["samples"]
+                  assert len(samples) == 10 and data["false_skips"] == 0
+                  assert all(s["elapsed_ns"] > 0 and s["audit_ns_excluded"] >= 0 for s in samples)
+                  exclusive = sum(s["elapsed_ns"] for s in samples)
+                  audit = sum(s["audit_ns_excluded"] for s in samples)
+                  assert audit == data["audit_ns_excluded"]
+                  metrics[name] = {
+                      "sample_total_ms": round((exclusive + audit) / 1e6, 6),
+                      "sample_audit_ms": round(audit / 1e6, 6),
+                      "verification_evaluations": data["verification_evaluations"],
+                      "reuses": data["reuses"],
+                      "samples": len(samples),
+                  }
+              rotations.append({
+                  "order": order, "wall_ms": round(wall_ms, 4),
+                  "repo_parse_ms": round(sum(r["parse_ns"] for r in report["repositories"]) / 1e6, 4),
+                  "script_setup_ms": round(report["setup_ns"] / 1e6, 4),
+                  "comparisons": len(report["comparisons"]),
+                  "exclusions": len(report["exclusions"]),
+                  "verdicts": report["counts"]["verdicts"],
+                  "strategies": metrics,
+              })
+          aggregate = {
+              name: {
+                  "sample_total_ms": round(sum(r["strategies"][name]["sample_total_ms"] for r in rotations), 6),
+                  "sample_audit_ms": round(sum(r["strategies"][name]["sample_audit_ms"] for r in rotations), 6),
+                  "evaluations": sum(r["strategies"][name]["verification_evaluations"] for r in rotations),
+                  "reuses": sum(r["strategies"][name]["reuses"] for r in rotations),
+              }
+              for name in orders[0]
+          }
+          count = rotations[0]["comparisons"]
+          status = "MEASURED" if count > 0 and aggregate["ndra-proof-reuse"]["reuses"] > 0 else "INSUFFICIENT_COMPARABLE_WORK"
+          summary = {
+              "schema": "indro.ndra-real-corpus-counterbalance/v1",
+              "status": status, "source_commits": {k: v[1] for k, v in sources.items()},
+              "history_per_repo": 20, "trials_per_rotation": 5,
+              "cost_scope": "all timed benchmark samples include audit; clone, parsing, process startup and report output separately recorded, not allocated arbitrarily to strategies",
+              "clone_ms": round(clone_ms, 4), "rotations": rotations, "aggregate": aggregate,
+              "negative_controls": {
+                  "semantic_result_mismatch_rejected": True,
+                  "audit_reconciliation_required": True,
+                  "false_skip_required_zero": True,
+              },
+              "limitations": [
+                  "fixed pinned upstream histories; static AST interpreter, not application runtime",
+                  "independent audit recomputes verification in the same implementation",
+                  "three order rotations, each with five cold/warm trials; process setup is shared across arms",
+                  "microbenchmark timings may not generalize to human investigation cost",
+              ],
+          }
+          (evidence / "summary.json").write_text(json.dumps(summary, indent=2))
+          print(json.dumps({"status": status, "comparisons": count, "aggregate": aggregate,
+                            "clone_ms": summary["clone_ms"], "wall_ms": [r["wall_ms"] for r in rotations]}, indent=2))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## Pinned real-repository NDRA cost\n\n")
+              f.write(f"Status: {status}; {count} comparisons; three counterbalanced orders. See artifact for limitations.\n\n")
+              f.write("| Strategy | Audit-inclusive sample total ms | Audit ms | Evaluations | Reuses |\n|---|---:|---:|---:|---:|\n")
+              for name, m in aggregate.items():
+                  f.write(f"| {name} | {m['sample_total_ms']} | {m['sample_audit_ms']} | {m['evaluations']} | {m['reuses']} |\n")
+          PY
+      - name: Retain pinned real-repository measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndra-m4-real-repository-cost
+          path: ndra-m4-real-evidence/
+          if-no-files-found: warn
