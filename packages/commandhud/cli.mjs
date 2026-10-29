@@ -660,29 +660,52 @@ async function main() {
   }
   if (command === 'output') {
     let lastDisplayedId = null;
+    let displayed = false;
+    let initialized = false;
+    const seenRunIds = new Set();
+    const safe = (value) => String(value)
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\\r')
+      .replaceAll('\x1b', '␛')
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, (character) => `\\x${character.charCodeAt(0).toString(16).padStart(2, '0')}`);
+    const showRun = (run) => {
+      const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
+      const content = projection.streams.map((entry) => safe(entry.content || '')).filter(Boolean).join('\n');
+      const status = `${run.status.toUpperCase()} exit=${run.exitCode ?? 'none'} · run:${run.id}`;
+      if (displayed) process.stdout.write('\n');
+      if (content) process.stdout.write(content.endsWith('\n') ? content : `${content}\n`);
+      else process.stdout.write('(no output)\n');
+      process.stdout.write(`— ${status} · legacy stream order\n`);
+      lastDisplayedId = run.id;
+      displayed = true;
+    };
     const showLatest = () => {
-      const runs = listRuns(project, 30);
-      for (const run of runs) {
-        if (run.status === 'running' || run.status === 'pending') continue;
-        const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
-        const content = projection.streams
-          .map((stream) => stream.content || '')
-          .filter((value) => value.trim().length > 0)
-          .join('\n');
-        if (!content) continue;
-        if (run.id !== lastDisplayedId) {
-          lastDisplayedId = run.id;
-          process.stdout.write((lastDisplayedId && options.follow ? '\n' : '') +
-            content + (content.endsWith('\n') ? '' : '\n'));
-        }
+      const runs = listRuns(project, options.follow ? 100 : 1)
+        .filter((run) => run.status !== 'running' && run.status !== 'pending');
+      if (!initialized) {
+        initialized = true;
+        for (const run of runs) seenRunIds.add(run.id);
+        if (runs.length) showRun(runs[0]);
         return;
+      }
+      if (lastDisplayedId && !runs.some((run) => run.id === lastDisplayedId)) {
+        process.stdout.write('\n— OUTPUT GAP · more than 100 completed runs arrived before polling\n');
+      }
+      const unseen = runs.filter((run) => !seenRunIds.has(run.id)).sort((left, right) => {
+        const time = Date.parse(left.endedAt || left.startedAt || '') - Date.parse(right.endedAt || right.startedAt || '');
+        return time || left.id.localeCompare(right.id, 'en');
+      });
+      for (const run of unseen) {
+        seenRunIds.add(run.id);
+        showRun(run);
       }
     };
     showLatest();
     if (options.follow) {
       const timer = setInterval(showLatest, 1500);
-      process.once('SIGINT', () => { clearInterval(timer); process.exit(0); });
-      process.once('SIGTERM', () => { clearInterval(timer); process.exit(0); });
+      const stop = () => { clearInterval(timer); process.exitCode = 0; };
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
     }
     return;
   }
