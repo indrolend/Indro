@@ -27,6 +27,9 @@ Language:
   indro fl plugin set --channel N --param N --value 0..1 --verify --json
   indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
   indro godot replay --scenario smoke [--capture]
+  indro remote status --json
+  indro remote doctor --json
+  indro remote recovery-plan --json
   indro ndra repo --self-test
   indro ndra repo --workspace PATH --output PATH [--repos toolz boltons ...]
 
@@ -89,6 +92,9 @@ if (command === 'help' || command === '--help' || command === '-h') {
     const { runGodotCli } = await import('./godot-replay.mjs');
     process.exitCode = await runGodotCli(args);
   }
+} else if (command === 'remote') {
+  const { runRemoteCli } = await import('./remote/cli.mjs');
+  process.exitCode = await runRemoteCli(args);
 } else if (command === 'ndra') {
   const scoped = args[0] === 'repo' && args.includes('--workspace') && args.includes('--output');
   const selfTest = args.length === 2 && args[0] === 'repo' && args[1] === '--self-test';

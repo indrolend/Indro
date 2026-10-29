@@ -122,13 +122,13 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 4388,
-      "sha256": "a92f8fdfefa3265fc456ee2be183f4c9cefcc1cc04dd7a39c7245058890ea184"
+      "bytes": 4625,
+      "sha256": "29f1350e066d2e17c0dd2ecd5992161c7c9c29aa61e440dda32420c86fe77116"
     },
     {
       "path": "cli.test.mjs",
-      "bytes": 6014,
-      "sha256": "dbaf4bda1d2bff2a2d59d7700bf0305296d2e42a7447dc5a5d92ea9a79161fd1"
+      "bytes": 6537,
+      "sha256": "2d1dbfaf218242016167fa8eabe64bcd22e2b114bac493fe9e5525b8f2eece8d"
     },
     {
       "path": "doctor.ps1",
@@ -252,8 +252,8 @@
     },
     {
       "path": "package.json",
-      "bytes": 567,
-      "sha256": "8b45511bce0b80a7bae0938636f0cb7a226a1f4e64e7a481c0622e63fadbc070"
+      "bytes": 590,
+      "sha256": "fa634e740129152922fb8b723974dc073a0f1d60144c9fb3df163a7bccc37f19"
     },
     {
       "path": "paint/artifact.mjs",
@@ -279,6 +279,21 @@
       "path": "README.md",
       "bytes": 6854,
       "sha256": "001f04c9420932d2ab529068e4d492d2de75ad0a131d0881b2bdd393f52bcd18"
+    },
+    {
+      "path": "remote/cli.mjs",
+      "bytes": 1239,
+      "sha256": "ef6fc18a2cb47ab18c3cdfeb3b4d7941891622e35ab8aca5edebaf1c360723b0"
+    },
+    {
+      "path": "remote/host.mjs",
+      "bytes": 6666,
+      "sha256": "73b69303e4922bd0cf521dedc03bd0a4d3ab55525b145c677a823ae1e1908193"
+    },
+    {
+      "path": "remote/host.test.mjs",
+      "bytes": 2015,
+      "sha256": "2e4ac39d6347bd2bff5ce9e222fac5e490ea6ad88ae8fe21825ffe2adf98656f"
     },
     {
       "path": "runtime/dbdev.ps1",

@@ -87,6 +87,17 @@ test('canonical INDRO routes Godot replay and rejects unsupported scenarios and 
   assert.match(unsupported.stderr, /supports replay only/);
 });
 
+test('canonical INDRO exposes bounded remote desktop diagnostics', () => {
+  const invoke = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  assert.match(invoke('help').stdout, /indro remote doctor/);
+  const help = invoke('remote', 'help');
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /indro remote status --json/);
+  const unsupported = invoke('remote', 'restart');
+  assert.equal(unsupported.status, 2);
+  assert.match(unsupported.stderr, /read-only/);
+});
+
 test('canonical INDRO runs bounded NDRA static self-test and rejects unscoped requests', () => {
   const invoke = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
   assert.match(invoke('help').stdout, /indro ndra repo --self-test/);

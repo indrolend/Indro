@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test ./cli.test.mjs ./native-verify.test.mjs ./benchmark-native.test.mjs ./uai/authority.test.mjs ./uai/process-priority.test.mjs ./uai/windows-process-adapter.test.mjs ./uai/assay.test.mjs ./uai/transaction.test.mjs ./workbench.test.mjs ./fl/adapter.test.mjs ./fl/cli.test.mjs ./capability/store.test.mjs ./paint/artifact.test.mjs ./godot-replay.test.mjs && python tools/test-all.py"
+    "test": "node --test ./cli.test.mjs ./native-verify.test.mjs ./benchmark-native.test.mjs ./uai/authority.test.mjs ./uai/process-priority.test.mjs ./uai/windows-process-adapter.test.mjs ./uai/assay.test.mjs ./uai/transaction.test.mjs ./workbench.test.mjs ./fl/adapter.test.mjs ./fl/cli.test.mjs ./capability/store.test.mjs ./paint/artifact.test.mjs ./godot-replay.test.mjs ./remote/host.test.mjs && python tools/test-all.py"
   },
   "engines": {
     "node": ">=20"
