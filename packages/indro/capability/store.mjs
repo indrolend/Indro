@@ -229,6 +229,7 @@ export async function invokeCapability(id, value, options = {}) {
   const invocationOptions = {
     ...options,
     expectedParameterName: validation.resolved_target.parameter_name,
+    expectedPluginName: validation.resolved_target.plugin_name,
     ...(options.validationSnapshot === true ? { validationSnapshot: validation.validation_snapshot } : {}),
   };
   const code = await (options.runFlCli ?? runFlCli)([

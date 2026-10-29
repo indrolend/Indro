@@ -126,3 +126,12 @@ test('host parameter-identity rejection prevents a stale-mapping write', async (
   assert.equal(rejected, 1);
   assert.equal(writes, 0);
 });
+
+test('retained plugin identity rejects replacement after discovery before any write', async () => {
+  const f = fixture({ plugin: 'Sytrus' });
+  const result = await run(['plugin', 'set', '--channel', '0', '--param', '2', '--value', '0.25', '--verify', '--json'],
+    { ...f, expectedPluginName: 'Fruity Granulizer', expectedParameterName: 'Grain spacing' });
+  assert.equal(result.code, 1);
+  assert.equal(result.value.error, 'WRONG_PLUGIN_IDENTITY');
+  assert.equal(f.calls.some(x => x.operation === 'plugin.set'), false);
+});

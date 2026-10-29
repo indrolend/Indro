@@ -112,8 +112,8 @@
     },
     {
       "path": "capability/store.mjs",
-      "bytes": 13994,
-      "sha256": "317cc770c40696b3b6d40b4dd66edc373ae96726f681c574dbeb252048ef814f"
+      "bytes": 14058,
+      "sha256": "f0ebea543b52aa97d94a7b331381362438e74db1f8e1a549fdee76f05fa34fe0"
     },
     {
       "path": "capability/store.test.mjs",
@@ -187,13 +187,13 @@
     },
     {
       "path": "fl/cli.mjs",
-      "bytes": 7569,
-      "sha256": "70f9085516615a24bc5829a0449be93f3ba2af21385075b326ae8f8f0b406c1f"
+      "bytes": 7724,
+      "sha256": "63425622e39ffec516b3216ee7104b7ec97c1bf66f57d884fae12e2f3dbace41"
     },
     {
       "path": "fl/cli.test.mjs",
-      "bytes": 7788,
-      "sha256": "fdf5502e3f5a39a376444542d0978aba2ec3b5b2ec12b1ca91f1176f3e7b1151"
+      "bytes": 8318,
+      "sha256": "ef033cda6d3a13f77936d59c5387f77a169c0f6185ad8f8a322e444605b03876"
     },
     {
       "path": "fl/send-trigger.ps1",
