@@ -659,10 +659,12 @@ async function main() {
     return;
   }
   if (command === 'output') {
-    let lastDisplayedId = null;
     let displayed = false;
     let initialized = false;
     const seenRunIds = new Set();
+    const observedRunIds = new Set();
+    const pendingRunIds = new Set();
+    let coverageWarned = false;
     const safe = (value) => String(value)
       .replaceAll('\r\n', '\n')
       .replaceAll('\r', '\\r')
@@ -676,20 +678,38 @@ async function main() {
       if (content) process.stdout.write(content.endsWith('\n') ? content : `${content}\n`);
       else process.stdout.write('(no output)\n');
       process.stdout.write(`— ${status} · legacy stream order\n`);
-      lastDisplayedId = run.id;
       displayed = true;
     };
     const showLatest = () => {
-      const runs = listRuns(project, options.follow ? 100 : 30)
-        .filter((run) => run.status !== 'running' && run.status !== 'pending');
+      let limit = options.follow ? 100 : 30;
+      let records = listRuns(project, limit);
+      if (initialized && options.follow) {
+        const covered = () => {
+          const ids = new Set(records.map((run) => run.id));
+          const pinnedOlderRun = records.length > 1 && records[0].id < records[1].id ? records[0].id : null;
+          return records.some((run) => observedRunIds.has(run.id) && run.id !== pinnedOlderRun)
+            && [...pendingRunIds].every((id) => ids.has(id));
+        };
+        while (records.length === limit && !covered() && limit < 1600) {
+          limit = Math.min(limit * 2, 1600);
+          records = listRuns(project, limit);
+        }
+        if (records.length === limit && !covered() && !coverageWarned) {
+          process.stdout.write('\n— OUTPUT COVERAGE UNCERTAIN · history window reached 1600 records; inspect retained history\n');
+          coverageWarned = true;
+        }
+      }
+      for (const run of records) {
+        observedRunIds.add(run.id);
+        if (run.status === 'running' || run.status === 'pending') pendingRunIds.add(run.id);
+        else pendingRunIds.delete(run.id);
+      }
+      const runs = records.filter((run) => run.status !== 'running' && run.status !== 'pending');
       if (!initialized) {
         initialized = true;
         for (const run of runs) seenRunIds.add(run.id);
         if (runs.length) showRun(runs[0]);
         return;
-      }
-      if (lastDisplayedId && !runs.some((run) => run.id === lastDisplayedId)) {
-        process.stdout.write('\n— OUTPUT GAP · more than 100 completed runs arrived before polling\n');
       }
       const unseen = runs.filter((run) => !seenRunIds.has(run.id)).sort((left, right) => {
         const time = Date.parse(left.endedAt || left.startedAt || '') - Date.parse(right.endedAt || right.startedAt || '');
