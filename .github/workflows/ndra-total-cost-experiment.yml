@@ -1,0 +1,120 @@
+name: NDRA total-cost falsifier
+on:
+  pull_request:
+    paths: ['.github/workflows/ndra-total-cost-experiment.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bounded-cost:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out pinned INDRO source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify existing NDRA safety and semantics
+        run: python3 packages/indro/tools/test-ndra-repo-gauntlet.py
+      - name: Compare full cost on disposable three-verdict repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, statistics, subprocess, sys, time
+          
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "indro-ndra-m4"
+          repo = root / "toolz"
+          repo.mkdir(parents=True, exist_ok=True)
+          def git(*args):
+              return subprocess.run(["git", "-C", str(repo), *args], check=True, text=True, capture_output=True).stdout.strip()
+          
+          setup_start = time.perf_counter_ns()
+          git("init", "-q")
+          git("config", "user.email", "ndra-fixture@example.invalid")
+          git("config", "user.name", "NDRA disposable fixture")
+          git("remote", "add", "origin", "https://example.invalid/disposable/toolz.git")
+          file = repo / "probe.py"
+          file.write_text("def equivalent(x):\n    return x + 1\n\ndef divergent(x):\n    return x + 1\n\ndef unknown(x):\n    return external(x)\n", encoding="utf-8")
+          git("add", "probe.py")
+          git("commit", "-qm", "baseline: three bounded functions")
+          before = git("rev-parse", "HEAD")
+          file.write_text("def equivalent(x):\n    return (x + 1)\n\ndef divergent(x):\n    return x + 2\n\ndef unknown(x):\n    return external(x) + 1\n", encoding="utf-8")
+          git("add", "probe.py")
+          git("commit", "-qm", "change: equivalent, counterexample, unknown")
+          after = git("rev-parse", "HEAD")
+          assert not git("status", "--porcelain")
+          fixture_setup_ns = time.perf_counter_ns() - setup_start
+          
+          output = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "ndra-m4-evidence"
+          output.mkdir(exist_ok=True)
+          cmd = [sys.executable, "packages/indro/tools/ndra_repo_gauntlet.py",
+                 "--repos", "toolz", "--workspace", str(root), "--output", str(output),
+                 "--history", "1", "--max-inputs", "256", "--trials", "15"]
+          started = time.perf_counter_ns()
+          completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+          process_wall_ns = time.perf_counter_ns() - started
+          report = json.loads((output / "results.json").read_text(encoding="utf-8"))
+          verdicts = report["counts"]["verdicts"]
+          assert verdicts == {"EQUIVALENT": 1, "COUNTEREXAMPLE": 1, "UNKNOWN": 1}, verdicts
+          assert len(report["comparisons"]) == 3
+          assert report["audit"]["false_skips"] == 0
+          assert report["audit"]["all_changed_functions_accounted"]
+          counterexample = next(r for r in report["comparisons"] if r["verdict"] == "COUNTEREXAMPLE")
+          assert counterexample["witness"]["before"] != counterexample["witness"]["after"]
+          unknown = next(r for r in report["comparisons"] if r["verdict"] == "UNKNOWN")
+          assert "unsupported" in unknown["reason"]
+          
+          costs = {}
+          for name, data in report["benchmark"].items():
+              samples = data["samples"]
+              assert len(samples) == 30, (name, len(samples))
+              assert all(s["elapsed_ns"] > 0 and s["audit_ns_excluded"] >= 0 for s in samples)
+              assert data["false_skips"] == 0
+              if name == "full":
+                  assert data["reuses"] == 0 and all(s["audit_ns_excluded"] == 0 for s in samples)
+              else:
+                  assert data["reuses"] > 0 and any(s["audit_ns_excluded"] > 0 for s in samples)
+              inclusive = [s["elapsed_ns"] + s["audit_ns_excluded"] for s in samples]
+              costs[name] = {
+                  "samples": len(samples),
+                  "reuses": data["reuses"],
+                  "verification_evaluations": data["verification_evaluations"],
+                  "reported_median_ms": round(statistics.median(s["elapsed_ns"] for s in samples) / 1e6, 5),
+                  "inclusive_median_ms": round(statistics.median(inclusive) / 1e6, 5),
+                  "total_excluding_audit_ms": round(sum(s["elapsed_ns"] for s in samples) / 1e6, 5),
+                  "total_including_audit_ms": round(sum(inclusive) / 1e6, 5),
+                  "audit_ms": round(sum(s["audit_ns_excluded"] for s in samples) / 1e6, 5),
+              }
+          
+          baseline = costs["full"]["total_including_audit_ms"]
+          for data in costs.values():
+              data["inclusive_savings_vs_full_ms"] = round(baseline - data["total_including_audit_ms"], 5)
+          
+          summary = {
+              "schema": "indro.ndra-total-cost-falsifier/v1",
+              "source_commit": os.environ.get("GITHUB_SHA"),
+              "fixture": {"before": before, "after": after, "dirty": False, "comparison_count": 3},
+              "controls": {"equivalent": True, "counterexample": True, "unknown": True, "false_skips": 0,
+                           "audit_accounted": True},
+              "cost_scope": "all 30 cold/warm samples per strategy include independent reuse audit; fixture creation and subprocess/parse/report overhead recorded separately, not attributed to one arm",
+              "fixture_setup_ms": round(fixture_setup_ns / 1e6, 5),
+              "whole_process_ms": round(process_wall_ns / 1e6, 5),
+              "source_setup_ns_label_includes_benchmark": report["setup_ns"],
+              "strategies": costs,
+          }
+          (output / "total-cost-summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+          print(json.dumps(summary, indent=2))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("## NDRA bounded full-cost falsifier\n\n")
+              f.write("All three verdicts verified; zero false skips. Independent audit cost included in the corrected comparison.\n\n")
+              f.write("| Strategy | Reported median ms | Audit-inclusive median ms | Total audit-inclusive ms |\n")
+              f.write("|---|---:|---:|---:|\n")
+              for name, data in costs.items():
+                  f.write(f"| {name} | {data['reported_median_ms']} | {data['inclusive_median_ms']} | {data['total_including_audit_ms']} |\n")
+          PY
+      - name: Retain raw report and audit-inclusive measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndra-m4-total-cost
+          path: ndra-m4-evidence/
+          if-no-files-found: warn
