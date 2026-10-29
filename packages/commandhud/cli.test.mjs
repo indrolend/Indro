@@ -407,3 +407,68 @@ test('hud output --follow reports independent completed runs exactly once', asyn
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test('hud output --follow covers 101 completions after running-only history without false gap', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-window-'));
+  let follower;
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const state = join(root, '.state');
+    const env = { ...process.env, HUD_STATE_ROOT: state };
+    const seed = spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', "console.log('seed')"], {
+      cwd: root, env, encoding: 'utf8', timeout: 20_000,
+    });
+    assert.equal(seed.status, 0, seed.stderr || seed.stdout);
+    const runRoot = join(state, 'runs', readdirSync(join(state, 'runs'))[0]);
+    const seedRecord = JSON.parse(readFileSync(join(runRoot, JSON.parse(seed.stdout).runId, 'run.json'), 'utf8'));
+    const makeRecord = (i, status) => {
+      const id = '20990101000000-' + i.toString(16).padStart(4, '0');
+      const directory = join(runRoot, id);
+      mkdirSync(directory, { recursive: true });
+      const stdoutPath = join(directory, 'stdout.log');
+      const stderrPath = join(directory, 'stderr.log');
+      writeFileSync(stdoutPath, 'window-marker-' + i + '\n');
+      writeFileSync(stderrPath, '');
+      const record = { ...seedRecord, id, status, exitCode: status === 'running' ? null : 0,
+        stdoutPath, stderrPath, startedAt: new Date(Date.UTC(2099, 0, 1, 0, 0, 0, i)).toISOString(),
+        endedAt: status === 'running' ? null : new Date(Date.UTC(2099, 0, 1, 0, 0, 0, i)).toISOString() };
+      writeFileSync(join(directory, 'run.json'), JSON.stringify(record));
+      return record;
+    };
+    follower = spawn(process.execPath, [cli, 'output', '--follow'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    follower.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    follower.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    for (let i = 0; i < 100; i++) makeRecord(i, 'running');
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+    assert.doesNotMatch(stdout, /OUTPUT GAP|OUTPUT COVERAGE UNCERTAIN/);
+    for (let i = 0; i < 100; i++) makeRecord(i, 'pass');
+    makeRecord(100, 'pass');
+    const deadline = Date.now() + 15_000;
+    const completions = () => (stdout.match(/— PASS exit=0 · run:20990101000000-/g) || []).length;
+    while (completions() < 101 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(stderr, '');
+    assert.equal(completions(), 101, stdout.slice(-2000));
+    assert.match(stdout, /window-marker-0\n/);
+    assert.match(stdout, /window-marker-100\n/);
+    assert.ok(stdout.indexOf('window-marker-0\n') < stdout.indexOf('window-marker-100\n'));
+    assert.doesNotMatch(stdout, /OUTPUT GAP|OUTPUT COVERAGE UNCERTAIN/);
+  } finally {
+    if (follower && follower.exitCode === null) {
+      await new Promise((resolve) => {
+        follower.once('exit', resolve);
+        follower.kill('SIGTERM');
+        setTimeout(() => { follower.kill('SIGKILL'); resolve(); }, 1500).unref();
+      });
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
