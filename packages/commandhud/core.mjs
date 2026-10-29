@@ -3583,6 +3583,8 @@ export function projectRunOutput(project, id) {
     throw new Error(`Recorded chronological output failed integrity verification for ${record.id}.`);
   }
   const raw = readFileSync(expectedOutputPath, 'utf8');
+  const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') };
+  const lastIndex = { stdout: -1, stderr: -1 };
   const chunks = raw.split(/\r?\n/).filter(Boolean).map((line, index) => {
     let event;
     try { event = JSON.parse(line); }
@@ -3592,8 +3594,13 @@ export function projectRunOutput(project, id) {
     }
     const decoded = Buffer.from(event.data, 'base64');
     if (decoded.toString('base64') !== event.data) throw new Error(`Recorded chronological output is corrupt for ${record.id}.`);
-    return { sequence: event.sequence, stream: event.stream, content: decoded.toString('utf8') };
+    lastIndex[event.stream] = index;
+    return { sequence: event.sequence, stream: event.stream, content: decoders[event.stream].write(decoded) };
   });
+  for (const stream of ['stdout', 'stderr']) {
+    const trailing = decoders[stream].end();
+    if (trailing && lastIndex[stream] >= 0) chunks[lastIndex[stream]].content += trailing;
+  }
   return {
     runId: record.id,
     command: record.command,
