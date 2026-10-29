@@ -226,9 +226,11 @@ export async function invokeCapability(id, value, options = {}) {
   const validation = await validateCapability(id, options);
   if (!validation.reusable) throw new Error(`CAPABILITY_NOT_REUSABLE:${validation.issues.join(',')}`);
   const output = [];
-  const invocationOptions = options.validationSnapshot === true
-    ? { ...options, validationSnapshot: validation.validation_snapshot }
-    : options;
+  const invocationOptions = {
+    ...options,
+    expectedParameterName: validation.resolved_target.parameter_name,
+    ...(options.validationSnapshot === true ? { validationSnapshot: validation.validation_snapshot } : {}),
+  };
   const code = await (options.runFlCli ?? runFlCli)([
     'plugin', 'set', '--channel', String(validation.resolved_target.channel), '--param', String(validation.resolved_target.parameter),
     '--value', String(value), '--verify', '--json'

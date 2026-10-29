@@ -156,6 +156,9 @@ def _execute(request):
         value = arguments.get("value")
         if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0.0 or value > 1.0:
             raise ValueError("VALUE_OUT_OF_RANGE")
+        expected_parameter_name = (request.get("target") or {}).get("parameter_name")
+        if expected_parameter_name is not None and expected_parameter_name != before["parameter_name"]:
+            raise ValueError("WRONG_PARAMETER_IDENTITY")
         plugins.setParamValue(float(value), parameter, channel)
         after = _parameter(channel, parameter)
         return {"before": before, "requested": value, "readback": after}

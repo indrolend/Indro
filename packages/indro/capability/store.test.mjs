@@ -204,3 +204,18 @@ test('fresh Node process reuses retained FL capability and rejects stale source 
   assert.equal(stale.probes, 0);
   assert.equal(stale.writes, 0);
 });
+
+test('retained FL invocation carries the verified parameter name to the host write boundary', async () => {
+  const f = fixture();
+  let received = null;
+  const result = await invokeCapability(f.id, 0.25, {
+    ...validationOptions(f), authorization: 'explicit-user-write',
+    runFlCli: async (_args, out, _err, dependencies) => {
+      received = dependencies.expectedParameterName;
+      out(JSON.stringify({ transaction: { verdict: 'STATE_CONFIRMED' } }));
+      return 0;
+    },
+  });
+  assert.equal(result.code, 0);
+  assert.equal(received, 'Grain spacing');
+});
