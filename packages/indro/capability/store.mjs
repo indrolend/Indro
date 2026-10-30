@@ -76,7 +76,8 @@ export function retainFlParameterCapability({ receiptPath, mailbox = defaultMail
   if (tx.capability_id !== 'fl.plugin.parameter' || !observation?.parameter_name) throw new Error('RECEIPT_NOT_COMPILABLE');
   const session = discoverSession({ mailbox });
   const slug = value => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const id = `fl.plugin.parameter.${slug(tx.target.plugin_name)}.${slug(observation.parameter_name)}`;
+  const identity = (value, caseInsensitive = false) => `${slug(value)}-${sha256(caseInsensitive ? value.toLowerCase() : value).slice(0, 16)}`;
+  const id = `fl.plugin.parameter.${identity(tx.target.plugin_name, true)}.${identity(observation.parameter_name)}`;
   const payload = {
     schema: CAPABILITY_SCHEMA,
     schema_version: 1,
