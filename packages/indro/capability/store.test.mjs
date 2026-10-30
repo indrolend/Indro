@@ -330,3 +330,18 @@ test('M2 fresh-process retained reuse and no-memory baseline execute full FL CLI
     limitation: 'controlled transport, not live FL Studio; session-A discovery and retention cost excluded'
   }));
 });
+
+test('different FL plugins sharing a parameter name remain independently addressable', () => {
+  const f = fixture({ plugin: 'Fruity granulizer', parameterName: 'Mix' });
+  const otherReceipt = persistFlReceipt({ transaction: {
+    operation_id: 'source-op-sytrus', capability_id: 'fl.plugin.parameter', verdict: 'STATE_CONFIRMED',
+    target: { session_id: 'session-1', channel: 6, plugin_name: 'Sytrus', parameter: 4 },
+    milestones: { STATE_CONFIRMED: true },
+    post_observation: { channel: 6, plugin_name: 'Sytrus', parameter: 4, parameter_name: 'Mix', value: 0.5 },
+  } }, { evidenceRoot: join(f.root, 'receipts') });
+  const other = retainFlParameterCapability({ ...f.options, receiptPath: otherReceipt.path });
+  assert.notEqual(f.id, other.capability.id, 'different plugin identities must not share a capability ID');
+  assert.deepEqual(listCapabilities(f.options).map(x => x.id).sort(), [f.id, other.capability.id].sort());
+  assert.equal(loadCapability(f.id, f.options).target.plugin_name, 'Fruity granulizer');
+  assert.equal(loadCapability(other.capability.id, f.options).target.plugin_name, 'Sytrus');
+});
