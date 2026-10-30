@@ -1,6 +1,8 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { persistFlReceipt } from '../fl/adapter.mjs';
@@ -115,4 +117,245 @@ test('retains Paint artifact capability in Continuum and validates exact applica
   assert.deepEqual((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '12' })).issues, ['PAINT_VERSION_MISMATCH']);
   writeFileSync(artifactPath, png(321, 240));
   assert.match((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' })).issues.join(','), /EVIDENCE_WIDTH_MISMATCH|EVIDENCE_ARTIFACT_DIGEST_MISMATCH/);
+});
+
+test('changed or missing source receipt rejects FL reuse before any host probe or write', async () => {
+  const changed = fixture();
+  const before = await validateCapability(changed.id, validationOptions(changed));
+  assert.equal(before.valid, true);
+  const receiptPath = changed.retained.capability.evidence[0].receipt;
+  writeFileSync(receiptPath, readFileSync(receiptPath, 'utf8') + '\n');
+  let probes = 0;
+  let writes = 0;
+  const noProbe = { name: 'negative-control', async request() { probes++; throw new Error('UNEXPECTED_HOST_PROBE'); } };
+  const options = validationOptions(changed, { transport: noProbe });
+  const invalid = await validateCapability(changed.id, options);
+  assert.deepEqual(invalid.issues, ['SOURCE_RECEIPT_FINGERPRINT_MISMATCH']);
+  assert.equal(invalid.reusable, false);
+  await assert.rejects(
+    invokeCapability(changed.id, 0.25, {
+      ...options, authorization: 'explicit-user-write',
+      runFlCli: async () => { writes++; throw new Error('UNEXPECTED_HOST_WRITE'); },
+    }),
+    /CAPABILITY_NOT_REUSABLE:SOURCE_RECEIPT_FINGERPRINT_MISMATCH/
+  );
+  assert.equal(probes, 0);
+  assert.equal(writes, 0);
+  const missing = fixture();
+  unlinkSync(missing.retained.capability.evidence[0].receipt);
+  const unavailable = await validateCapability(missing.id, validationOptions(missing, { transport: noProbe }));
+  assert.deepEqual(unavailable.issues, ['SOURCE_RECEIPT_UNAVAILABLE']);
+  assert.equal(unavailable.reusable, false);
+  assert.equal(probes, 0);
+});
+
+test('fresh Node process reuses retained FL capability and rejects stale source before simulated write', () => {
+  const f = fixture();
+  const moduleUrl = new URL('./store.mjs', import.meta.url).href;
+  const childSource = [
+    'import { invokeCapability, listCapabilities } from ' + JSON.stringify(moduleUrl) + ';',
+    'const [capabilityRoot, mailbox, id, sessionText] = process.argv.slice(1);',
+    'const session = JSON.parse(sessionText);',
+    'let probes = 0, writes = 0;',
+    'const transport = { name: "fresh-process-fixture", async request(operation) {',
+    '  probes++;',
+    '  const result = operation === "status" ? { selected: { channel: 5 } } :',
+    '    operation === "plugins.list" ? { plugins: [{ channel: 5, plugin_name: "Fruity granulizer", plugin_valid: true }] } :',
+    '    { parameters: [{ index: 2, name: "Grain spacing", value: 0.5 }] };',
+    '  return { response: { result } };',
+    '} };',
+    'try {',
+    '  const invoked = await invokeCapability(id, 0.25, {',
+    '    capabilityRoot, mailbox, discoverSession: () => session, transport, authorization: "explicit-user-write",',
+    '    runFlCli: async (args, out) => {',
+    '      writes++;',
+    '      if (args.join(" ") !== "plugin set --channel 5 --param 2 --value 0.25 --verify --json") throw new Error("WRONG_TARGET");',
+    '      out(JSON.stringify({ transaction: { verdict: "STATE_CONFIRMED", state_transition_observed: true } }));',
+    '      return 0;',
+    '    },',
+    '  });',
+    '  console.log(JSON.stringify({ code: invoked.code, verdict: invoked.result.transaction.verdict, probes, writes, ids: listCapabilities({ capabilityRoot }).map(x => x.id) }));',
+    '} catch (error) {',
+    '  console.log(JSON.stringify({ error: error.message, probes, writes, ids: listCapabilities({ capabilityRoot }).map(x => x.id) }));',
+    '  process.exitCode = 1;',
+    '}',
+  ].join('\n');
+  const run = (root = f.options.capabilityRoot) => {
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource, root, f.mailbox, f.id, JSON.stringify(f.session)], { encoding: 'utf8' });
+    assert.equal(child.error, undefined);
+    assert.ok(child.stdout.trim(), child.stderr);
+    return { status: child.status, ...JSON.parse(child.stdout.trim()) };
+  };
+  const reused = run();
+  assert.equal(reused.status, 0);
+  assert.equal(reused.verdict, 'STATE_CONFIRMED');
+  assert.equal(reused.probes, 3);
+  assert.equal(reused.writes, 1);
+  assert.deepEqual(reused.ids, [f.id]);
+  const noMemory = run(join(f.root, 'empty-capability-root'));
+  assert.equal(noMemory.status, 1);
+  assert.match(noMemory.error, /CAPABILITY_NOT_FOUND/);
+  assert.equal(noMemory.probes, 0);
+  assert.equal(noMemory.writes, 0);
+  const receiptPath = f.retained.capability.evidence[0].receipt;
+  writeFileSync(receiptPath, readFileSync(receiptPath, 'utf8') + '\n');
+  const stale = run();
+  assert.equal(stale.status, 1);
+  assert.match(stale.error, /CAPABILITY_NOT_REUSABLE:SOURCE_RECEIPT_FINGERPRINT_MISMATCH/);
+  assert.equal(stale.probes, 0);
+  assert.equal(stale.writes, 0);
+});
+
+test('retained FL invocation carries the verified parameter name to the host write boundary', async () => {
+  const f = fixture();
+  let received = null;
+  const result = await invokeCapability(f.id, 0.25, {
+    ...validationOptions(f), authorization: 'explicit-user-write',
+    runFlCli: async (_args, out, _err, dependencies) => {
+      received = dependencies.expectedParameterName;
+      out(JSON.stringify({ transaction: { verdict: 'STATE_CONFIRMED' } }));
+      return 0;
+    },
+  });
+  assert.equal(result.code, 0);
+  assert.equal(received, 'Grain spacing');
+});
+
+test('M2 fresh-process retained reuse and no-memory baseline execute full FL CLI transactions', () => {
+  const f = fixture();
+  const moduleUrl = new URL('./store.mjs', import.meta.url).href;
+  const flUrl = new URL('../fl/cli.mjs', import.meta.url).href;
+  const childSource = `
+    import { existsSync } from 'node:fs';
+    import { join } from 'node:path';
+    import { invokeCapability } from ${JSON.stringify(moduleUrl)};
+    import { runFlCli } from ${JSON.stringify(flUrl)};
+    const [capabilityRoot, mailbox, id, sessionText, mode] = process.argv.slice(1);
+    const session = JSON.parse(sessionText);
+    let value = 0.5, writes = 0, error = null, code = 1, verdict = null, persisted = false;
+    const operations = [];
+    const identity = { channel: 5, channel_name: 'Granulizer', plugin_valid: true, plugin_name: 'Fruity granulizer' };
+    const transport = { name: 'full-path-fixture', async request(operation, request = {}) {
+      operations.push(operation);
+      let result;
+      if (operation === 'status') result = { selected: { channel: 5 } };
+      else if (operation === 'plugins.list') result = { plugins: [identity] };
+      else if (operation === 'plugin.params') result = { parameters: [{ index: 2, name: 'Grain spacing', value }] };
+      else if (operation === 'plugin.inspect') result = { ...identity, plugin_name: mode === 'retained-race' ? 'Sytrus' : identity.plugin_name, parameter_count: 103 };
+      else if (operation === 'plugin.get') {
+        if (request.target?.parameter_name && request.target.parameter_name !== 'Grain spacing') throw Error('WRONG_PARAMETER');
+        result = { ...identity, parameter: 2, parameter_name: 'Grain spacing', value };
+      } else if (operation === 'plugin.set') {
+        if (request.authorization !== 'explicit-user-write' || request.target?.channel !== 5 ||
+            request.target?.parameter !== 2 || request.target?.plugin_name !== 'Fruity granulizer' ||
+            (request.target?.parameter_name && request.target.parameter_name !== 'Grain spacing')) throw Error('WRONG_WRITE_TARGET');
+        value = request.arguments.value;
+        writes++;
+        result = { value };
+      } else throw Error('UNEXPECTED_HOST_OPERATION:' + operation);
+      return { response: { result, received_unix_ms: Date.now(), accepted: true, executed: true } };
+    } };
+    const common = { capabilityRoot, mailbox, discoverSession: () => session, transport,
+      evidenceRoot: join(mailbox, '..', '..', 'execution-receipts') };
+    const started = process.hrtime.bigint();
+    try {
+      let record;
+      if (mode === 'retained' || mode === 'retained-race') {
+        const invoked = await invokeCapability(id, 0.25, { ...common, authorization: 'explicit-user-write' });
+        code = invoked.code;
+        record = invoked.result;
+      } else if (mode === 'baseline') {
+        const status = (await transport.request('status')).response.result;
+        const plugins = (await transport.request('plugins.list')).response.result.plugins
+          .filter(item => item.plugin_name === 'Fruity granulizer');
+        if (plugins.length !== 1) throw Error('AMBIGUOUS_PLUGIN');
+        const params = (await transport.request('plugin.params')).response.result.parameters
+          .filter(item => item.name === 'Grain spacing');
+        if (params.length !== 1 || status.selected.channel !== 5) throw Error('AMBIGUOUS_OR_WRONG_TARGET');
+        const output = [];
+        code = await runFlCli(['plugin', 'set', '--channel', String(plugins[0].channel),
+          '--param', String(params[0].index), '--value', '0.25', '--verify', '--json'],
+          line => output.push(line), () => {}, common);
+        record = JSON.parse(output.at(-1));
+      } else throw Error('INVALID_MODE');
+      verdict = record?.transaction?.verdict ?? null;
+      error = record?.error ?? null;
+      persisted = Boolean(record?.evidence?.path && existsSync(record.evidence.path));
+    } catch (caught) { code = 1; error = caught.message; }
+    const observed = code === 0
+      ? (await transport.request('plugin.get', { target: { channel: 5, parameter: 2 } })).response.result.value
+      : null;
+    const elapsed_ms = Number(process.hrtime.bigint() - started) / 1e6;
+    console.log(JSON.stringify({ mode, code, verdict, error, operations, writes, observed, persisted, elapsed_ms }));
+  `;
+  const run = mode => {
+    const started = process.hrtime.bigint();
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource,
+      f.options.capabilityRoot, f.mailbox, f.id, JSON.stringify(f.session), mode], { encoding: 'utf8' });
+    assert.equal(child.status, 0, child.stderr);
+    return { ...JSON.parse(child.stdout.trim()), wall_ms: Number(process.hrtime.bigint() - started) / 1e6 };
+  };
+  const retained = Array.from({ length: 5 }, () => run('retained'));
+  const baseline = Array.from({ length: 5 }, () => run('baseline'));
+  const expected = ['status', 'plugins.list', 'plugin.params', 'plugin.inspect',
+    'plugin.get', 'plugin.set', 'plugin.get', 'plugin.get'];
+  for (const result of [...retained, ...baseline]) {
+    assert.equal(result.code, 0, result.error);
+    assert.equal(result.verdict, 'STATE_CONFIRMED');
+    assert.equal(result.observed, 0.25);
+    assert.equal(result.persisted, true);
+    assert.equal(result.writes, 1);
+    assert.deepEqual(result.operations, expected);
+  }
+  const replacement = run('retained-race');
+  assert.equal(replacement.code, 1);
+  assert.equal(replacement.error, 'WRONG_PLUGIN_IDENTITY');
+  assert.equal(replacement.writes, 0);
+  assert.deepEqual(replacement.operations, expected.slice(0, 4));
+  const receiptPath = f.retained.capability.evidence[0].receipt;
+  writeFileSync(receiptPath, readFileSync(receiptPath, 'utf8') + '\\n');
+  const stale = run('retained');
+  assert.equal(stale.code, 1);
+  assert.match(stale.error, /SOURCE_RECEIPT_FINGERPRINT_MISMATCH/);
+  assert.equal(stale.writes, 0);
+  assert.deepEqual(stale.operations, []);
+  const median = (values, key) => values.map(x => x[key]).sort((a, b) => a - b)[2];
+  console.log('M2_FULL_PATH_COST ' + JSON.stringify({
+    retained_median_ms: median(retained, 'elapsed_ms'),
+    no_memory_median_ms: median(baseline, 'elapsed_ms'),
+    retained_wall_median_ms: median(retained, 'wall_ms'),
+    no_memory_wall_median_ms: median(baseline, 'wall_ms'),
+    retained_host_requests: expected.length, no_memory_host_requests: expected.length,
+    retained_writes: 1, no_memory_writes: 1, successful_trials: retained.length + baseline.length,
+    negative_controls: ['wrong-plugin-before-write', 'stale-receipt-before-host-probe'],
+    limitation: 'controlled transport, not live FL Studio; session-A discovery and retention cost excluded'
+  }));
+});
+
+test('different FL plugins sharing a parameter name remain independently addressable', () => {
+  const f = fixture({ plugin: 'Fruity granulizer', parameterName: 'Mix' });
+  const otherReceipt = persistFlReceipt({ transaction: {
+    operation_id: 'source-op-sytrus', capability_id: 'fl.plugin.parameter', verdict: 'STATE_CONFIRMED',
+    target: { session_id: 'session-1', channel: 6, plugin_name: 'Sytrus', parameter: 4 },
+    milestones: { STATE_CONFIRMED: true },
+    post_observation: { channel: 6, plugin_name: 'Sytrus', parameter: 4, parameter_name: 'Mix', value: 0.5 },
+  } }, { evidenceRoot: join(f.root, 'receipts') });
+  const other = retainFlParameterCapability({ ...f.options, receiptPath: otherReceipt.path });
+  assert.notEqual(f.id, other.capability.id, 'different plugin identities must not share a capability ID');
+  assert.deepEqual(listCapabilities(f.options).map(x => x.id).sort(), [f.id, other.capability.id].sort());
+  assert.equal(loadCapability(f.id, f.options).target.plugin_name, 'Fruity granulizer');
+  assert.equal(loadCapability(other.capability.id, f.options).target.plugin_name, 'Sytrus');
+});
+
+test('legacy parameter-only capability IDs remain readable without rewriting retained records', () => {
+  const f = fixture();
+  const legacyId = 'fl.plugin.parameter.grain-spacing';
+  const legacy = JSON.parse(readFileSync(f.retained.path, 'utf8'));
+  legacy.payload.id = legacyId;
+  legacy.integrity.digest = createHash('sha256').update(JSON.stringify(legacy.payload)).digest('hex');
+  const legacyDir = join(f.options.capabilityRoot, legacyId);
+  mkdirSync(legacyDir, { recursive: true });
+  writeFileSync(join(legacyDir, 'historical.json'), JSON.stringify(legacy));
+  assert.equal(loadCapability(legacyId, f.options).target.plugin_name, f.plugin);
+  assert.deepEqual(listCapabilities(f.options).map(x => x.id).sort(), [legacyId, f.id].sort());
 });
