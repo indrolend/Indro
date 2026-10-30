@@ -471,3 +471,54 @@ test('hud output --follow covers 101 completions after running-only history with
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test('hud output --follow isolates missing retained evidence and displays later completion', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-missing-evidence-'));
+  let follower;
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const state = join(root, '.state');
+    const env = { ...process.env, HUD_STATE_ROOT: state };
+    const execute = (script) => spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', script], {
+      cwd: root, env, encoding: 'utf8', timeout: 20_000,
+    });
+    const seed = execute("console.log('follower-seed')");
+    assert.equal(seed.status, 0, seed.stderr || seed.stdout);
+    follower = spawn(process.execPath, [cli, 'output', '--follow'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    follower.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    follower.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const damaged = execute("console.log('should-not-be-presented-as-verified')");
+    assert.equal(damaged.status, 0, damaged.stderr || damaged.stdout);
+    const runRoot = join(state, 'runs', readdirSync(join(state, 'runs'))[0]);
+    const damagedId = JSON.parse(damaged.stdout).runId;
+    const record = JSON.parse(readFileSync(join(runRoot, damagedId, 'run.json'), 'utf8'));
+    unlinkSync(record.stdoutPath);
+    const healthy = execute("console.log('healthy-after-broken')");
+    assert.equal(healthy.status, 0, healthy.stderr || healthy.stdout);
+    const deadline = Date.now() + 8_000;
+    while (!stdout.includes('healthy-after-broken') && follower.exitCode === null && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.match(stdout, new RegExp('OUTPUT EVIDENCE UNAVAILABLE[^\\n]*' + damagedId));
+    assert.match(stdout, /healthy-after-broken/);
+    assert.doesNotMatch(stdout, /should-not-be-presented-as-verified/);
+    assert.equal(stderr, '');
+    assert.equal(follower.exitCode, null);
+  } finally {
+    if (follower && follower.exitCode === null) {
+      await new Promise((resolve) => {
+        follower.once('exit', resolve);
+        follower.kill('SIGTERM');
+        setTimeout(() => { follower.kill('SIGKILL'); resolve(); }, 1500).unref();
+      });
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
