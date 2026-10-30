@@ -90,3 +90,48 @@ test('operation-scoped validation snapshot avoids duplicate inspect and rejects 
   const wrong = await run(['plugin', 'set', '--channel', '0', '--param', '2', '--value', '0.25', '--verify', '--json'], { ...fixture(), validationSnapshot: { ...snapshot, channel: 1 } });
   assert.equal(wrong.code, 1); assert.equal(wrong.value.error, 'VALIDATION_SNAPSHOT_SCOPE_MISMATCH');
 });
+
+test('retained parameter name reaches each host observation and write; generic index CLI stays compatible', async () => {
+  const f = fixture();
+  const args = ['plugin', 'set', '--channel', '0', '--param', '2', '--value', '0.25', '--verify', '--json'];
+  const result = await run(args, { ...f, expectedParameterName: 'Grain spacing' });
+  assert.equal(result.code, 0);
+  const calls = f.calls.filter(x => ['plugin.get', 'plugin.set'].includes(x.operation));
+  assert.ok(calls.length >= 3);
+  assert.ok(calls.every(x => x.request.target.parameter_name === 'Grain spacing'));
+  const generic = fixture();
+  assert.equal((await run(args, generic)).code, 0);
+  assert.equal(generic.calls.find(x => x.operation === 'plugin.set').request.target.parameter_name, undefined);
+});
+
+test('host parameter-identity rejection prevents a stale-mapping write', async () => {
+  const f = fixture();
+  const original = f.transport.request.bind(f.transport);
+  let rejected = 0;
+  let writes = 0;
+  f.transport.request = async (operation, request = {}) => {
+    if (operation === 'plugin.set') {
+      if (request.target.parameter_name !== 'Attack') {
+        rejected++;
+        return { response: { schema: 'indro.fl.bridge.v1', transaction_id: request.transactionId,
+          session_id: 'live-session', accepted: false, executed: false, error: 'WRONG_PARAMETER_IDENTITY' } };
+      }
+      writes++;
+    }
+    return original(operation, request);
+  };
+  const result = await run(['plugin', 'set', '--channel', '0', '--param', '2', '--value', '0.25', '--verify', '--json'],
+    { ...f, expectedParameterName: 'Grain spacing' });
+  assert.equal(result.code, 1);
+  assert.equal(rejected, 1);
+  assert.equal(writes, 0);
+});
+
+test('retained plugin identity rejects replacement after discovery before any write', async () => {
+  const f = fixture({ plugin: 'Sytrus' });
+  const result = await run(['plugin', 'set', '--channel', '0', '--param', '2', '--value', '0.25', '--verify', '--json'],
+    { ...f, expectedPluginName: 'Fruity Granulizer', expectedParameterName: 'Grain spacing' });
+  assert.equal(result.code, 1);
+  assert.equal(result.value.error, 'WRONG_PLUGIN_IDENTITY');
+  assert.equal(f.calls.some(x => x.operation === 'plugin.set'), false);
+});

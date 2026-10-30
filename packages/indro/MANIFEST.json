@@ -112,13 +112,13 @@
     },
     {
       "path": "capability/store.mjs",
-      "bytes": 13563,
-      "sha256": "f0ff2d90672e6042a525b7993b86f6d47c65af218d78c7943e85e4a481f8cad8"
+      "bytes": 14058,
+      "sha256": "f0ebea543b52aa97d94a7b331381362438e74db1f8e1a549fdee76f05fa34fe0"
     },
     {
       "path": "capability/store.test.mjs",
-      "bytes": 8529,
-      "sha256": "369e8a76aaa85ca85654c8e07e852786718b23c9047d2b8bb8896eaaed5a7df1"
+      "bytes": 20457,
+      "sha256": "5972027e9c98ad6ef0dddfc0170ad1f2b95cd2447941e4c1e8ae84e9aeb7b85a"
     },
     {
       "path": "cli.mjs",
@@ -182,18 +182,18 @@
     },
     {
       "path": "fl/bridge/device_INDROFLBridge.py",
-      "bytes": 8225,
-      "sha256": "b1e8168ed0004c9bf4bd9c7c9dbda152800e872883a76ba49d95f3dd611bdc60"
+      "bytes": 8472,
+      "sha256": "fa742a0cc242f6af22e59b57c89408f8359ee67a04ac1c550a06a018b450e9c2"
     },
     {
       "path": "fl/cli.mjs",
-      "bytes": 7449,
-      "sha256": "a6c4dc86a2ca13c0affc9e0f4d88c921e0ddcf95854f4b88b9bee69718a77a4c"
+      "bytes": 7724,
+      "sha256": "63425622e39ffec516b3216ee7104b7ec97c1bf66f57d884fae12e2f3dbace41"
     },
     {
       "path": "fl/cli.test.mjs",
-      "bytes": 6080,
-      "sha256": "b3885c1e48f4ff2bc062e5484632635e8c27fdddbbe47231029cbb452dd2ad7e"
+      "bytes": 8318,
+      "sha256": "ef033cda6d3a13f77936d59c5387f77a169c0f6185ad8f8a322e444605b03876"
     },
     {
       "path": "fl/send-trigger.ps1",
