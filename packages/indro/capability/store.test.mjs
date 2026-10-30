@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -344,4 +345,17 @@ test('different FL plugins sharing a parameter name remain independently address
   assert.deepEqual(listCapabilities(f.options).map(x => x.id).sort(), [f.id, other.capability.id].sort());
   assert.equal(loadCapability(f.id, f.options).target.plugin_name, 'Fruity granulizer');
   assert.equal(loadCapability(other.capability.id, f.options).target.plugin_name, 'Sytrus');
+});
+
+test('legacy parameter-only capability IDs remain readable without rewriting retained records', () => {
+  const f = fixture();
+  const legacyId = 'fl.plugin.parameter.grain-spacing';
+  const legacy = JSON.parse(readFileSync(f.retained.path, 'utf8'));
+  legacy.payload.id = legacyId;
+  legacy.integrity.digest = createHash('sha256').update(JSON.stringify(legacy.payload)).digest('hex');
+  const legacyDir = join(f.options.capabilityRoot, legacyId);
+  mkdirSync(legacyDir, { recursive: true });
+  writeFileSync(join(legacyDir, 'historical.json'), JSON.stringify(legacy));
+  assert.equal(loadCapability(legacyId, f.options).target.plugin_name, f.plugin);
+  assert.deepEqual(listCapabilities(f.options).map(x => x.id).sort(), [legacyId, f.id].sort());
 });
