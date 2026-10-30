@@ -522,3 +522,39 @@ test('hud output --follow isolates missing retained evidence and displays later 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test('hud output rejects modified retained stdout instead of presenting forged PASS', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-integrity-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const state = join(root, '.state');
+    const env = { ...process.env, HUD_STATE_ROOT: state };
+    const run = spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', "console.log('original-evidence')"], {
+      cwd: root, env, encoding: 'utf8', timeout: 20_000,
+    });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    const runId = JSON.parse(run.stdout).runId;
+    const runRoot = join(state, 'runs', readdirSync(join(state, 'runs'))[0]);
+    const record = JSON.parse(readFileSync(join(runRoot, runId, 'run.json'), 'utf8'));
+    const output = () => spawnSync(process.execPath, [cli, 'output'], { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
+    const valid = output();
+    assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+    assert.match(valid.stdout, /original-evidence/);
+    writeFileSync(record.stdoutPath, 'forged-evidence\n');
+    const corrupt = output();
+    assert.equal(corrupt.status, 0, corrupt.stderr || corrupt.stdout);
+    assert.match(corrupt.stdout, new RegExp('OUTPUT EVIDENCE UNAVAILABLE[^\\n]*' + runId));
+    assert.doesNotMatch(corrupt.stdout, /forged-evidence/);
+    assert.doesNotMatch(corrupt.stdout, /— PASS exit=0/);
+    writeFileSync(record.stdoutPath, 'original-evidence\n');
+    const restored = output();
+    assert.equal(restored.status, 0, restored.stderr || restored.stdout);
+    assert.match(restored.stdout, /original-evidence/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
