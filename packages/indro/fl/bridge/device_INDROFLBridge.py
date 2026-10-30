@@ -13,6 +13,7 @@ import time
 
 import channels
 import device
+import patterns
 import plugins
 import transport
 
@@ -101,6 +102,11 @@ def _execute(request):
         return {
             "bridge": _session(),
             "selected": identity,
+            "pattern": {
+                "pattern": patterns.patternNumber(),
+                "pattern_name": patterns.getPatternName(patterns.patternNumber()),
+                "length_beats": patterns.getPatternLength(patterns.patternNumber()),
+            },
             "channel_count": channels.channelCount(),
             "playing": bool(transport.isPlaying()),
         }
@@ -113,6 +119,22 @@ def _execute(request):
 
     if operation == "transport.status":
         return {"playing": bool(transport.isPlaying())}
+
+    if operation in ("transport.play", "transport.stop"):
+        if request.get("authorization") != "explicit-user-write":
+            raise PermissionError("WRITE_NOT_AUTHORIZED")
+        before = bool(transport.isPlaying())
+        requested = operation == "transport.play"
+        if before != requested:
+            if requested:
+                transport.start()
+            else:
+                transport.stop()
+        return {
+            "before": {"playing": before},
+            "requested": requested,
+            "readback": {"playing": bool(transport.isPlaying())},
+        }
 
     channel = arguments.get("channel")
     identity = _channel_identity(channel)

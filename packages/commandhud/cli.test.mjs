@@ -127,7 +127,10 @@ test('hud run JSON is pure for passing and failing commands', () => {
       env: { ...process.env, HUD_STATE_ROOT: join(root, '.state') },
     });
     assert.equal(passing.status, 0, passing.stderr);
-    assert.equal(JSON.parse(passing.stdout).status, 'pass');
+    const passingRecord = JSON.parse(passing.stdout);
+    assert.equal(passingRecord.status, 'pass');
+    assert.equal(passingRecord.contract.schema, 'indro.operation/v1');
+    assert.equal(passingRecord.contract.verification.outcome, 'CONFIRMED');
     assert.doesNotMatch(passing.stdout, /^not-before-json/m);
 
     const failing = run("console.error('not-before-json'); process.exit(7)");

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { persistFlReceipt } from '../fl/adapter.mjs';
 import { png } from '../paint/png-fixture.test-helper.mjs';
-import { invokeCapability, listCapabilities, loadCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
+import { invokeCapability, listCapabilities, loadCapability, observeCapability, retainFlBrowserCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
 
 
 function fixture({ channel = 5, parameter = 2, plugin = 'Fruity granulizer', parameterName = 'Grain spacing' } = {}) {
@@ -115,4 +115,51 @@ test('retains Paint artifact capability in Continuum and validates exact applica
   assert.deepEqual((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '12' })).issues, ['PAINT_VERSION_MISMATCH']);
   writeFileSync(artifactPath, png(321, 240));
   assert.match((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' })).issues.join(','), /EVIDENCE_WIDTH_MISMATCH|EVIDENCE_ARTIFACT_DIGEST_MISMATCH/);
+});
+
+test('retains independently matched FL Browser evidence and reuses the read-only adapter', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'indro-browser-capability-'));
+  const responsePath = join(root, 'response.json');
+  const independentObservationPath = join(root, 'independent.json');
+  const application = { app_id: 'fl-studio', process_id: 17, process_start: 1234.5678,
+    executable: 'C:\\FL64.exe', executable_sha256: 'a'.repeat(64), session_id: 1,
+    main_handle: 101, main_class: 'TFruityLoopsMainForm', browser_handle: 202, browser_class: 'TSampleListForm' };
+  writeFileSync(responsePath, JSON.stringify({ schema: 'indro.desktop-control.v1', ok: true,
+    operation: 'fl-studio.browser.observe', result: { mutation_attempted: false,
+      observation: { value: false, application } } }));
+  writeFileSync(independentObservationPath, JSON.stringify({ process_id: 17, process_start_unix: 1234.567,
+    session_id: 1, executable: 'C:\\FL64.exe', executable_sha256: 'a'.repeat(64), windows: [{ handle: 101,
+      class_name: 'TFruityLoopsMainForm', children: [{ handle: 202, class_name: 'TSampleListForm', visible: false }] }] }));
+  const options = { capabilityRoot: join(root, 'capabilities') };
+  const retained = retainFlBrowserCapability({ ...options, responsePath, independentObservationPath });
+  const live = { value: false, application };
+  const dependencies = { ...options, desktopWorkerStatus: () => ({ ready: true }), observeFlBrowser: async () => live };
+  const result = await observeCapability(retained.capability.id, dependencies);
+  assert.equal(result.validation.reusable, true);
+  assert.deepEqual(result.observation, live);
+  writeFileSync(independentObservationPath, '{}');
+  assert.match((await validateCapability(retained.capability.id, dependencies)).issues.join(','), /EVIDENCE_FINGERPRINT_MISMATCH/);
+});
+
+test('retains independently matched process identity when SSH cannot enumerate session-1 windows', () => {
+  const root = mkdtempSync(join(tmpdir(), 'indro-browser-ssh-capability-'));
+  const responsePath = join(root, 'response.json');
+  const independentObservationPath = join(root, 'independent.json');
+  const application = { app_id: 'fl-studio', process_id: 17, process_start: 1234.5678,
+    executable: 'C:\\FL64.exe', executable_sha256: 'a'.repeat(64), session_id: 1,
+    main_handle: 101, main_class: 'TFruityLoopsMainForm', browser_handle: 202, browser_class: 'TSampleListForm' };
+  writeFileSync(responsePath, JSON.stringify({ schema: 'indro.desktop-control.v1', ok: true,
+    operation: 'fl-studio.browser.observe', result: { mutation_attempted: false,
+      observation: { value: false, application } } }));
+  writeFileSync(independentObservationPath, JSON.stringify({ process_id: 17, process_start_unix: 1234.567,
+    session_id: 1, executable: 'C:\\FL64.exe', executable_sha256: 'a'.repeat(64), windows: [],
+    window_observation: 'unavailable-from-current-window-station' }));
+  const retained = retainFlBrowserCapability({ capabilityRoot: join(root, 'capabilities'), responsePath, independentObservationPath });
+  assert.equal(retained.capability.verification.independent_window_observation, 'unavailable-from-current-window-station');
+  assert.match(retained.capability.limitations.join(','), /cannot independently enumerate session-1 HWNDs/);
+  const forged = JSON.parse(readFileSync(responsePath, 'utf8'));
+  forged.result.observation.application.main_class = 'NotFlStudio';
+  writeFileSync(responsePath, JSON.stringify(forged));
+  assert.throws(() => retainFlBrowserCapability({ capabilityRoot: join(root, 'other'), responsePath, independentObservationPath }),
+    /BROWSER_EVIDENCE_IDENTITY_MISMATCH/);
 });

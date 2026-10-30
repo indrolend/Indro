@@ -9,6 +9,8 @@ export const BRIDGE_SCHEMA = 'indro.fl.bridge.v1';
 export const RECEIPT_SCHEMA = 'indro.fl.receipt.v1';
 const delay = milliseconds => new Promise(done => setTimeout(done, milliseconds));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+const within = (actual, expected, tolerance = 0) => typeof actual === 'number' && Number.isFinite(actual) &&
+  typeof expected === 'number' && Number.isFinite(expected) && Math.abs(actual - expected) <= tolerance;
 
 export function defaultMailbox() {
   const home = process.env.USERPROFILE || process.env.HOME;
@@ -92,6 +94,7 @@ function capabilityOperation(capability) {
   const map = {
     'fl.plugin.parameter': 'plugin.get',
     'fl.status': 'status',
+    'fl.transport.playing': 'transport.status',
   };
   const operation = map[capability];
   if (!operation) throw new Error(`UNSUPPORTED_FL_CAPABILITY:${capability}`);
@@ -110,15 +113,24 @@ export function createFlAdapter(options = {}) {
       const value = await transport.request(operation, { arguments: args, target, authorization: 'read-only' });
       if (value.response.error) throw new Error(value.response.error);
       const result = value.response.result;
+      if (capability === 'fl.transport.playing') {
+        return { ...result, value: result.playing, observation_source: 'FL Studio transport.isPlaying' };
+      }
       return capability === 'fl.plugin.parameter'
         ? { ...result, value: result.value, observation_source: 'FL Studio plugins.getParamValue' }
         : { ...result, observation_source: 'FL Studio scripting API' };
     },
     async invoke(target, capability, args, context) {
-      if (capability.id !== 'fl.plugin.parameter') return { error: 'UNSUPPORTED_FL_CAPABILITY' };
-      const value = await transport.request('plugin.set', {
+      if (!['fl.plugin.parameter', 'fl.transport.playing'].includes(capability.id)) return { error: 'UNSUPPORTED_FL_CAPABILITY' };
+      const transportOperation = capability.id === 'fl.transport.playing'
+        ? (args.value ? 'transport.play' : 'transport.stop')
+        : 'plugin.set';
+      const argumentsValue = capability.id === 'fl.transport.playing'
+        ? {}
+        : { channel: target.channel, parameter: target.parameter, value: args.value };
+      const value = await transport.request(transportOperation, {
         transactionId: context.operation_id,
-        arguments: { channel: target.channel, parameter: target.parameter, value: args.value },
+        arguments: argumentsValue,
         target,
         authorization: context.authorization,
       });
@@ -140,7 +152,7 @@ export function createFlAdapter(options = {}) {
 export function persistFlReceipt(record, { evidenceRoot } = {}) {
   const root = resolve(evidenceRoot ?? join(stateRoot(), 'uai', 'fl-studio'));
   mkdirSync(root, { recursive: true });
-  const id = record.transaction?.operation_id ?? randomUUID();
+  const id = record.transaction?.operation_id ?? record.transactions?.mutation?.operation_id ?? randomUUID();
   const directory = join(root, `${new Date().toISOString().replace(/[:.]/g, '-')}-${id}`);
   mkdirSync(directory, { recursive: false });
   const payload = { schema: RECEIPT_SCHEMA, integrity_model: 'checksum-only-not-authenticated', ...record };
@@ -171,16 +183,71 @@ export function validateFlReceipt(path, { expectedSession, expectedPlugin } = {}
     result.issues.push('CHECKSUM_MISMATCH'); return result;
   }
   result.integrity = 'CHECKSUM_MATCH_NOT_AUTHENTICATED';
+  if (payload.kind === 'fl.plugin.parameter.trial') {
+    const mutation = payload.transactions?.mutation;
+    const restoration = payload.transactions?.restoration;
+    const sameTarget = mutation?.target?.app_id === 'fl-studio' && mutation.target.plugin_name &&
+      restoration?.target?.app_id === mutation.target.app_id &&
+      restoration?.target?.session_id === mutation.target.session_id &&
+      restoration?.target?.process_id === mutation.target.process_id &&
+      restoration?.target?.channel === mutation.target.channel &&
+      restoration?.target?.parameter === mutation.target.parameter &&
+      restoration?.target?.plugin_name === mutation.target.plugin_name;
+    const baseline = mutation?.pre_observation?.value;
+    const tolerance = payload.expected?.tolerance;
+    const complete = sameTarget && mutation.verification?.outcome === 'CONFIRMED' &&
+      restoration.verification?.outcome === 'CONFIRMED' &&
+      typeof tolerance === 'number' && Number.isFinite(tolerance) && tolerance >= 0 &&
+      within(mutation.post_observation?.value, mutation.arguments?.value, tolerance) &&
+      restoration.arguments?.value === baseline && within(restoration.post_observation?.value, baseline, tolerance) &&
+      payload.verification?.outcome === 'CONFIRMED';
+    if (!complete) { result.issues.push('CONTRADICTORY_OR_INCOMPLETE_TRIAL'); return result; }
+    result.consistency = 'PASS';
+    if ((expectedSession && String(mutation.target.session_id) !== String(expectedSession)) ||
+        (expectedPlugin && mutation.target.plugin_name !== expectedPlugin)) {
+      result.issues.push('WRONG_TARGET'); return result;
+    }
+    result.target = 'PASS';
+    result.valid = true;
+    return result;
+  }
   const tx = payload.transaction;
-  if (!tx?.operation_id || !tx.target?.session_id || !tx.target?.plugin_name ||
-      tx.milestones?.STATE_CONFIRMED !== true || tx.verdict !== 'STATE_CONFIRMED' ||
-      tx.post_observation?.plugin_name !== tx.target.plugin_name ||
-      tx.post_observation?.channel !== tx.target.channel || tx.post_observation?.parameter !== tx.target.parameter) {
+  const parameterReceipt = Boolean(tx?.target?.plugin_name) &&
+    tx.post_observation?.plugin_name === tx.target.plugin_name &&
+    tx.post_observation?.channel === tx.target.channel &&
+    tx.post_observation?.parameter === tx.target.parameter;
+  const browserReceipt = tx?.capability_id === 'fl.browser.visibility' &&
+    tx.target?.app_id === 'fl-studio' && tx.target?.process_id > 0 &&
+    Boolean(tx.target?.executable_sha256) && Boolean(tx.target?.session_id) &&
+    tx.post_observation?.application?.app_id === tx.target.app_id &&
+    tx.post_observation?.application?.process_id === tx.target.process_id &&
+    tx.post_observation?.application?.process_start === tx.target.process_start &&
+    tx.post_observation?.application?.executable_sha256 === tx.target.executable_sha256 &&
+    tx.post_observation?.application?.session_id === tx.target.session_id &&
+    tx.post_observation?.application?.browser_handle === tx.target.browser_handle &&
+    tx.post_observation?.application?.browser_class === tx.target.browser_class &&
+    typeof tx.arguments?.value === 'boolean' && tx.post_observation?.value === tx.arguments.value;
+  const transportReceipt = tx?.capability_id === 'fl.transport.playing' &&
+    tx.target?.app_id === 'fl-studio' && Boolean(tx.target?.session_id) && tx.target?.process_id > 0 &&
+    typeof tx.arguments?.value === 'boolean' && tx.post_observation?.value === tx.arguments.value &&
+    tx.post_observation?.observation_source === 'FL Studio transport.isPlaying';
+  const noteReceipt = tx?.capability_id === 'fl.piano-roll.note' && tx.target?.app_id === 'fl-studio' &&
+    Boolean(tx.target?.session_id) && tx.target?.process_id > 0 && Number.isInteger(tx.target?.channel) &&
+    Boolean(tx.target?.channel_name) && Number.isInteger(tx.target?.pattern) && Number.isInteger(tx.target?.note?.time) &&
+    tx.arguments?.value === true && tx.post_observation?.value === true && tx.post_observation?.matches > 0 &&
+    tx.post_observation?.observation_source === 'flpianoroll.score.getNote';
+  if (!tx?.operation_id || tx.milestones?.STATE_CONFIRMED !== true ||
+      tx.verdict !== 'STATE_CONFIRMED' || (!parameterReceipt && !browserReceipt && !transportReceipt && !noteReceipt)) {
     result.issues.push('CONTRADICTORY_OR_INCOMPLETE_TRANSACTION'); return result;
   }
   result.consistency = 'PASS';
-  if ((expectedSession && tx.target.session_id !== expectedSession) ||
-      (expectedPlugin && tx.target.plugin_name !== expectedPlugin)) {
+  // The FL scripting bridge uses its own UUID-like session identity, while the
+  // desktop adapter records the authoritative Windows session id. A bridge
+  // session supplied by `fl verify --latest` therefore applies only to bridge
+  // parameter receipts; desktop identity is checked by the browser contract
+  // above and by a fresh desktop observation.
+  if (((parameterReceipt || transportReceipt || noteReceipt) && expectedSession && String(tx.target.session_id) !== String(expectedSession)) ||
+      (parameterReceipt && expectedPlugin && tx.target.plugin_name !== expectedPlugin)) {
     result.issues.push('WRONG_TARGET'); return result;
   }
   result.target = 'PASS';

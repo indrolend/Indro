@@ -1,8 +1,10 @@
 import { executeTransaction } from '../uai/transaction.mjs';
+import { createDesktopTransport } from '../desktop/adapter.mjs';
 import {
   createFlAdapter, createFlTransport, discoverSession, latestFlReceipt,
   persistFlReceipt, validateFlReceipt
 } from './adapter.mjs';
+import { createPianoRollAdapter, noteFromStep } from './piano-roll.mjs';
 
 const USAGE = `indro fl doctor --json
 indro fl status --json
@@ -12,7 +14,11 @@ indro fl plugin inspect --channel N --json
 indro fl plugin params --channel N --json
 indro fl plugin get --channel N --param N --json
 indro fl plugin set --channel N --param N --value 0..1 --verify --json
+indro fl plugin trial --channel N --param N --value 0..1 --verify --json
+indro fl note inspect --channel NAME|N --pattern N --step N [--note N] [--velocity 1..127] --json
+indro fl note add --channel NAME|N --pattern N --step N [--note N] [--velocity 1..127] --verify --json
 indro fl transport status --json
+indro fl transport play|stop --verify --json
 indro fl verify --latest --json`;
 
 function parse(argv) {
@@ -23,7 +29,7 @@ function parse(argv) {
     if (!value.startsWith('--')) { positional.push(value); continue; }
     const name = value.slice(2);
     if (['json', 'verify', 'latest'].includes(name)) { options[name] = true; continue; }
-    if (!['channel', 'param', 'value', 'seconds'].includes(name) || index + 1 >= argv.length) {
+    if (!['channel', 'param', 'value', 'seconds', 'pattern', 'step', 'note', 'velocity', 'length'].includes(name) || index + 1 >= argv.length) {
       throw new Error(`UNKNOWN_OR_INCOMPLETE_OPTION:${value}`);
     }
     if (Object.hasOwn(options, name)) throw new Error(`DUPLICATE_OPTION:${value}`);
@@ -41,6 +47,13 @@ function integer(value, name) {
 function normalized(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) throw new Error('VALUE_OUT_OF_RANGE');
+  return parsed;
+}
+
+function rangedInteger(value, name, minimum, maximum, fallback) {
+  if (value === undefined && fallback !== undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new Error(`INVALID_${name.toUpperCase()}`);
   return parsed;
 }
 
@@ -96,12 +109,86 @@ export async function runFlCli(argv, out = console.log, err = console.error, dep
     if (words[0] === 'transport' && words[1] === 'status' && words.length === 2) {
       out(JSON.stringify(await hostRequest(transport, 'transport.status'), null, 2)); return 0;
     }
+    if (words[0] === 'transport' && ['play', 'stop'].includes(words[1]) && words.length === 2) {
+      if (!options.verify) throw new Error('WRITE_REQUIRES_VERIFY');
+      const target = { app_id: 'fl-studio', session_id: session.session_id, process_id: session.process_id };
+      const adapter = dependencies.adapter ?? createFlAdapter({ ...dependencies, transport });
+      const transaction = await executeTransaction({
+        target, capability: { id: 'fl.transport.playing' }, args: { value: words[1] === 'play' },
+        adapter, verify: 'readback', authorization: 'explicit-user-write',
+      });
+      const record = {
+        producer: { owner: 'INDRO', adapter: adapter.name, bridge_schema: session.schema },
+        trust_model: 'FL Studio transport API execution with transport.isPlaying host readback; audible output not established',
+        transaction,
+        claims: {
+          command_submitted: transaction.milestones.SUBMITTED,
+          command_received: transaction.milestones.RECEIVED,
+          command_accepted: transaction.milestones.ACCEPTED,
+          execution_reported: transaction.milestones.EXECUTED,
+          postcondition_confirmed: transaction.milestones.STATE_CONFIRMED,
+          state_transition_observed: transaction.state_transition_observed ?? false,
+          audible_output_verified: false,
+        },
+      };
+      const evidence = (dependencies.persistReceipt ?? persistFlReceipt)(record, dependencies);
+      out(JSON.stringify({ ...record, evidence }, null, 2));
+      return transaction.verdict === 'STATE_CONFIRMED' ? 0 : 1;
+    }
     if (words[0] === 'verify' && words.length === 1 && options.latest) {
       const path = (dependencies.latestReceipt ?? latestFlReceipt)(dependencies);
       const result = validateFlReceipt(path, { expectedSession: session.session_id });
       out(JSON.stringify({ receipt: path, ...result }, null, 2)); return result.valid ? 0 : 1;
     }
-    if (words[0] !== 'plugin' || !['inspect', 'params', 'get', 'set'].includes(words[1]) || words.length !== 2) {
+    if (words[0] === 'note' && ['inspect', 'add'].includes(words[1]) && words.length === 2) {
+      if (words[1] === 'add' && !options.verify) throw new Error('WRITE_REQUIRES_VERIFY');
+      const status = await hostRequest(transport, 'status');
+      if (!status.selected || !status.pattern) throw new Error('PIANO_ROLL_TARGET_IDENTITY_UNAVAILABLE');
+      const requestedChannel = options.channel;
+      const channelMatches = String(status.selected.channel) === String(requestedChannel) || status.selected.channel_name === requestedChannel;
+      if (!channelMatches) throw new Error('PIANO_ROLL_CHANNEL_NOT_SELECTED');
+      const pattern = rangedInteger(options.pattern, 'pattern', 1, 999);
+      if (status.pattern.pattern !== pattern) throw new Error('PIANO_ROLL_PATTERN_NOT_SELECTED');
+      const step = rangedInteger(options.step, 'step', 1, 4096);
+      const number = rangedInteger(options.note, 'note', 0, 131, 60);
+      const velocity = rangedInteger(options.velocity, 'velocity', 1, 127, 100);
+      const lengthSteps = rangedInteger(options.length, 'length', 1, 256, 1);
+      const ppq = 96;
+      const note = noteFromStep({ step, number, velocity, lengthSteps }, ppq);
+      const target = { app_id: 'fl-studio', session_id: session.session_id, process_id: session.process_id,
+        channel: status.selected.channel, channel_name: status.selected.channel_name,
+        pattern, pattern_name: status.pattern.pattern_name, ppq, note };
+      const desktopTransport = dependencies.desktopTransport ?? createDesktopTransport(dependencies);
+      const adapter = dependencies.pianoRollAdapter ?? createPianoRollAdapter({
+        bridgeTransport: transport, desktopTransport, scriptPath: dependencies.pianoRollScriptPath,
+      });
+      if (words[1] === 'inspect') {
+        const observation = await adapter.observe(target, 'fl.piano-roll.note');
+        out(JSON.stringify({ connected: true, capability: 'fl.piano-roll.note', target, observation }, null, 2));
+        return observation.value ? 0 : 1;
+      }
+      const transaction = await executeTransaction({
+        target, capability: { id: 'fl.piano-roll.note' }, args: { value: true },
+        adapter, verify: 'readback', authorization: 'explicit-user-write',
+      });
+      const record = {
+        kind: 'fl.piano-roll.note.add',
+        producer: { owner: 'INDRO', adapter: adapter.name, bridge_schema: session.schema },
+        trust_model: 'Native flpianoroll score mutation and getNote readback with bridge identity checks before and after each script run',
+        transaction,
+        semantic: { channel: target.channel_name, pattern, step, number, velocity, length_steps: lengthSteps },
+        claims: {
+          note_confirmed: transaction.verification.outcome === 'CONFIRMED',
+          authoritative_score_readback: transaction.milestones.STATE_CONFIRMED,
+          audible_output_verified: false,
+        },
+        limitations: ['Piano Roll score readback does not independently verify audible output or saved project state.'],
+      };
+      const evidence = (dependencies.persistReceipt ?? persistFlReceipt)(record, dependencies);
+      out(JSON.stringify({ ...record, evidence }, null, 2));
+      return transaction.verification.outcome === 'CONFIRMED' ? 0 : 1;
+    }
+    if (words[0] !== 'plugin' || !['inspect', 'params', 'get', 'set', 'trial'].includes(words[1]) || words.length !== 2) {
       throw new Error('UNSUPPORTED_FL_COMMAND');
     }
     const channel = integer(options.channel, 'channel');
@@ -121,6 +208,54 @@ export async function runFlCli(argv, out = console.log, err = console.error, dep
     if (!options.verify) throw new Error('WRITE_REQUIRES_VERIFY');
     const value = normalized(options.value);
     const adapter = dependencies.adapter ?? createFlAdapter({ ...dependencies, transport });
+    if (words[1] === 'trial') {
+      const catalog = await hostRequest(transport, 'plugin.params', { channel }, target);
+      const discovered = catalog.parameters?.find(candidate => candidate.index === parameter);
+      if (!discovered) throw new Error('PARAMETER_NOT_DISCOVERED');
+      const mutation = await executeTransaction({
+        target: parameterTarget, capability: { id: 'fl.plugin.parameter' },
+        args: { value }, adapter, verify: 'readback', tolerance: 0.002,
+        authorization: 'explicit-user-write'
+      });
+      let restoration = null;
+      const baseline = mutation.pre_observation?.value;
+      const mutationOutcomeKnown = !['TRANSPORT_UNKNOWN', 'OBSERVATION_FAILED'].includes(mutation.verdict);
+      if (mutationOutcomeKnown && typeof baseline === 'number' && Number.isFinite(baseline) && baseline >= 0 && baseline <= 1) {
+        restoration = await executeTransaction({
+          target: parameterTarget, capability: { id: 'fl.plugin.parameter' },
+          args: { value: baseline }, adapter, verify: 'readback', tolerance: 0.002,
+          authorization: 'explicit-user-write'
+        });
+      }
+      const outcome = mutation.verification.outcome === 'CONFIRMED' && restoration?.verification.outcome === 'CONFIRMED'
+        ? 'CONFIRMED'
+        : mutation.verification.outcome === 'CONTRADICTED' || restoration?.verification.outcome === 'CONTRADICTED'
+          ? 'CONTRADICTED' : 'UNKNOWN';
+      const record = {
+        kind: 'fl.plugin.parameter.trial',
+        producer: { owner: 'INDRO', adapter: adapter.name, bridge_schema: 'indro.fl.bridge.v1' },
+        trust_model: 'FL Studio scripting API mutation and restoration with host readback; audible effect not established',
+        target: parameterTarget,
+        discovery: { parameter_count: catalog.parameter_count, parameter: discovered },
+        expected: { mutation: value, restoration: baseline, tolerance: 0.002 },
+        transactions: { mutation, restoration },
+        verification: {
+          outcome,
+          mutation: mutation.verification.outcome,
+          restoration: restoration?.verification.outcome ?? 'UNKNOWN',
+          externalEffectVerified: false,
+        },
+        recovery: {
+          restorationAttempted: restoration !== null,
+          blindRetryPermitted: false,
+          state: outcome === 'UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'FINALIZED',
+        },
+        limitations: ['Application parameter readback does not independently verify audible output.'],
+      };
+      const evidence = (dependencies.persistReceipt ?? persistFlReceipt)(record, dependencies);
+      out(JSON.stringify({ ...record, evidence }, null, 2));
+      return outcome === 'CONFIRMED' ? 0 : 1;
+    }
     const transaction = await executeTransaction({
       target: parameterTarget,
       capability: { id: 'fl.plugin.parameter' },

@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { stateRoot } from '../../commandhud/core.mjs';
 import { createFlTransport, defaultMailbox, discoverSession, latestFlReceipt, validateFlReceipt } from '../fl/adapter.mjs';
 import { runFlCli } from '../fl/cli.mjs';
+import { defaultPianoRollScriptPath } from '../fl/piano-roll.mjs';
+import { desktopWorkerStatus } from '../desktop/adapter.mjs';
+import { observeFlBrowser } from '../desktop/fl-studio.mjs';
 import { verifyPng } from '../paint/artifact.mjs';
 
 export const CAPABILITY_SCHEMA = 'indro.capability/v1';
@@ -21,6 +24,9 @@ export function capabilityRoot(options = {}) {
 }
 
 function adapterPath() { return resolve(here, '..', 'fl', 'adapter.mjs'); }
+function pianoRollAdapterPath() { return resolve(here, '..', 'fl', 'piano-roll.mjs'); }
+function desktopWorkerPath() { return resolve(here, '..', 'desktop', 'windows_worker.py'); }
+function desktopAdapterPath() { return resolve(here, '..', 'desktop', 'adapter.mjs'); }
 function paintVerifierPath() { return resolve(here, '..', 'paint', 'artifact.mjs'); }
 function bridgePath(mailbox = defaultMailbox()) {
   return join(dirname(resolve(mailbox)), 'device_FLGranulizerBridge.py');
@@ -113,6 +119,107 @@ export function retainFlParameterCapability({ receiptPath, mailbox = defaultMail
   return { capability: payload, path: destination, sha256: fileIdentity(destination).sha256 };
 }
 
+export function retainFlPianoRollCapability({ receiptPath, mailbox = defaultMailbox(), ...options } = {}) {
+  const path = receiptPath ?? latestFlReceipt(options);
+  const receiptCheck = validateFlReceipt(path);
+  if (!receiptCheck.valid) throw new Error(`SOURCE_RECEIPT_INVALID:${receiptCheck.issues.join(',')}`);
+  const receipt = JSON.parse(readFileSync(path, 'utf8')).payload;
+  const tx = receipt.transaction;
+  if (tx?.capability_id !== 'fl.piano-roll.note' || tx.post_observation?.value !== true) throw new Error('RECEIPT_NOT_COMPILABLE');
+  const session = discoverSession({ mailbox });
+  const payload = {
+    schema: CAPABILITY_SCHEMA, schema_version: 1, id: 'fl.piano-roll.note.add',
+    goal: 'Add and verify a note in the active FL Studio Piano Roll score',
+    parameters: {
+      channel: { type: 'channel-identity' }, pattern: { type: 'integer', minimum: 1, maximum: 999 },
+      step: { type: 'integer', minimum: 1, maximum: 4096 }, note: { type: 'integer', minimum: 0, maximum: 131 },
+      velocity: { type: 'integer', minimum: 1, maximum: 127 }, length: { type: 'integer', minimum: 1, maximum: 256 },
+    },
+    target: { application: 'fl-studio', observed_channel: tx.target.channel_name,
+      observed_pattern: tx.target.pattern, observed_ppq: tx.target.ppq,
+      identity_validation: 'bridge channel and pattern identity before and after every native score script run' },
+    invocation: { adapter: 'indro-fl-piano-roll-native-script', capability: 'fl.piano-roll.note',
+      trigger: 'interactive desktop Ctrl+Alt+Y with nonce-bound native result' },
+    authorization: { required: 'explicit-user-write' },
+    preconditions: ['live bridge session', 'interactive desktop worker', 'selected channel and pattern identity',
+      'INDRO Note is the last Piano Roll script', 'Piano Roll PPQ equals validated PPQ'],
+    postcondition: { comparator: 'exact note fields with velocity tolerance 1/127', observation: 'flpianoroll.score.getNote' },
+    verification: { required: 'native-score-readback', external_effect: 'audible-output-not-established' },
+    dependencies: { bridge_schema: session.schema, bridge_version: session.bridge_version,
+      generator: fileIdentity(pianoRollAdapterPath()), desktop_worker: fileIdentity(desktopWorkerPath()),
+      installed_bridge: fileIdentity(bridgePath(mailbox)), installed_script_path: resolve(defaultPianoRollScriptPath()) },
+    evidence: [{ receipt: resolve(path), sha256: fileIdentity(path).sha256 }],
+    invalidation: ['channel or pattern identity changed', 'PPQ changed', 'bridge/generator/worker bytes changed',
+      'desktop worker unavailable', 'another Piano Roll script became the last script'],
+    limitations: ['Piano Roll script runtime cannot independently name channel or pattern',
+      'native score readback does not verify audible output or saved project state', 'checksum integrity is not authenticated provenance'],
+    reuse_eligibility: 'validate-live-target-and-dependencies-before-each-invocation', retained_at: new Date().toISOString(),
+  };
+  const directory = join(capabilityRoot(options), payload.id);
+  mkdirSync(directory, { recursive: true });
+  const destination = join(directory, `${payload.retained_at.replace(/[:.]/g, '-')}-${randomUUID()}.json`);
+  writeFileSync(destination, `${JSON.stringify(envelope(payload), null, 2)}\n`, { flag: 'wx' });
+  return { capability: payload, path: destination, sha256: fileIdentity(destination).sha256 };
+}
+
+export function retainFlBrowserCapability({ responsePath, independentObservationPath, ...options } = {}) {
+  if (!responsePath || !independentObservationPath) throw new Error('BROWSER_EVIDENCE_PATHS_REQUIRED');
+  const response = JSON.parse(readFileSync(responsePath, 'utf8'));
+  const independent = JSON.parse(readFileSync(independentObservationPath, 'utf8'));
+  const observation = response?.result?.observation;
+  const application = observation?.application;
+  const windowObservation = independent.window_observation ??
+    (Array.isArray(independent.windows) && independent.windows.length ? 'current-window-station' : null);
+  const mains = independent?.windows?.filter(window => window.class_name === 'TFruityLoopsMainForm') ?? [];
+  const browsers = mains[0]?.children?.filter(window => window.class_name === 'TSampleListForm') ?? [];
+  const processIdentityMatched = application?.process_id === independent.process_id &&
+    application?.session_id === independent.session_id && application?.executable === independent.executable &&
+    application?.executable_sha256 === independent.executable_sha256 &&
+    Math.abs(application?.process_start - independent.process_start_unix) <= 0.001;
+  const workerWindowIdentityValid = application?.main_class === 'TFruityLoopsMainForm' &&
+    Number.isInteger(application?.main_handle) && application.main_handle > 0 &&
+    application?.browser_class === 'TSampleListForm' &&
+    Number.isInteger(application?.browser_handle) && application.browser_handle > 0;
+  const independentWindowsMatched = windowObservation === 'unavailable-from-current-window-station' ||
+    (mains.length === 1 && browsers.length === 1 && application.main_handle === mains[0].handle &&
+      application.browser_handle === browsers[0].handle && observation.value === browsers[0].visible);
+  const matched = response?.schema === 'indro.desktop-control.v1' && response.ok === true &&
+    response.operation === 'fl-studio.browser.observe' && response.result?.mutation_attempted === false &&
+    processIdentityMatched && workerWindowIdentityValid && independentWindowsMatched;
+  if (!matched) throw new Error('BROWSER_EVIDENCE_IDENTITY_MISMATCH');
+  const payload = {
+    schema: CAPABILITY_SCHEMA, schema_version: 1, id: 'fl.browser.visibility.observe',
+    goal: 'Observe FL Studio Browser visibility without modifying application state',
+    parameters: {},
+    target: { application: 'fl-studio', executable: application.executable,
+      executable_sha256: application.executable_sha256,
+      identity_validation: 'unique live process plus main and Browser Win32 class/handle observation' },
+    invocation: { adapter: 'indro-windows-desktop-mailbox', capability: 'fl.browser.visibility', mode: 'read-only' },
+    authorization: { required: 'local-read-only', scope: 'fl-studio.browser.observe' },
+    preconditions: ['fresh interactive desktop worker', 'unique FL Studio process identity', 'unique main and Browser windows'],
+    postcondition: { observation: 'Win32 IsWindowVisible on TSampleListForm', mutation_attempted: false },
+    verification: { required: 'identity-matched desktop observation',
+      independent_evidence: windowObservation === 'current-window-station'
+        ? 'process identity plus user32 EnumWindows/EnumChildWindows'
+        : 'process identity; interactive HWND identity remains worker-observed',
+      independent_window_observation: windowObservation },
+    dependencies: { adapter: fileIdentity(desktopAdapterPath()), desktop_worker: fileIdentity(desktopWorkerPath()) },
+    evidence: [{ response: resolve(responsePath), sha256: fileIdentity(responsePath).sha256 },
+      { independent_observation: resolve(independentObservationPath), sha256: fileIdentity(independentObservationPath).sha256 }],
+    invalidation: ['worker unavailable or changed', 'adapter changed', 'evidence changed', 'FL executable identity changed'],
+    limitations: ['visibility and identity only; project, notes, and audible state are not observed',
+      ...(windowObservation === 'unavailable-from-current-window-station'
+        ? ['elevated SSH window station cannot independently enumerate session-1 HWNDs'] : []),
+      'checksum integrity is not authenticated provenance'],
+    reuse_eligibility: 'validate-live-identity-before-each-observation', retained_at: new Date().toISOString(),
+  };
+  const directory = join(capabilityRoot(options), payload.id);
+  mkdirSync(directory, { recursive: true });
+  const destination = join(directory, `${payload.retained_at.replace(/[:.]/g, '-')}-${randomUUID()}.json`);
+  writeFileSync(destination, `${JSON.stringify(envelope(payload), null, 2)}\n`, { flag: 'wx' });
+  return { capability: payload, path: destination, sha256: fileIdentity(destination).sha256 };
+}
+
 export function retainPaintResizeCapability({ artifactPath, width, height, appVersion, ...options } = {}) {
   if (!artifactPath) throw new Error('ARTIFACT_PATH_REQUIRED');
   if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) throw new Error('INVALID_EXPECTED_DIMENSIONS');
@@ -179,12 +286,48 @@ async function requestResult(transport, operation, args = {}, target = {}) {
 export async function validateCapability(id, options = {}) {
   const record = loadCapability(id, options);
   if (record.target.application === 'microsoft-paint') return validatePaintCapability(record, options);
+  if (record.invocation.capability === 'fl.browser.visibility') {
+    const issues = [];
+    for (const [name, currentPath] of [['adapter', desktopAdapterPath()], ['desktop_worker', desktopWorkerPath()]]) {
+      try { if (record.dependencies[name].sha256 !== fileIdentity(currentPath).sha256) issues.push(`${name.toUpperCase()}_FINGERPRINT_MISMATCH`); }
+      catch { issues.push(`${name.toUpperCase()}_UNAVAILABLE`); }
+    }
+    for (const item of record.evidence ?? []) {
+      const path = item.response ?? item.independent_observation;
+      try { if (!path || item.sha256 !== fileIdentity(path).sha256) issues.push('EVIDENCE_FINGERPRINT_MISMATCH'); }
+      catch { issues.push('EVIDENCE_UNAVAILABLE'); }
+    }
+    const worker = (options.desktopWorkerStatus ?? desktopWorkerStatus)(options);
+    if (!worker.ready) issues.push(worker.reason ?? 'DESKTOP_WORKER_UNAVAILABLE');
+    let observation = null;
+    if (!issues.length) {
+      try { observation = await (options.observeFlBrowser ?? observeFlBrowser)(options); }
+      catch (error) { issues.push(error.message); }
+    }
+    if (observation && observation.application?.executable_sha256 !== record.target.executable_sha256) issues.push('FL_EXECUTABLE_IDENTITY_CHANGED');
+    return { valid: issues.length === 0, reusable: issues.length === 0, issues, capability: record, live_observation: observation };
+  }
   const issues = [];
   let session;
   try { session = (options.discoverSession ?? discoverSession)({ mailbox: options.mailbox ?? defaultMailbox() }); }
   catch (error) { return { valid: false, reusable: false, issues: [error.message], capability: record }; }
   if (record.target.application !== 'fl-studio') issues.push('WRONG_APPLICATION_IDENTITY');
   if (record.dependencies.bridge_schema !== session.schema || record.dependencies.bridge_version !== session.bridge_version) issues.push('BRIDGE_VERSION_MISMATCH');
+  if (record.invocation.capability === 'fl.piano-roll.note') {
+    for (const [name, currentPath] of [['generator', pianoRollAdapterPath()], ['desktop_worker', desktopWorkerPath()],
+      ['installed_bridge', bridgePath(options.mailbox ?? defaultMailbox())]]) {
+      try { if (record.dependencies[name].sha256 !== fileIdentity(currentPath).sha256) issues.push(`${name.toUpperCase()}_FINGERPRINT_MISMATCH`); }
+      catch { issues.push(`${name.toUpperCase()}_UNAVAILABLE`); }
+    }
+    const worker = (options.desktopWorkerStatus ?? desktopWorkerStatus)(options);
+    if (!worker.ready) issues.push(worker.reason ?? 'DESKTOP_WORKER_UNAVAILABLE');
+    const transport = options.transport ?? createFlTransport(options);
+    const status = await requestResult(transport, 'status');
+    if (!status.selected || !status.pattern) issues.push('PIANO_ROLL_TARGET_IDENTITY_UNAVAILABLE');
+    return { valid: issues.length === 0, reusable: issues.length === 0, issues, capability: record,
+      live_target: status.selected && status.pattern ? { selected: status.selected, pattern: status.pattern } : null,
+      installed_script: record.dependencies.installed_script_path };
+  }
   for (const [name, currentPath] of [['adapter', adapterPath()], ['installed_bridge', bridgePath(options.mailbox ?? defaultMailbox())]]) {
     try { if (record.dependencies[name].sha256 !== fileIdentity(currentPath).sha256) issues.push(`${name.toUpperCase()}_FINGERPRINT_MISMATCH`); }
     catch { issues.push(`${name.toUpperCase()}_UNAVAILABLE`); }
@@ -211,6 +354,13 @@ export async function validateCapability(id, options = {}) {
       parameter: matches[0].parameter, parameter_name: matches[0].parameter_name,
       scope: 'single-fl-parameter-invocation', created_unix_ms: Date.now(),
     } : null };
+}
+
+export async function observeCapability(id, options = {}) {
+  const validation = await validateCapability(id, options);
+  if (!validation.reusable) throw new Error(`CAPABILITY_NOT_REUSABLE:${validation.issues.join(',')}`);
+  if (validation.capability.invocation.capability !== 'fl.browser.visibility') throw new Error('CAPABILITY_NOT_READ_ONLY_OBSERVABLE');
+  return { validation, observation: validation.live_observation };
 }
 
 export async function invokeCapability(id, value, options = {}) {

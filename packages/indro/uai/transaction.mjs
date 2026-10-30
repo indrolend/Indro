@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { OPERATION_CONTRACT_SCHEMA } from '../../commandhud/operation-contract.mjs';
 
 export const MILESTONES = Object.freeze(['SUBMITTED', 'RECEIVED', 'ACCEPTED', 'EXECUTED', 'STATE_CONFIRMED', 'EFFECT_VERIFIED']);
 export const UNKNOWN = 'UNKNOWN';
@@ -8,12 +9,59 @@ export function makeTransaction({ target, capability, args = {}, adapter, verify
   if (!target?.app_id || !capability?.id || typeof adapter?.invoke !== 'function' || typeof adapter?.observe !== 'function') {
     throw new TypeError('Explicit target, capability, invoke and observe required');
   }
+  const operationId = randomUUID();
+  const expectedPostcondition = verify === 'readback' && Object.hasOwn(args, 'value')
+    ? { kind: 'application-readback', capability: capability.id, equals: args.value }
+    : { kind: verify };
   return {
-    schema_version: '0.1', operation_id: randomUUID(), target, capability_id: capability.id, arguments: args,
-    authorization, transport: adapter.name ?? UNKNOWN, timestamps: { created: new Date().toISOString() },
+    schema: OPERATION_CONTRACT_SCHEMA,
+    schema_version: '0.1', operation_id: operationId, operationId, target,
+    principal: { type: 'human', id: 'local-user' },
+    capability: { id: capability.id, version: 1 }, capability_id: capability.id, arguments: args,
+    authorization: {
+      decision: UNKNOWN, basis: authorization, enforced: false,
+      scope: { target: target.app_id, capability: capability.id },
+    },
+    environment: { transport: adapter.name ?? UNKNOWN }, transport: adapter.name ?? UNKNOWN,
+    timestamps: { created: new Date().toISOString() },
     milestones: Object.fromEntries(MILESTONES.map(m => [m, UNKNOWN])),
     pre_observation: null, post_observation: null, artifacts: [], contract_id: verify,
-    evidence_hashes: [], verdict: UNKNOWN, limitations: []
+    invocation: {
+      attempted: false, submitted: UNKNOWN, acceptedByTarget: UNKNOWN,
+      executed: UNKNOWN, executionEvidence: UNKNOWN,
+    },
+    observations: { before: null, after: null },
+    expectedPostcondition,
+    verification: {
+      outcome: UNKNOWN, observed: null, assurance: verify === 'readback' ? 'application-readback' : verify,
+      externalEffectVerified: false,
+    },
+    evidence: { integrity: 'sha256-checksum-not-authenticated' },
+    recovery: { state: 'IN_PROGRESS', blindRetryPermitted: false },
+    reuse: { eligible: false, reason: 'Capability validity has not been established for reuse.' },
+    evidence_hashes: [], verdict: UNKNOWN,
+    limitations: ['Authorization policy was declared by the caller but not independently enforced by the UAI transaction kernel.']
+  };
+}
+
+function finalizeContract(tx) {
+  tx.invocation = {
+    attempted: tx.milestones.SUBMITTED === true,
+    submitted: tx.milestones.SUBMITTED,
+    acceptedByTarget: tx.milestones.ACCEPTED,
+    executed: tx.milestones.EXECUTED,
+    executionEvidence: tx.milestones.EXECUTED === true ? 'adapter-reported-execution' : UNKNOWN,
+  };
+  tx.observations = { before: tx.pre_observation, after: tx.post_observation };
+  tx.verification = {
+    ...tx.verification,
+    outcome: tx.verdict === 'STATE_CONFIRMED' ? 'CONFIRMED'
+      : tx.verdict === 'READBACK_MISMATCH' ? 'CONTRADICTED' : UNKNOWN,
+    observed: tx.post_observation,
+  };
+  tx.recovery = {
+    state: ['TRANSPORT_UNKNOWN', 'OBSERVATION_FAILED'].includes(tx.verdict) ? 'OUTCOME_UNKNOWN' : 'FINALIZED',
+    blindRetryPermitted: false,
   };
 }
 
@@ -67,6 +115,7 @@ export async function executeTransaction(spec) {
     tx.limitations.push(String(error?.message ?? error));
   }
   tx.timestamps.completed = new Date().toISOString();
+  finalizeContract(tx);
   // Integrity checksum only; durable, append-only storage belongs to CommandHUD.
   tx.evidence_hashes.push(digest({ ...tx, evidence_hashes: [] }));
   return tx;

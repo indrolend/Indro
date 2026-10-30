@@ -18,10 +18,19 @@ test('readback confirms state without inventing receipt or effect evidence', asy
   assert.equal(tx.milestones.RECEIVED, 'UNKNOWN');
   assert.equal(tx.milestones.EFFECT_VERIFIED, 'UNKNOWN');
   assert.equal(tx.evidence_hashes.length, 1);
+  assert.equal(tx.schema, 'indro.operation/v1');
+  assert.equal(tx.authorization.decision, 'UNKNOWN');
+  assert.equal(tx.authorization.enforced, false);
+  assert.equal(tx.invocation.executed, true);
+  assert.equal(tx.verification.outcome, 'CONFIRMED');
+  assert.equal(tx.verification.externalEffectVerified, false);
+  assert.deepEqual(tx.observations, { before: tx.pre_observation, after: tx.post_observation });
+  assert.equal(tx.recovery.blindRetryPermitted, false);
 });
 test('readback mismatch is not success', async () => {
   const tx = await run({ observe: async () => ({ value: 0.2 }), invoke: async () => ({}) });
   assert.equal(tx.verdict, 'READBACK_MISMATCH');
+  assert.equal(tx.verification.outcome, 'CONTRADICTED');
 });
 test('adapter cannot forge caller expectation', async () => {
   const tx = await run({ observe: async () => ({ value: 0.2 }), invoke: async () => ({ expected: 0.2 }) });
@@ -36,6 +45,9 @@ test('failed invocation remains unknown rather than confirmed failure to deliver
   const tx = await run({ observe: async () => ({ value: 0 }), invoke: async () => { throw Error('timeout'); } });
   assert.equal(tx.verdict, 'TRANSPORT_UNKNOWN');
   assert.equal(tx.milestones.EXECUTED, 'UNKNOWN');
+  assert.equal(tx.verification.outcome, 'UNKNOWN');
+  assert.equal(tx.recovery.state, 'OUTCOME_UNKNOWN');
+  assert.equal(tx.recovery.blindRetryPermitted, false);
 });
 test('pre-observation failure never invokes the application', async () => {
   let invoked = false;

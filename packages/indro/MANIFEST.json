@@ -36,6 +36,26 @@
   },
   "files": [
     {
+      "path": "DOGFOOD.md",
+      "bytes": 3817,
+      "sha256": "5bb1774bd0f4a28feb662ae9d05b5317f9fa73c6671053d80968e5b41f8d2a9a"
+    },
+    {
+      "path": "Indro.psm1",
+      "bytes": 14823,
+      "sha256": "9ec7ad6b57b1e296f164d773c406736533782bf67ff6764407bf11e8d2255023"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6854,
+      "sha256": "001f04c9420932d2ab529068e4d492d2de75ad0a131d0881b2bdd393f52bcd18"
+    },
+    {
+      "path": "SPEC.md",
+      "bytes": 4676,
+      "sha256": "10755b8c4ff3fb52c4bb0e181fa382c7963f0ec3b43e9b8ff567a76849a4b462"
+    },
+    {
       "path": "benchmark-native.mjs",
       "bytes": 7916,
       "sha256": "87d398333567c5d4004c9b8fd1749b12b7af3270efa08179dfe801a98a8ecfd3"
@@ -44,6 +64,11 @@
       "path": "benchmark-native.test.mjs",
       "bytes": 3683,
       "sha256": "e9668c25f429218b5bdd6863d82ac5f94de9e2c50112b43a7a245dac835d1158"
+    },
+    {
+      "path": "benchmarks/README.md",
+      "bytes": 852,
+      "sha256": "b3810891094797fbc93b4940ab12840f5c8745943effa2283762d7d3eedb9a4f"
     },
     {
       "path": "benchmarks/crosscheck.json",
@@ -81,11 +106,6 @@
       "sha256": "4f546766b8b98f928a40c8b99a21d4848fbf5e121c8685f1b6c488cada7ce656"
     },
     {
-      "path": "benchmarks/README.md",
-      "bytes": 852,
-      "sha256": "b3810891094797fbc93b4940ab12840f5c8745943effa2283762d7d3eedb9a4f"
-    },
-    {
       "path": "benchmarks/repeated-performance.txt",
       "bytes": 94,
       "sha256": "1296377bd01bc0ccb4609e18cb48cfc1824ee10e6215df416194528e4465dc9c"
@@ -107,23 +127,23 @@
     },
     {
       "path": "capability/cli.mjs",
-      "bytes": 2511,
-      "sha256": "ef9750df65f6fc4f376fc222769975cc5216706d0917bbae290277662d7848f1"
+      "bytes": 3253,
+      "sha256": "3a907caabbc18c3db9eb72f432b45292949052560f085fbe0196f44bab92a7f1"
     },
     {
       "path": "capability/store.mjs",
-      "bytes": 13563,
-      "sha256": "f0ff2d90672e6042a525b7993b86f6d47c65af218d78c7943e85e4a481f8cad8"
+      "bytes": 25189,
+      "sha256": "196c8c504112951dfff2da137c9132fe43121f15c84615864e36f29df7d367ac"
     },
     {
       "path": "capability/store.test.mjs",
-      "bytes": 8529,
-      "sha256": "369e8a76aaa85ca85654c8e07e852786718b23c9047d2b8bb8896eaaed5a7df1"
+      "bytes": 12257,
+      "sha256": "f0b47669394f035fd49d4ce978e6167c694256d49cb966969da33ee3236b043d"
     },
     {
       "path": "cli.mjs",
-      "bytes": 4625,
-      "sha256": "29f1350e066d2e17c0dd2ecd5992161c7c9c29aa61e440dda32420c86fe77116"
+      "bytes": 4869,
+      "sha256": "f0746491c11e0609c71a0a510eab7fbbc3d0b9243ded163188f847e5b60cd6b4"
     },
     {
       "path": "cli.test.mjs",
@@ -131,14 +151,39 @@
       "sha256": "2d1dbfaf218242016167fa8eabe64bcd22e2b114bac493fe9e5525b8f2eece8d"
     },
     {
+      "path": "desktop/adapter.mjs",
+      "bytes": 6487,
+      "sha256": "cdcf5284c6859a2180727e894186e299e3265d4fe2dba730e4856af0e3a2694c"
+    },
+    {
+      "path": "desktop/adapter.test.mjs",
+      "bytes": 2885,
+      "sha256": "747f02e1e301a084e73fc86e3b388a7fb4e455953f676d89b16b24060001e1de"
+    },
+    {
+      "path": "desktop/fl-studio.mjs",
+      "bytes": 4077,
+      "sha256": "ab77c2f56985457ead66da1efafab8ea00a66032506929d36d30256a45642cf1"
+    },
+    {
+      "path": "desktop/fl-studio.test.mjs",
+      "bytes": 3676,
+      "sha256": "a2d4407765de932a2d39f2377eaf6021a3d6f652af6162c7b720fa7c89945bc0"
+    },
+    {
+      "path": "desktop/observe_fl_identity.py",
+      "bytes": 3883,
+      "sha256": "ce0b69015e95eafd31c3e5e21a8bc275fed286a4c4f295e69d4884c1a007e935"
+    },
+    {
+      "path": "desktop/windows_worker.py",
+      "bytes": 12213,
+      "sha256": "4ee310e838bd0cc1f05fea4cd850485cd9747ba50981b4cdc244c351054c7af7"
+    },
+    {
       "path": "doctor.ps1",
       "bytes": 559,
       "sha256": "a9234fdb74e854b06085429b1e75a7c2e3cf57b1b5b444bf0cef5801ff4f87a2"
-    },
-    {
-      "path": "DOGFOOD.md",
-      "bytes": 3817,
-      "sha256": "5bb1774bd0f4a28feb662ae9d05b5317f9fa73c6671053d80968e5b41f8d2a9a"
     },
     {
       "path": "examples/digital-breakdown-convergence.indro",
@@ -172,28 +217,38 @@
     },
     {
       "path": "fl/adapter.mjs",
-      "bytes": 8938,
-      "sha256": "434bb2ceaae249b12b8ab08ecb549a5d7f2075edf197e893cc9b0fe31759c3d4"
+      "bytes": 13746,
+      "sha256": "8ef9aad8cf6a0064a8b25eab8129afbfd4fb66878719f7e931706a0a19b7a9be"
     },
     {
       "path": "fl/adapter.test.mjs",
-      "bytes": 2245,
-      "sha256": "f932851950dbd825adacb41c360a6d03c34a1150f80c445355a0403a6ef736f9"
+      "bytes": 6883,
+      "sha256": "1277d34f8c7d74781f9e5c07e5af01fad9e8e7b0b9e476815a9fbdd176f27e8b"
     },
     {
       "path": "fl/bridge/device_INDROFLBridge.py",
-      "bytes": 8225,
-      "sha256": "b1e8168ed0004c9bf4bd9c7c9dbda152800e872883a76ba49d95f3dd611bdc60"
+      "bytes": 9095,
+      "sha256": "7da10ccedffb49fa3a021dc82756188c61a2d38ba22e267ed9fc65c479e47001"
     },
     {
       "path": "fl/cli.mjs",
-      "bytes": 7449,
-      "sha256": "a6c4dc86a2ca13c0affc9e0f4d88c921e0ddcf95854f4b88b9bee69718a77a4c"
+      "bytes": 15843,
+      "sha256": "4766550621423d3057282c1b1e87dc3337132fc2914d33785f0c0812fd5abe7e"
     },
     {
       "path": "fl/cli.test.mjs",
-      "bytes": 6080,
-      "sha256": "b3885c1e48f4ff2bc062e5484632635e8c27fdddbbe47231029cbb452dd2ad7e"
+      "bytes": 11243,
+      "sha256": "b19f1eec7ced03952fd291eb88c6e6c27fadcdbd6c8b15c95d198430dd3e20c3"
+    },
+    {
+      "path": "fl/piano-roll.mjs",
+      "bytes": 6543,
+      "sha256": "146c8802c94566eede44c1da179b207db6462793b4d227b74f671f8e1bb6b7de"
+    },
+    {
+      "path": "fl/piano-roll.test.mjs",
+      "bytes": 3293,
+      "sha256": "8d651239e2617123a01e317834f693487cbd84d0d355907c651b424a0245238d"
     },
     {
       "path": "fl/send-trigger.ps1",
@@ -211,6 +266,11 @@
       "sha256": "9a2f7435fd10b056ec925777a3f08596705fffc4a0dce02345885ede450a5e1e"
     },
     {
+      "path": "indro.py",
+      "bytes": 3779,
+      "sha256": "58102d974b641fe7da871dcda57f874c667bc95b10b8804a0c5a0ee6276e4e83"
+    },
+    {
       "path": "indro_lang.py",
       "bytes": 17754,
       "sha256": "91fd49d22d3a914ecc3c51877949239cc84f438e2a664d64a8c85dcee7d0c6ce"
@@ -219,16 +279,6 @@
       "path": "indro_proof.py",
       "bytes": 4277,
       "sha256": "f563815923ea4a9463da389fc641321c78297483f1bb8e3b915576963348585a"
-    },
-    {
-      "path": "Indro.psm1",
-      "bytes": 14823,
-      "sha256": "9ec7ad6b57b1e296f164d773c406736533782bf67ff6764407bf11e8d2255023"
-    },
-    {
-      "path": "indro.py",
-      "bytes": 3779,
-      "sha256": "58102d974b641fe7da871dcda57f874c667bc95b10b8804a0c5a0ee6276e4e83"
     },
     {
       "path": "install.ps1",
@@ -252,8 +302,8 @@
     },
     {
       "path": "package.json",
-      "bytes": 590,
-      "sha256": "fa634e740129152922fb8b723974dc073a0f1d60144c9fb3df163a7bccc37f19"
+      "bytes": 671,
+      "sha256": "7d0cd8e6297f203527cbbdd74e38645b572f68151872ffbced2b4c21b419e08d"
     },
     {
       "path": "paint/artifact.mjs",
@@ -276,11 +326,6 @@
       "sha256": "93eecddc0b0906276cda118a2838b94539b9800dae9fab64c7ed5ac048b247eb"
     },
     {
-      "path": "README.md",
-      "bytes": 6854,
-      "sha256": "001f04c9420932d2ab529068e4d492d2de75ad0a131d0881b2bdd393f52bcd18"
-    },
-    {
       "path": "remote/cli.mjs",
       "bytes": 1239,
       "sha256": "ef6fc18a2cb47ab18c3cdfeb3b4d7941891622e35ab8aca5edebaf1c360723b0"
@@ -296,24 +341,19 @@
       "sha256": "2e4ac39d6347bd2bff5ce9e222fac5e490ea6ad88ae8fe21825ffe2adf98656f"
     },
     {
-      "path": "runtime/dbdev.ps1",
-      "bytes": 11529,
-      "sha256": "c1946cd4ec8d1980620f55c3ab883d311922c70b9a189bc185347150a34cfe18"
-    },
-    {
       "path": "runtime/MagicFunnel.psm1",
       "bytes": 7249,
       "sha256": "8e610f53a6a7c2b4875faa071b303a54b7cd09ed7863c276842c946e06fa0b02"
     },
     {
+      "path": "runtime/dbdev.ps1",
+      "bytes": 11529,
+      "sha256": "c1946cd4ec8d1980620f55c3ab883d311922c70b9a189bc185347150a34cfe18"
+    },
+    {
       "path": "runtime/ollama-playtest.py",
       "bytes": 4764,
       "sha256": "1ac8a7afda63782aa87a8fa0f8387a5abf2c92780bda1e3cc63c2321d12cb32b"
-    },
-    {
-      "path": "SPEC.md",
-      "bytes": 4676,
-      "sha256": "10755b8c4ff3fb52c4bb0e181fa382c7963f0ec3b43e9b8ff567a76849a4b462"
     },
     {
       "path": "tools/benchmark-compact.py",
@@ -411,6 +451,11 @@
       "sha256": "7c27ddd40a655ee1cea1e06656c5e3b179ac7766e8685bf127291f62ebc9f210"
     },
     {
+      "path": "uai/README.md",
+      "bytes": 1912,
+      "sha256": "0ca2042ff9bccec5756c11fcd1b72eac0b064c995633c53241dddce9c2965285"
+    },
+    {
       "path": "uai/assay.mjs",
       "bytes": 2307,
       "sha256": "4df54e1a5b48ef087033623ac3d17f9cadd0b671ba2af2aaf085948c6916cc78"
@@ -432,8 +477,8 @@
     },
     {
       "path": "uai/cli.mjs",
-      "bytes": 1892,
-      "sha256": "52646700c509c8b9a49e9bed34baa0f20fb1169eb69bfeb7677c02e6ff635233"
+      "bytes": 3971,
+      "sha256": "9beeb91fe8ecafd8f5de2575cfc5a69012c924566a6abebba5a3f43c6078a42a"
     },
     {
       "path": "uai/process-priority.mjs",
@@ -446,19 +491,14 @@
       "sha256": "39aa8852f0d4b49f6a7254a92fd10d430f8d77695f5b893d9b56187b98de2efd"
     },
     {
-      "path": "uai/README.md",
-      "bytes": 1912,
-      "sha256": "0ca2042ff9bccec5756c11fcd1b72eac0b064c995633c53241dddce9c2965285"
-    },
-    {
       "path": "uai/transaction.mjs",
-      "bytes": 3759,
-      "sha256": "8072d8b630e4787c196542debd03ad4111f6b5c87ba71e1e60b6d34ee559c336"
+      "bytes": 5993,
+      "sha256": "ae36211667fd626f1ffe76ca540cb00261c1443b98b99e551ed959def4385322"
     },
     {
       "path": "uai/transaction.test.mjs",
-      "bytes": 3113,
-      "sha256": "d77d0a947397ddc38f40b6c666edff0a6fdb1b742d97325715a82e7a2095a7b2"
+      "bytes": 3801,
+      "sha256": "be35cf28ebfd4ea124b8c5210d0abf6abeb650b62b65982d7888bac9ef55f66d"
     },
     {
       "path": "uai/windows-process-adapter.mjs",

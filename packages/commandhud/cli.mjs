@@ -3,7 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
-import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, executeOperation, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { localArgvOperation } from './operation-contract.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 Run from any Git repository:
@@ -598,9 +599,10 @@ async function main() {
       index: Number.isInteger(options.stageIndex) ? options.stageIndex : null,
       count: Number.isInteger(options.stageCount) ? options.stageCount : null,
     } : null;
-    const record = await runCommand(project, args, {
+    const contract = localArgvOperation(project, args, { objective: options.objective });
+    const record = await executeOperation(project, contract, {
       objective: options.objective, request, workflow,
-      stream: !options.quiet && !options.json, origin: 'cli-argv', shell: false,
+      stream: !options.quiet && !options.json, origin: 'cli-argv',
       operationIdentity: { type: 'argv-command', argv: [...args], cwd: project.root },
       operationReducer: ({ exitCode, command, record: value }) => ({
         type: 'argv-command', argv: [...args], displayCommand: command, command,
@@ -611,6 +613,7 @@ async function main() {
     if (options.json) {
       console.log(JSON.stringify({
         runId: record.id, status: record.status, operation: record.operation,
+        contract: record.contract,
         presentation: record.presentation, packet: record.packet,
         stdoutPath: record.stdoutPath, stderrPath: record.stderrPath,
         currency: record.currencyAfter,

@@ -18,7 +18,11 @@ Language:
   indro app help
   indro app fixture set <number> --json  # offline fixture
   indro app process priority --spawn --set BelowNormal --json  # owned Windows child
+  indro app windows worker status|start --json
+  indro app fl-studio browser status|show|hide --json
   indro capability list --json
+  indro capability retain-fl-browser --response PATH --independent PATH --json
+  indro capability observe fl.browser.visibility.observe --json
   indro capability retain-paint --artifact PATH --width N --height N --app-version VERSION --json
   indro capability validate <id> --json
   indro capability invoke <id> --value 0..1 --verify --authorize-write --json

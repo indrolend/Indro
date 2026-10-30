@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 import { operationPolicy, validateOperationEvidence } from './operation-kernel.mjs';
+import { operationContractRecord, validateOperationRequest } from './operation-contract.mjs';
 
 const execFileAsync = promisify(execFile);
 export const SCHEMA_VERSION = 1;
@@ -1139,6 +1140,7 @@ export async function runCommand(project, tokens, {
   mode = 'finite', timeoutMs = null, requiredOutput = 'none',
   stdin = null,
   externalCancellation = false,
+  operationContract = null,
 } = {}) {
   if (!tokens.length) throw new Error('hud run requires a command.');
   const origins = new Set(['core-api', 'cli-argv', 'terminal-ui', 'local-server']);
@@ -1231,6 +1233,7 @@ export async function runCommand(project, tokens, {
       captureOutput, captureLimitCharacters,
       stdin: stdinEvidence,
       operationPolicy: policy,
+      operationContract,
       provenance: { origin },
     }, { exclusive: true });
   } catch (error) {
@@ -1379,6 +1382,14 @@ export async function runCommand(project, tokens, {
     record.operation = operationReducer({ stdout, stderr, exitCode, command, record, observedOutput });
     record.operation.provenance = record.provenance;
   }
+  if (operationContract) {
+    record.contract = operationContractRecord(operationContract, record);
+    if (record.contract.verification.outcome === 'CONTRADICTED' && record.status === 'pass') {
+      record.status = 'fail';
+      record.resultClassification = 'FAIL';
+      record.resultReason = 'POSTCONDITION_CONTRADICTED';
+    }
+  }
   record.presentation = buildPresentation(record);
   record.packet = buildPacket(record);
   atomicWriteJson(join(runDirectory, 'run.json'), record, { exclusive: true });
@@ -1387,6 +1398,17 @@ export async function runCommand(project, tokens, {
   state.lastRunId = id;
   writeProjectState(project, state);
   return record;
+}
+
+export async function executeOperation(project, request, options = {}) {
+  const contract = validateOperationRequest(project, request);
+  return runCommand(project, contract.arguments.argv, {
+    ...options,
+    objective: contract.objective ?? options.objective,
+    cwd: contract.environment.cwd,
+    shell: false,
+    operationContract: contract,
+  });
 }
 
 export async function doctor(project, { origin = 'core-api', probes = null } = {}) {
@@ -1564,6 +1586,7 @@ export async function recoverInterruptedRuns(project) {
       };
     }
     if (record.operation) record.operation.provenance = record.provenance;
+    if (inflight.operationContract) record.contract = operationContractRecord(inflight.operationContract, record);
     record.presentation = buildPresentation(record);
     record.packet = buildPacket(record);
     atomicWriteJson(join(runDirectory, 'run.json'), record, { exclusive: true });
