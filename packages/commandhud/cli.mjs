@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
-import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, classifyRunEvidenceIntegrity, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 Run from any Git repository:
@@ -672,7 +672,14 @@ async function main() {
       .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, (character) => `\\x${character.charCodeAt(0).toString(16).padStart(2, '0')}`);
     const showRun = (run) => {
       let projection;
-      try { projection = projectRunEvidence(project, run.id, { mode: 'raw' }); }
+      let integrity;
+      try {
+        integrity = classifyRunEvidenceIntegrity(project, run);
+        if (integrity === 'CORRUPT' || integrity === 'MISSING') {
+          throw new Error(`Retained output integrity ${integrity} for ${run.id}.`);
+        }
+        projection = projectRunEvidence(project, run.id, { mode: 'raw' });
+      }
       catch (error) {
         if (displayed) process.stdout.write('\n');
         process.stdout.write(`— OUTPUT EVIDENCE UNAVAILABLE · run:${run.id} · ${safe(error.message)}\n`);
@@ -680,7 +687,7 @@ async function main() {
         return;
       }
       const content = projection.streams.map((entry) => safe(entry.content || '')).filter(Boolean).join('\n');
-      const status = `${run.status.toUpperCase()} exit=${run.exitCode ?? 'none'} · run:${run.id}`;
+      const status = `${run.status.toUpperCase()} exit=${run.exitCode ?? 'none'} · run:${run.id} · evidence ${integrity}`;
       if (displayed) process.stdout.write('\n');
       if (content) process.stdout.write(content.endsWith('\n') ? content : `${content}\n`);
       else process.stdout.write('(no output)\n');
