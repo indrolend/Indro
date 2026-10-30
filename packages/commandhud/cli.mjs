@@ -671,7 +671,14 @@ async function main() {
       .replaceAll('\x1b', '␛')
       .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, (character) => `\\x${character.charCodeAt(0).toString(16).padStart(2, '0')}`);
     const showRun = (run) => {
-      const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
+      let projection;
+      try { projection = projectRunEvidence(project, run.id, { mode: 'raw' }); }
+      catch (error) {
+        if (displayed) process.stdout.write('\n');
+        process.stdout.write(`— OUTPUT EVIDENCE UNAVAILABLE · run:${run.id} · ${safe(error.message)}\n`);
+        displayed = true;
+        return;
+      }
       const content = projection.streams.map((entry) => safe(entry.content || '')).filter(Boolean).join('\n');
       const status = `${run.status.toUpperCase()} exit=${run.exitCode ?? 'none'} · run:${run.id}`;
       if (displayed) process.stdout.write('\n');
