@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
-import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, classifyRunEvidenceIntegrity, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 Run from any Git repository:
@@ -659,30 +659,97 @@ async function main() {
     return;
   }
   if (command === 'output') {
-    let lastDisplayedId = null;
-    const showLatest = () => {
-      const runs = listRuns(project, 30);
-      for (const run of runs) {
-        if (run.status === 'running' || run.status === 'pending') continue;
-        const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
-        const content = projection.streams
-          .map((stream) => stream.content || '')
-          .filter((value) => value.trim().length > 0)
-          .join('\n');
-        if (!content) continue;
-        if (run.id !== lastDisplayedId) {
-          lastDisplayedId = run.id;
-          process.stdout.write((lastDisplayedId && options.follow ? '\n' : '') +
-            content + (content.endsWith('\n') ? '' : '\n'));
+    let displayed = false;
+    let initialized = false;
+    const seenRunIds = new Set();
+    const observedRunIds = new Set();
+    const pendingRunIds = new Set();
+    let coverageWarned = false;
+    const safe = (value) => String(value)
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\\r')
+      .replaceAll('\x1b', '␛')
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, (character) => `\\x${character.charCodeAt(0).toString(16).padStart(2, '0')}`);
+    const showRun = (run) => {
+      let projection;
+      let integrity;
+      try {
+        integrity = classifyRunEvidenceIntegrity(project, run);
+        if (integrity === 'CORRUPT' || integrity === 'MISSING') {
+          throw new Error(`Retained output integrity ${integrity} for ${run.id}.`);
         }
+        projection = projectRunEvidence(project, run.id, { mode: 'raw' });
+      }
+      catch (error) {
+        if (displayed) process.stdout.write('\n');
+        process.stdout.write(`— OUTPUT EVIDENCE UNAVAILABLE · run:${run.id} · ${safe(error.message)}\n`);
+        displayed = true;
         return;
+      }
+      const content = projection.streams.map((entry) => safe(entry.content || '')).filter(Boolean).join('\n');
+      const status = `${run.status.toUpperCase()} exit=${run.exitCode ?? 'none'} · run:${run.id} · evidence ${integrity}`;
+      if (displayed) process.stdout.write('\n');
+      if (content) process.stdout.write(content.endsWith('\n') ? content : `${content}\n`);
+      else process.stdout.write('(no output)\n');
+      process.stdout.write(`— ${status} · legacy stream order\n`);
+      displayed = true;
+    };
+    const showLatest = () => {
+      let limit = options.follow ? 100 : 30;
+      let records = listRuns(project, limit);
+      if (!initialized && options.follow) {
+        while (records.length === limit && records.some((run) => run.status === 'running' || run.status === 'pending') && limit < 1600) {
+          limit = Math.min(limit * 2, 1600);
+          records = listRuns(project, limit);
+        }
+        if (records.length === limit && records.some((run) => run.status === 'running' || run.status === 'pending')) {
+          process.stdout.write('\n— OUTPUT COVERAGE UNCERTAIN · startup pending history exceeds 1600 records\n');
+          coverageWarned = true;
+        }
+      }
+      if (initialized && options.follow) {
+        const covered = () => {
+          const ids = new Set(records.map((run) => run.id));
+          const pinnedOlderRun = records.length > 1 && records[0].id < records[1].id ? records[0].id : null;
+          return records.some((run) => observedRunIds.has(run.id) && run.id !== pinnedOlderRun)
+            && [...pendingRunIds].every((id) => ids.has(id));
+        };
+        while (records.length === limit && !covered() && limit < 1600) {
+          limit = Math.min(limit * 2, 1600);
+          records = listRuns(project, limit);
+        }
+        if (records.length === limit && !covered() && !coverageWarned) {
+          process.stdout.write('\n— OUTPUT COVERAGE UNCERTAIN · history window reached 1600 records; inspect retained history\n');
+          coverageWarned = true;
+        }
+      }
+      for (const run of records) {
+        observedRunIds.add(run.id);
+        if (run.status === 'running' || run.status === 'pending') pendingRunIds.add(run.id);
+        else pendingRunIds.delete(run.id);
+      }
+      const runs = records.filter((run) => run.status !== 'running' && run.status !== 'pending');
+      if (!initialized) {
+        initialized = true;
+        for (const run of runs) seenRunIds.add(run.id);
+        if (runs.length) showRun(runs[0]);
+        return;
+      }
+      const unseen = runs.filter((run) => !seenRunIds.has(run.id)).sort((left, right) => {
+        const time = Date.parse(left.endedAt || left.startedAt || '') - Date.parse(right.endedAt || right.startedAt || '');
+        return time || left.id.localeCompare(right.id, 'en');
+      });
+      for (const run of unseen) {
+        seenRunIds.add(run.id);
+        showRun(run);
       }
     };
     showLatest();
     if (options.follow) {
       const timer = setInterval(showLatest, 1500);
-      process.once('SIGINT', () => { clearInterval(timer); process.exit(0); });
-      process.once('SIGTERM', () => { clearInterval(timer); process.exit(0); });
+      const stop = () => { clearInterval(timer); process.exitCode = 0; };
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
     }
     return;
   }
