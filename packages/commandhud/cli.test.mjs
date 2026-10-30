@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -431,11 +432,15 @@ test('hud output --follow covers 101 completions after running-only history with
       mkdirSync(directory, { recursive: true });
       const stdoutPath = join(directory, 'stdout.log');
       const stderrPath = join(directory, 'stderr.log');
-      writeFileSync(stdoutPath, 'window-marker-' + i + '\n');
+      const output = 'window-marker-' + i + '\n';
+      writeFileSync(stdoutPath, output);
       writeFileSync(stderrPath, '');
       const record = { ...seedRecord, id, status, exitCode: status === 'running' ? null : 0,
         stdoutPath, stderrPath, startedAt: new Date(Date.UTC(2099, 0, 1, 0, 0, 0, i)).toISOString(),
-        endedAt: status === 'running' ? null : new Date(Date.UTC(2099, 0, 1, 0, 0, 0, i)).toISOString() };
+        endedAt: status === 'running' ? null : new Date(Date.UTC(2099, 0, 1, 0, 0, 0, i)).toISOString(),
+        evidence: { ...seedRecord.evidence, stdout: {
+          bytes: Buffer.byteLength(output), sha256: `sha256:${createHash('sha256').update(output).digest('hex')}`,
+        } } };
       writeFileSync(join(directory, 'run.json'), JSON.stringify(record));
       return record;
     };
