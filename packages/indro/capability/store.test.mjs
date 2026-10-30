@@ -359,3 +359,18 @@ test('legacy parameter-only capability IDs remain readable without rewriting ret
   assert.equal(loadCapability(legacyId, f.options).target.plugin_name, f.plugin);
   assert.deepEqual(listCapabilities(f.options).map(x => x.id).sort(), [legacyId, f.id].sort());
 });
+
+test('distinct FL plugin names with the same slug retain independent addresses', () => {
+  const f = fixture({ plugin: 'Fruity EQ 2', parameterName: 'Mix' });
+  const otherReceipt = persistFlReceipt({ transaction: {
+    operation_id: 'source-op-slug-collision', capability_id: 'fl.plugin.parameter', verdict: 'STATE_CONFIRMED',
+    target: { session_id: 'session-1', channel: 6, plugin_name: 'Fruity EQ-2', parameter: 4 },
+    milestones: { STATE_CONFIRMED: true },
+    post_observation: { channel: 6, plugin_name: 'Fruity EQ-2', parameter: 4, parameter_name: 'Mix', value: 0.5 },
+  } }, { evidenceRoot: join(f.root, 'receipts') });
+  const other = retainFlParameterCapability({ ...f.options, receiptPath: otherReceipt.path });
+  assert.notEqual(f.id, other.capability.id, 'distinct source identities must not alias after slug normalization');
+  assert.deepEqual(listCapabilities(f.options).map(x => x.id).sort(), [f.id, other.capability.id].sort());
+  assert.equal(loadCapability(f.id, f.options).target.plugin_name, 'Fruity EQ 2');
+  assert.equal(loadCapability(other.capability.id, f.options).target.plugin_name, 'Fruity EQ-2');
+});
