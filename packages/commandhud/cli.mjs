@@ -696,11 +696,11 @@ async function main() {
     };
     const showLatest = () => {
       let limit = options.follow ? 100 : 30;
-      let records = listRuns(project, limit);
+      let records = listRuns(project, limit, { reportUnreadable: true });
       if (!initialized && options.follow) {
         while (records.length === limit && records.some((run) => run.status === 'running' || run.status === 'pending') && limit < 1600) {
           limit = Math.min(limit * 2, 1600);
-          records = listRuns(project, limit);
+          records = listRuns(project, limit, { reportUnreadable: true });
         }
         if (records.length === limit && records.some((run) => run.status === 'running' || run.status === 'pending')) {
           process.stdout.write('\n— OUTPUT COVERAGE UNCERTAIN · startup pending history exceeds 1600 records\n');
@@ -716,7 +716,7 @@ async function main() {
         };
         while (records.length === limit && !covered() && limit < 1600) {
           limit = Math.min(limit * 2, 1600);
-          records = listRuns(project, limit);
+          records = listRuns(project, limit, { reportUnreadable: true });
         }
         if (records.length === limit && !covered() && !coverageWarned) {
           process.stdout.write('\n— OUTPUT COVERAGE UNCERTAIN · history window reached 1600 records; inspect retained history\n');
