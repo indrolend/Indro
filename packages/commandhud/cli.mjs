@@ -662,6 +662,8 @@ async function main() {
     let displayed = false;
     let initialized = false;
     const seenRunIds = new Set();
+    const warnedUnreadableRunIds = new Set();
+    const unreadablePolls = new Map();
     const observedRunIds = new Set();
     const pendingRunIds = new Set();
     let coverageWarned = false;
@@ -725,22 +727,28 @@ async function main() {
       }
       for (const run of records) {
         observedRunIds.add(run.id);
-        if (run.status === 'running' || run.status === 'pending') pendingRunIds.add(run.id);
+        if (run.status === 'unreadable') unreadablePolls.set(run.id, (unreadablePolls.get(run.id) || 0) + 1);
+        else unreadablePolls.delete(run.id);
+        if (run.status === 'running' || run.status === 'pending' || run.status === 'unreadable') pendingRunIds.add(run.id);
         else pendingRunIds.delete(run.id);
       }
       const runs = records.filter((run) => run.status !== 'running' && run.status !== 'pending');
       if (!initialized) {
         initialized = true;
-        for (const run of runs) seenRunIds.add(run.id);
-        if (runs.length) showRun(runs[0]);
+        for (const run of runs) if (run.status !== 'unreadable') seenRunIds.add(run.id);
+        if (runs.length && (!options.follow || runs[0].status !== 'unreadable')) showRun(runs[0]);
         return;
       }
-      const unseen = runs.filter((run) => !seenRunIds.has(run.id)).sort((left, right) => {
+      const unseen = runs.filter((run) => !seenRunIds.has(run.id)
+        && (run.status !== 'unreadable' || !warnedUnreadableRunIds.has(run.id))).sort((left, right) => {
         const time = Date.parse(left.endedAt || left.startedAt || '') - Date.parse(right.endedAt || right.startedAt || '');
         return time || left.id.localeCompare(right.id, 'en');
       });
       for (const run of unseen) {
-        seenRunIds.add(run.id);
+        if (run.status === 'unreadable') {
+          if (options.follow && unreadablePolls.get(run.id) < 2) continue;
+          warnedUnreadableRunIds.add(run.id);
+        } else seenRunIds.add(run.id);
         showRun(run);
       }
     };
