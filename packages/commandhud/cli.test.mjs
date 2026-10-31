@@ -563,3 +563,32 @@ test('hud output rejects modified retained stdout instead of presenting forged P
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test('hud output fails visibly on unreadable newest run metadata instead of showing an older PASS', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-unreadable-record-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const state = join(root, '.state');
+    const env = { ...process.env, HUD_STATE_ROOT: state };
+    const execute = (script) => spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', script], {
+      cwd: root, env, encoding: 'utf8', timeout: 20_000,
+    });
+    const older = execute("console.log('older-success')");
+    const newest = execute("console.log('newer-success')");
+    assert.equal(older.status, 0, older.stderr || older.stdout);
+    assert.equal(newest.status, 0, newest.stderr || newest.stdout);
+    const id = JSON.parse(newest.stdout).runId;
+    const runRoot = join(state, 'runs', readdirSync(join(state, 'runs'))[0]);
+    writeFileSync(join(runRoot, id, 'run.json'), '{invalid-json');
+    const output = spawnSync(process.execPath, [cli, 'output'], { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
+    assert.equal(output.status, 0, output.stderr || output.stdout);
+    assert.match(output.stdout, new RegExp('OUTPUT EVIDENCE UNAVAILABLE[^\\n]*' + id));
+    assert.doesNotMatch(output.stdout, /older-success|newer-success|— PASS exit=0/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
