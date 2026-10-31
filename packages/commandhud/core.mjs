@@ -2970,9 +2970,14 @@ function runIdsNewest(project) {
   return { root, ids };
 }
 
-export function listRuns(project, limit = 10) {
+export function listRuns(project, limit = 10, { reportUnreadable = false } = {}) {
   const { root, ids } = runIdsNewest(project);
-  return ids.slice(0, limit).map((id) => readJson(join(root, id, 'run.json'))).filter(Boolean);
+  return ids.slice(0, limit).map((id) => {
+    const record = readJson(join(root, id, 'run.json'));
+    if (!reportUnreadable) return record;
+    return record?.id === id && typeof record.status === 'string'
+      ? record : { id, status: 'unreadable', exitCode: null };
+  }).filter(Boolean);
 }
 
 export function classifyRunEvidenceIntegrity(project, record) {
