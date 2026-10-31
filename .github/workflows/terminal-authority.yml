@@ -7,6 +7,7 @@ on:
     paths:
       - "packages/digitalbreakdown-terminal/**"
       - "packages/commandhud/core.mjs"
+      - "packages/commandhud/cli.mjs"
       - ".github/workflows/terminal-authority.yml"
   workflow_dispatch:
 
