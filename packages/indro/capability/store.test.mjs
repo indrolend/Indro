@@ -374,3 +374,34 @@ test('distinct FL plugin names with the same slug retain independent addresses',
   assert.equal(loadCapability(f.id, f.options).target.plugin_name, 'Fruity EQ 2');
   assert.equal(loadCapability(other.capability.id, f.options).target.plugin_name, 'Fruity EQ-2');
 });
+
+test('retained FL execution source fingerprints reject mismatch or missing coverage before host access', async () => {
+  const baseline = fixture();
+  assert.equal((await validateCapability(baseline.id, validationOptions(baseline))).reusable, true);
+  for (const dependency of ['fl_cli', 'uai_transaction']) {
+    assert.match(baseline.retained.capability.dependencies[dependency].sha256, /^[a-f0-9]{64}$/);
+    for (const kind of ['mismatch', 'missing']) {
+      const f = fixture();
+      const envelope = JSON.parse(readFileSync(f.retained.path, 'utf8'));
+      if (kind === 'mismatch') envelope.payload.dependencies[dependency].sha256 = '0'.repeat(64);
+      else delete envelope.payload.dependencies[dependency];
+      envelope.integrity.digest = createHash('sha256').update(JSON.stringify(envelope.payload)).digest('hex');
+      writeFileSync(f.retained.path, JSON.stringify(envelope));
+      assert.equal(loadCapability(f.id, f.options).id, f.id, 'historical record stays readable');
+      let probes = 0; let writes = 0;
+      const options = validationOptions(f, { transport: {
+        name: 'must-not-probe', async request() { probes++; throw new Error('UNEXPECTED_HOST_PROBE'); },
+      } });
+      const expected = dependency.toUpperCase() + (kind === 'mismatch' ? '_FINGERPRINT_MISMATCH' : '_FINGERPRINT_MISSING');
+      const invalid = await validateCapability(f.id, options);
+      assert.equal(invalid.reusable, false);
+      assert.deepEqual(invalid.issues, [expected]);
+      await assert.rejects(invokeCapability(f.id, 0.25, {
+        ...options, authorization: 'explicit-user-write',
+        runFlCli: async () => { writes++; throw new Error('UNEXPECTED_HOST_WRITE'); },
+      }), /CAPABILITY_NOT_REUSABLE/);
+      assert.equal(probes, 0);
+      assert.equal(writes, 0);
+    }
+  }
+});
