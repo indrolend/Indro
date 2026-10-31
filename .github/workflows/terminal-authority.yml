@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - "packages/digitalbreakdown-terminal/**"
+      - "packages/commandhud/core.mjs"
       - ".github/workflows/terminal-authority.yml"
   workflow_dispatch:
 
