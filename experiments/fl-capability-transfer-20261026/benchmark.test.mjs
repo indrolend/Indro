@@ -122,7 +122,8 @@ function runDirect(initial, { wrongRestore = false, omitPre = false } = {}) {
   };
   const context = { command };
   vm.runInNewContext(`${extracted}\nglobalThis.run = conditionA;`, context);
-  return { state, commands, outcome: context.run(0.25) };
+  const outcome = context.run(0.25);
+  return { state, commands, outcome };
 }
 
 test('A restores its observed drifted pre-state', () => {
