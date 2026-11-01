@@ -7,7 +7,6 @@ import { performance } from 'node:perf_hooks';
 const here = dirname(fileURLToPath(import.meta.url));
 const output = resolve(here, 'benchmark-runs.ndjson');
 const cli = resolve(here, '..', '..', 'packages', 'indro', 'cli.mjs');
-const original = 0.5554285714285714;
 const capability = 'fl.plugin.parameter.grain-spacing';
 
 function command(args) {
@@ -45,11 +44,17 @@ function conditionA(value) {
 
 function retained(value, optimized) {
   const flag = optimized ? ['--validation-snapshot'] : [];
-  const calls = [
-    command(['capability', 'invoke', capability, '--value', String(value), '--verify', '--authorize-write', ...flag, '--json']),
-    command(['capability', 'invoke', capability, '--value', String(original), '--verify', '--authorize-write', ...flag, '--json']),
-  ];
-  return { calls, success: calls.every(invoked), set: calls[0].json?.result, restore: calls[1].json?.result,
+  const calls = [command(['capability', 'invoke', capability, '--value', String(value), '--verify', '--authorize-write', ...flag, '--json'])];
+  const pre = calls[0].json?.result?.transaction?.pre_observation?.value;
+  // The first transaction observes the live pre-state before mutation; never restore a fixture constant.
+  if (Number.isFinite(pre)) {
+    calls.push(command(['capability', 'invoke', capability, '--value', String(pre), '--verify', '--authorize-write', ...flag, '--json']));
+  }
+  const restored = calls[1]?.json?.result?.transaction?.post_observation?.value;
+  const restoredToPre = Number.isFinite(pre) && Number.isFinite(restored) && Math.abs(restored - pre) <= 0.001;
+  return { calls, success: calls.length === 2 && calls.every(invoked) && restoredToPre,
+    error: Number.isFinite(pre) ? null : 'PRE_STATE_NOT_OBSERVED', preValue: pre, restoredToPre,
+    set: calls[0].json?.result, restore: calls[1]?.json?.result,
     probes: optimized ? 12 : 14, discoveryOperations: 0 };
 }
 
@@ -66,6 +71,7 @@ for (let trial = 0; trial < 10; trial++) {
     const record = {
       schema: 'indro.fl-capability-benchmark/v1', trial: trial + 1, order: orders[trial % orders.length], condition, target: value,
       wallMs: performance.now() - started, success: outcome.success, error: outcome.error ?? null,
+      preValue: Number.isFinite(outcome.preValue) ? outcome.preValue : null, restoredToPre: outcome.restoredToPre ?? null,
       cliCommands: outcome.calls.length, toolCalls: outcome.calls.length, hostProbes: outcome.probes, discoveryOperations: outcome.discoveryOperations,
       failures: outcome.calls.filter(call => call.status !== 0).length,
       set: outcome.set ? { readback: outcome.set.transaction?.post_observation?.value, receipt: outcome.set.evidence?.path, sha256: outcome.set.evidence?.sha256 } : null,
