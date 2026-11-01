@@ -38,9 +38,13 @@ function conditionA(value) {
   if (!parameter) throw new Error('DISCOVERY_PARAMETER_NOT_FOUND');
   calls.push(command(['fl', 'plugin', 'get', '--channel', String(plugin.channel), '--param', String(parameter.index), '--json']));
   const pre = calls.at(-1).json?.value;
+  if (!Number.isFinite(pre)) return { calls, success: false, error: 'PRE_STATE_NOT_OBSERVED', preValue: pre, restoredToPre: false, probes: 15, discoveryOperations: 4 };
   calls.push(command(['fl', 'plugin', 'set', '--channel', String(plugin.channel), '--param', String(parameter.index), '--value', String(value), '--verify', '--json']));
   calls.push(command(['fl', 'plugin', 'set', '--channel', String(plugin.channel), '--param', String(parameter.index), '--value', String(pre), '--verify', '--json']));
-  return { calls, success: verified(calls.at(-2)) && verified(calls.at(-1)), set: calls.at(-2).json, restore: calls.at(-1).json, probes: 15, discoveryOperations: 4 };
+  const restored = calls.at(-1).json?.transaction?.post_observation?.value;
+  const restoredToPre = Number.isFinite(restored) && Math.abs(restored - pre) <= 0.001;
+  return { calls, success: verified(calls.at(-2)) && verified(calls.at(-1)) && restoredToPre,
+    preValue: pre, restoredToPre, set: calls.at(-2).json, restore: calls.at(-1).json, probes: 15, discoveryOperations: 4 };
 }
 
 function retained(value, optimized) {
