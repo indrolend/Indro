@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
@@ -61,3 +63,40 @@ for (const optimized of [false, true]) {
     assert.equal(outcome.success, false);
   });
 }
+
+
+test('benchmark preserves historical measurements and creates distinct append-only logs', () => {
+  const root = mkdtempSync(join(tmpdir(), 'indro-benchmark-log-'));
+  const historical = join(root, 'benchmark-runs.ndjson');
+  const historicalBytes = 'HISTORICAL_MEASUREMENTS\n';
+  writeFileSync(historical, historicalBytes);
+  try {
+    const declaration = source.match(/^const output = .*;$/m)?.[0];
+    assert.ok(declaration, 'output declaration exists');
+    const loop = source.slice(source.indexOf('const runners =')).replace('trial < 10', 'trial < 1');
+    assert.ok(loop.includes('trial < 1'), 'bounded synthetic execution');
+    let counter = 0;
+    const execute = () => {
+      const before = new Set(readdirSync(root));
+      const outcome = () => ({ calls: [], success: true, probes: 0, discoveryOperations: 0 });
+      const context = {
+        here: root, resolve, Date, randomUUID: () => `test-${++counter}`,
+        appendFileSync, writeFileSync,
+        performance: { now: () => 1 }, process: { stdout: { write() {} }, exitCode: 0 },
+        conditionA: outcome, retained: outcome,
+      };
+      vm.runInNewContext(`${declaration}\n${loop}`, context);
+      return readdirSync(root).filter(name => !before.has(name));
+    };
+    const first = execute();
+    assert.equal(readFileSync(historical, 'utf8'), historicalBytes, 'historical archive must remain unchanged');
+    assert.equal(first.length, 1, 'one fresh evidence file per execution');
+    const firstRows = readFileSync(join(root, first[0]), 'utf8').trim().split('\n').map(JSON.parse);
+    assert.deepEqual(firstRows.map(row => row.condition), ['A', 'B', 'C']);
+    const second = execute();
+    assert.equal(second.length, 1, 'second execution has a separate evidence file');
+    assert.notEqual(first[0], second[0]);
+    assert.equal(readFileSync(historical, 'utf8'), historicalBytes);
+    assert.equal(readFileSync(join(root, first[0]), 'utf8').trim().split('\n').length, 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

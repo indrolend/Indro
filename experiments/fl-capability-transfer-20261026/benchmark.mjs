@@ -1,11 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const output = resolve(here, 'benchmark-runs.ndjson');
+const output = resolve(here, `benchmark-runs-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.ndjson`);
 const cli = resolve(here, '..', '..', 'packages', 'indro', 'cli.mjs');
 const capability = 'fl.plugin.parameter.grain-spacing';
 
@@ -60,7 +61,7 @@ function retained(value, optimized) {
 
 const runners = { A: conditionA, B: value => retained(value, false), C: value => retained(value, true) };
 const orders = [['A', 'B', 'C'], ['B', 'C', 'A'], ['C', 'A', 'B']];
-const records = [];
+process.stdout.write(`EVIDENCE=${output}\n`);
 for (let trial = 0; trial < 10; trial++) {
   const value = Number((0.21 + trial * 0.031).toFixed(3));
   for (const condition of orders[trial % orders.length]) {
@@ -79,8 +80,7 @@ for (let trial = 0; trial < 10; trial++) {
       commands: outcome.calls.map(call => ({ args: call.args, durationMs: call.durationMs, status: call.status, stderr: call.stderr })),
       modelTokens: null,
     };
-    records.push(record);
-    writeFileSync(output, `${records.map(item => JSON.stringify(item)).join('\n')}\n`);
+    appendFileSync(output, `${JSON.stringify(record)}\n`);
     process.stdout.write(`${condition}${trial + 1} ${record.success ? 'PASS' : 'FAIL'} ${record.wallMs.toFixed(1)}ms\n`);
     if (!record.success) process.exitCode = 1;
   }
