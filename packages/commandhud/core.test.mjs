@@ -491,7 +491,7 @@ test('runtime authority distinguishes current, stale, and project-local duplicat
   const root = mkdtempSync(join(tmpdir(), 'hud-runtime-authority-'));
   const state = join(root, 'state');
   const source = join(root, 'source');
-  const installed = join(root, 'installed', 'node_modules', '@indrolend', 'hate-this-meaningless-life', 'packages', 'commandhud', 'cli.mjs');
+  const installed = join(root, 'installed', 'node_modules', '@indrolend', 'indro', 'packages', 'commandhud', 'cli.mjs');
   mkdirSync(join(source, 'packages', 'commandhud'), { recursive: true });
   mkdirSync(join(installed, '..'), { recursive: true });
   mkdirSync(join(state, 'projects'), { recursive: true });
@@ -499,7 +499,14 @@ test('runtime authority distinguishes current, stale, and project-local duplicat
   writeFileSync(installed, 'same');
   writeFileSync(join(state, 'projects', 'product.json'), JSON.stringify({ id: 'indrolend/Indro', root: source }));
   const env = { ...process.env, HUD_STATE_ROOT: state };
-  assert.equal(inspectRuntimeAuthority({ executingPath: installed, env }).status, 'CURRENT');
+  const current = inspectRuntimeAuthority({ executingPath: installed, env });
+  assert.equal(current.status, 'CURRENT');
+  assert.equal(current.executing.role, 'installed');
+  assert.equal(inspectRuntimeAuthority({ executingPath: join(source, 'packages', 'commandhud', 'cli.mjs'), env }).executing.role, 'source');
+  const otherPackage = join(root, 'installed', 'node_modules', '@indrolend', 'indro-extra', 'packages', 'commandhud', 'cli.mjs');
+  mkdirSync(join(otherPackage, '..'), { recursive: true });
+  writeFileSync(otherPackage, 'same');
+  assert.equal(inspectRuntimeAuthority({ executingPath: otherPackage, env }).executing.role, 'source');
   writeFileSync(installed, 'older');
   assert.equal(inspectRuntimeAuthority({ executingPath: installed, env }).status, 'STALE');
 
