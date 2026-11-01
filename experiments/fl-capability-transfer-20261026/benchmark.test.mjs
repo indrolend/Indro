@@ -100,3 +100,50 @@ test('benchmark preserves historical measurements and creates distinct append-on
     assert.equal(readFileSync(join(root, first[0]), 'utf8').trim().split('\n').length, 3);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+function runDirect(initial, { wrongRestore = false, omitPre = false } = {}) {
+  let state = initial;
+  let setCount = 0;
+  const commands = [];
+  const command = args => {
+    let json;
+    if (args[1] === 'doctor') json = { connected: true };
+    else if (args[1] === 'plugins') json = { plugins: [{ plugin_name: 'Fruity Granulizer', channel: 5 }] };
+    else if (args[2] === 'params') json = { parameters: [{ name: 'Grain spacing', index: 2 }] };
+    else if (args[2] === 'get') json = omitPre ? {} : { value: state };
+    else if (args[2] === 'set') {
+      setCount += 1;
+      state = wrongRestore && setCount === 2 ? 0.9 : Number(args[args.indexOf('--value') + 1]);
+      json = { transaction: { verdict: 'STATE_CONFIRMED', post_observation: { value: state } } };
+    }
+    const result = { status: 0, json, args };
+    commands.push(result);
+    return result;
+  };
+  const context = { command };
+  vm.runInNewContext(`${extracted}\nglobalThis.run = conditionA;`, context);
+  return { state, commands, outcome: context.run(0.25) };
+}
+
+test('A restores its observed drifted pre-state', () => {
+  const { state, commands, outcome } = runDirect(0.412);
+  assert.equal(state, 0.412);
+  assert.equal(commands.length, 6);
+  assert.equal(outcome.success, true);
+  assert.equal(outcome.restoredToPre, true);
+});
+
+test('A rejects incorrect restoration despite a success verdict', () => {
+  const { state, outcome } = runDirect(0.412, { wrongRestore: true });
+  assert.equal(state, 0.9);
+  assert.equal(outcome.success, false);
+  assert.equal(outcome.restoredToPre, false);
+});
+
+test('A rejects missing pre-state without attempting a write', () => {
+  const { state, commands, outcome } = runDirect(0.412, { omitPre: true });
+  assert.equal(state, 0.412);
+  assert.equal(commands.length, 4);
+  assert.equal(outcome.success, false);
+  assert.equal(outcome.error, 'PRE_STATE_NOT_OBSERVED');
+});
