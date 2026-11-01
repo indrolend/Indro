@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
+import { writeClipboard } from './clipboard-transport.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
@@ -149,10 +149,9 @@ function printObject(object) {
 }
 
 function copy(text) {
-  const tool = process.platform === 'win32' ? ['clip.exe', []]
-    : process.platform === 'darwin' ? ['pbcopy', []] : ['sh', ['-c', 'command -v wl-copy >/dev/null && wl-copy || xclip -selection clipboard']];
-  const result = spawnSync(tool[0], tool[1], { input: text, encoding: 'utf8', windowsHide: true });
-  if (result.status !== 0) throw new Error('Clipboard tool is unavailable. Packet was still printed.');
+  const delivery = writeClipboard(text);
+  if (delivery.state === 'sent') console.error(`CLIPBOARD SENT transport=${delivery.transport} receipt=unverified bytes=${delivery.bytes}`);
+  else console.error(`CLIPBOARD COPIED transport=${delivery.transport} bytes=${delivery.bytes}`);
 }
 
 function printEvidenceProjection(value) {
