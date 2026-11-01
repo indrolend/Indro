@@ -43,6 +43,20 @@ test('packed INDRO CLI reports installed, source and stale runtime authority', {
       assert.equal(result.status, expectedCode, result.stderr || result.stdout);
       return JSON.parse(result.stdout);
     };
+    const observeCanonical = (expectedCode) => {
+      const bin = join(consumer, 'node_modules', '.bin', process.platform === 'win32' ? 'indro.cmd' : 'indro');
+      const result = spawnSync(bin, ['runtime', '--json'], {
+        cwd: temporary, env, encoding: 'utf8', windowsHide: true, timeout: 30000,
+        shell: process.platform === 'win32',
+      });
+      assert.equal(result.error, undefined, result.error?.message);
+      assert.equal(result.status, expectedCode, result.stderr || result.stdout);
+      return JSON.parse(result.stdout);
+    };
+    const canonicalCurrent = observeCanonical(0);
+    assert.equal(canonicalCurrent.status, 'CURRENT');
+    assert.equal(canonicalCurrent.executing.role, 'installed');
+    assert.equal(canonicalCurrent.sameBytes, true);
     const current = observe(installed, 0);
     assert.equal(current.status, 'CURRENT');
     assert.equal(current.executing.role, 'installed');
@@ -55,6 +69,10 @@ test('packed INDRO CLI reports installed, source and stale runtime authority', {
     assert.equal(stale.status, 'STALE');
     assert.equal(stale.executing.role, 'installed');
     assert.equal(stale.sameBytes, false);
+    const canonicalStale = observeCanonical(1);
+    assert.equal(canonicalStale.status, 'STALE');
+    assert.equal(canonicalStale.executing.role, 'installed');
+    assert.equal(canonicalStale.sameBytes, false);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
