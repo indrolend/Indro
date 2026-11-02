@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { persistFlReceipt, validateFlReceipt } from './adapter.mjs';
+import { createFlAdapter, persistFlReceipt, validateFlReceipt } from './adapter.mjs';
+import { executeTransaction } from '../uai/transaction.mjs';
 
 function transaction(overrides = {}) {
   return {
@@ -41,4 +42,42 @@ test('wrong session, plugin, and contradictory readback are rejected', () => {
     post_observation: { channel: 1, plugin_name: 'Other', parameter: 2, value: 0.25 }
   }) }, { evidenceRoot: second });
   assert.equal(validateFlReceipt(evidence.path).valid, false);
+});
+
+test('FL parameter mutation refuses missing or non-restorable pre-state', async () => {
+  for (const observed of [null, undefined, -0.1, 1.1]) {
+    const operations = [];
+    const transport = { name: 'fixture', async request(operation) {
+      operations.push(operation);
+      return { response: { result: operation === 'plugin.get' ? { value: observed } : {} } };
+    } };
+    const tx = await executeTransaction({
+      target: { app_id: 'fl-studio', channel: 0, parameter: 2 },
+      capability: { id: 'fl.plugin.parameter' }, args: { value: 0.25 },
+      adapter: createFlAdapter({ transport }), verify: 'readback',
+      authorization: 'explicit-user-write', tolerance: 0.002
+    });
+    assert.equal(tx.verdict, 'OBSERVATION_FAILED');
+    assert.equal(operations.filter(operation => operation === 'plugin.set').length, 0);
+  }
+  let current = 0.412;
+  const operations = [];
+  const transport = { name: 'fixture', async request(operation, request) {
+    operations.push(operation);
+    if (operation === 'plugin.get') return { response: { result: { value: current } } };
+    if (operation === 'plugin.set') {
+      current = request.arguments.value;
+      return { response: { result: {}, accepted: true, executed: true, received_unix_ms: Date.now() } };
+    }
+    throw new Error('UNEXPECTED_OPERATION');
+  } };
+  const tx = await executeTransaction({
+    target: { app_id: 'fl-studio', channel: 0, parameter: 2 },
+    capability: { id: 'fl.plugin.parameter' }, args: { value: 0.25 },
+    adapter: createFlAdapter({ transport }), verify: 'readback',
+    authorization: 'explicit-user-write', tolerance: 0.002
+  });
+  assert.equal(tx.verdict, 'STATE_CONFIRMED');
+  assert.equal(current, 0.25);
+  assert.equal(operations.filter(operation => operation === 'plugin.set').length, 1);
 });
