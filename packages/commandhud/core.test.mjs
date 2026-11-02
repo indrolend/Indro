@@ -336,19 +336,19 @@ test('run directory reservation retries collisions without changing retained evi
     const collision = '20261102130748-c9b8';
     const next = '20261102130748-c9b9';
     mkdirSync(join(root, collision));
-    writeFileSync(join(root, collision, 'run.json'), 'retained\\n');
+    writeFileSync(join(root, collision, 'run.json'), 'retained\n');
     let attempts = 0;
     const reserved = reserveRunDirectory(root, () => (++attempts === 1 ? collision : next));
     assert.equal(attempts, 2);
     assert.deepEqual(reserved, { id: next, directory: join(root, next) });
-    assert.equal(readFileSync(join(root, collision, 'run.json'), 'utf8'), 'retained\\n');
+    assert.equal(readFileSync(join(root, collision, 'run.json'), 'utf8'), 'retained\n');
     assert.ok(existsSync(reserved.directory));
     const count = readdirSync(root).length;
     assert.throws(() => reserveRunDirectory(root, () => collision), /after 8 attempts/);
     assert.equal(readdirSync(root).length, count);
     writeFileSync(join(root, 'not-a-directory'), 'file');
     assert.throws(() => reserveRunDirectory(root, () => 'not-a-directory/child'), { code: 'ENOTDIR' });
-    assert.match(reserveRunDirectory(root).id, /^\\d{14}-[0-9a-f]{4}$/);
+    assert.match(reserveRunDirectory(root).id, /^\d{14}-[0-9a-f]{4}$/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
