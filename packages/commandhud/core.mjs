@@ -1050,6 +1050,21 @@ function createRunId(date = new Date()) {
   return `${stamp}-${randomBytes(2).toString('hex')}`;
 }
 
+export function reserveRunDirectory(root, makeId = createRunId) {
+  mkdirSync(root, { recursive: true });
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const id = makeId();
+    const directory = join(root, id);
+    try {
+      mkdirSync(directory);
+      return { id, directory };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+  }
+  throw new Error('Unable to reserve a unique run ID after 8 attempts.');
+}
+
 export function buildPacket(record) {
   const status = record.status.toUpperCase();
   const change = record.gitAfter.changedFiles.length ? record.gitAfter.changedFiles.join(' | ') : 'none';
@@ -1086,10 +1101,7 @@ async function recordBlockedOperation(project, {
   const [before, currencyBefore] = await Promise.all([
     gitSnapshot(project.root), repositoryCurrency(project.root, project.identity.id),
   ]);
-  const id = createRunId();
-  const runDirectory = join(project.store, 'runs', project.key, id);
-  mkdirSync(dirname(runDirectory), { recursive: true });
-  mkdirSync(runDirectory, { recursive: false });
+  const { id, directory: runDirectory } = reserveRunDirectory(join(project.store, 'runs', project.key));
   const stdoutPath = join(runDirectory, 'stdout.log');
   const stderrPath = join(runDirectory, 'stderr.log');
   const stderr = `${reason}\n`;
@@ -1156,10 +1168,7 @@ export async function runCommand(project, tokens, {
   const [before, currencyBefore, treeBefore] = await Promise.all([
     gitSnapshot(project.root), repositoryCurrency(project.root, project.identity.id), captureDelta ? worktreeTree(project.root) : null,
   ]);
-  const id = createRunId();
-  const runDirectory = join(project.store, 'runs', project.key, id);
-  mkdirSync(dirname(runDirectory), { recursive: true });
-  mkdirSync(runDirectory, { recursive: false });
+  const { id, directory: runDirectory } = reserveRunDirectory(join(project.store, 'runs', project.key));
   const stdoutPath = join(runDirectory, 'stdout.log');
   const stderrPath = join(runDirectory, 'stderr.log');
   const stdoutFile = createWriteStream(stdoutPath, { flags: 'wx' });
@@ -2088,12 +2097,9 @@ export async function createSandboxJob(project, task, { expectedHead } = {}) {
   if (typeof expectedHead !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedHead)) throw new Error('Sandbox creation requires an exact 40-character expected Git HEAD.');
   const authority = await gitSnapshot(project.root);
   if (authority.head.toLowerCase() !== expectedHead.toLowerCase()) throw new Error(`Expected Git HEAD ${expectedHead} does not match current HEAD ${authority.head}.`);
-  const id = createRunId();
+  const { id, directory } = reserveRunDirectory(join(project.store, 'runs', project.key));
   const workspace = join(project.store, 'worktrees', project.key, id);
-  const directory = sandboxRunDirectory(project, id);
   mkdirSync(dirname(workspace), { recursive: true });
-  mkdirSync(dirname(directory), { recursive: true });
-  mkdirSync(directory, { recursive: false });
   const created = await exec('git', ['worktree', 'add', '--detach', workspace, authority.head], project.root);
   if (!created.ok) {
     rmSync(directory, { recursive: true, force: true });
