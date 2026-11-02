@@ -666,6 +666,8 @@ test('repository command declarations fail closed when malformed, duplicate, or 
 
 test('repository command execution resolves a current discovered identity and records evidence', async () => {
   const root = fixture();
+  // Undo must restore the fixture's LF bytes, independent of the runner's Git checkout policy.
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: root });
   mkdirSync(join(root, 'tools'));
   writeFileSync(join(root, 'tools', 'run-native-tests.mjs'), 'import { writeFileSync } from "node:fs"; writeFileSync(new URL("../file.txt", import.meta.url), "changed by command\\n"); console.log("100% tests passed, 0 tests failed out of 3"); console.log("NATIVE_TESTS=PASS count=3")\n');
   const identityPath = join(root, 'distribution', 'project.json');
