@@ -99,8 +99,11 @@ test('hud doctor returns a tiny bounded summary and retained evidence', () => {
     const result = spawnSync(process.execPath, [cli, 'doctor', '--root', root], {
       cwd: root, encoding: 'utf8', timeout: 15_000, env: { ...process.env, HUD_STATE_ROOT: state },
     });
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /^DOCTOR PASS 4\/4/m);
+    const search = spawnSync('rg', ['--version'], { cwd: root, encoding: 'utf8', timeout: 2000 });
+    const searchAvailable = search.status === 0 && /^ripgrep /m.test(search.stdout || '');
+    assert.equal(result.status, searchAvailable ? 0 : 1, result.stderr || result.stdout);
+    assert.match(result.stdout, searchAvailable ? /^DOCTOR PASS 4\/4/m : /^DOCTOR FAIL 3\/4/m);
+    if (!searchAvailable) assert.match(result.stdout, /^search BLOCKED run:/m);
     assert.match(result.stdout, /^EVIDENCE /m);
     assert.ok(result.stdout.trimEnd().split(/\r?\n/).length <= 3);
   } finally {
