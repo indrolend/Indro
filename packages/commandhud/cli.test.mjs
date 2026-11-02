@@ -335,3 +335,43 @@ test('hud storage human and JSON views inspect all retained projects without cre
     rmSync(temporary, { recursive: true, force: true });
   }
 });
+
+
+test('hud output does not substitute an older PASS when newest run metadata is unreadable', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-unreadable-latest-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const state = join(root, '.state');
+    const env = { ...process.env, HUD_STATE_ROOT: state };
+    const run = (script) => spawnSync(process.execPath,
+      [cli, 'run', '--json', '--', process.execPath, '-e', script],
+      { cwd: root, env, encoding: 'utf8', timeout: 20_000 });
+    const older = run("console.log('older-success')");
+    const newer = run("console.log('newer-success')");
+    assert.equal(older.status, 0, older.stderr || older.stdout);
+    assert.equal(newer.status, 0, newer.stderr || newer.stdout);
+    const newestId = JSON.parse(newer.stdout).runId;
+    const runRoot = join(state, 'runs', readdirSync(join(state, 'runs'))[0]);
+    const recordPath = join(runRoot, newestId, 'run.json');
+    const original = readFileSync(recordPath);
+    const output = () => spawnSync(process.execPath, [cli, 'output'],
+      { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
+    const healthy = output();
+    assert.equal(healthy.status, 0, healthy.stderr || healthy.stdout);
+    assert.match(healthy.stdout, /newer-success/);
+    writeFileSync(recordPath, '{invalid-json');
+    const corrupted = output();
+    assert.equal(corrupted.status, 0, corrupted.stderr || corrupted.stdout);
+    assert.match(corrupted.stdout, new RegExp('OUTPUT EVIDENCE UNAVAILABLE[^\\n]*' + newestId));
+    assert.doesNotMatch(corrupted.stdout, /older-success|newer-success/);
+    writeFileSync(recordPath, original);
+    const restored = output();
+    assert.equal(restored.status, 0, restored.stderr || restored.stdout);
+    assert.match(restored.stdout, /newer-success/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
