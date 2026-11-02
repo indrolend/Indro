@@ -660,13 +660,26 @@ async function main() {
   }
   if (command === 'output') {
     let lastDisplayedId = null;
+    let initialized = false;
+    const seenRunIds = new Set();
     let unreadableRunId = null;
     let unreadablePolls = 0;
     let warnedUnreadableRunId = null;
     let unavailableEvidenceRunId = null;
     const showLatest = () => {
       const runs = listRuns(project, 30, { reportUnreadable: true });
-      for (const run of runs) {
+      const completed = runs.filter((run) => run.status !== 'running' && run.status !== 'pending');
+      // Initial inspection shows only the latest historical completion.
+      // Subsequent polls emit every newly completed run, oldest first.
+      const candidates = initialized
+        ? completed.filter((run) => !seenRunIds.has(run.id))
+        : completed.slice(0, 1);
+      if (!initialized) {
+        initialized = true;
+        for (const run of completed.slice(1)) seenRunIds.add(run.id);
+      }
+      const ready = [];
+      for (const run of candidates) {
         if (run.status === 'unreadable') {
           unreadablePolls = unreadableRunId === run.id ? unreadablePolls + 1 : 1;
           unreadableRunId = run.id;
@@ -674,21 +687,20 @@ async function main() {
             process.stdout.write('OUTPUT EVIDENCE UNAVAILABLE run:' + run.id + ' (unreadable run metadata)\n');
             warnedUnreadableRunId = run.id;
           }
-          return;
+          break;
         }
         if (unreadableRunId === run.id) {
           unreadableRunId = null;
           unreadablePolls = 0;
           warnedUnreadableRunId = null;
         }
-        if (run.status === 'running' || run.status === 'pending') continue;
         const integrity = classifyRunEvidenceIntegrity(project, run);
         if (integrity === 'MISSING' || integrity === 'CORRUPT') {
           if (unavailableEvidenceRunId !== run.id) {
             unavailableEvidenceRunId = run.id;
             process.stdout.write(`OUTPUT EVIDENCE UNAVAILABLE run:${run.id} (${integrity.toLowerCase()} retained stream)\n`);
           }
-          return;
+          break;
         }
         unavailableEvidenceRunId = null;
         const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
@@ -697,12 +709,15 @@ async function main() {
           .filter((value) => value.trim().length > 0)
           .join('\n');
         const visible = content || `(no output) run:${run.id} status:${run.status.toUpperCase()} integrity:${integrity}`;
+        ready.push({ run, visible });
+        seenRunIds.add(run.id);
+      }
+      for (const { run, visible } of ready.reverse()) {
         if (run.id !== lastDisplayedId) {
           lastDisplayedId = run.id;
           process.stdout.write((lastDisplayedId && options.follow ? '\n' : '') +
             visible + (visible.endsWith('\n') ? '' : '\n'));
         }
-        return;
       }
     };
     showLatest();
