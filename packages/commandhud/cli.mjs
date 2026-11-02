@@ -660,9 +660,26 @@ async function main() {
   }
   if (command === 'output') {
     let lastDisplayedId = null;
+    let unreadableRunId = null;
+    let unreadablePolls = 0;
+    let warnedUnreadableRunId = null;
     const showLatest = () => {
-      const runs = listRuns(project, 30);
+      const runs = listRuns(project, 30, { reportUnreadable: true });
       for (const run of runs) {
+        if (run.status === 'unreadable') {
+          unreadablePolls = unreadableRunId === run.id ? unreadablePolls + 1 : 1;
+          unreadableRunId = run.id;
+          if ((!options.follow || unreadablePolls >= 2) && warnedUnreadableRunId !== run.id) {
+            process.stdout.write('OUTPUT EVIDENCE UNAVAILABLE run:' + run.id + ' (unreadable run metadata)\n');
+            warnedUnreadableRunId = run.id;
+          }
+          return;
+        }
+        if (unreadableRunId === run.id) {
+          unreadableRunId = null;
+          unreadablePolls = 0;
+          warnedUnreadableRunId = null;
+        }
         if (run.status === 'running' || run.status === 'pending') continue;
         const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
         const content = projection.streams
