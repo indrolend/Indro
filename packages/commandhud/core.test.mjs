@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
+import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, reserveRunDirectory, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -329,6 +329,30 @@ function fixtureProject() {
   const root = fixture();
   return resolveProject({ cwd: root, env: { ...process.env, HUD_STATE_ROOT: mkdtempSync(join(tmpdir(), 'hud-state-')) } });
 }
+
+test('run directory reservation retries collisions without changing retained evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hud-run-reservation-'));
+  try {
+    const collision = '20261102130748-c9b8';
+    const next = '20261102130748-c9b9';
+    mkdirSync(join(root, collision));
+    writeFileSync(join(root, collision, 'run.json'), 'retained\\n');
+    let attempts = 0;
+    const reserved = reserveRunDirectory(root, () => (++attempts === 1 ? collision : next));
+    assert.equal(attempts, 2);
+    assert.deepEqual(reserved, { id: next, directory: join(root, next) });
+    assert.equal(readFileSync(join(root, collision, 'run.json'), 'utf8'), 'retained\\n');
+    assert.ok(existsSync(reserved.directory));
+    const count = readdirSync(root).length;
+    assert.throws(() => reserveRunDirectory(root, () => collision), /after 8 attempts/);
+    assert.equal(readdirSync(root).length, count);
+    writeFileSync(join(root, 'not-a-directory'), 'file');
+    assert.throws(() => reserveRunDirectory(root, () => 'not-a-directory/child'), { code: 'ENOTDIR' });
+    assert.match(reserveRunDirectory(root).id, /^\\d{14}-[0-9a-f]{4}$/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('registered project discovery returns only locally reverified Git authority', async () => {
   const project = await fixtureProject();
