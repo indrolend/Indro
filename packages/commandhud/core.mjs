@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -2292,7 +2292,20 @@ export async function discardSandboxJob(project, sandboxId) {
   const { record, workspace } = readSandboxRecord(project, sandboxId);
   if (record.status === 'DISCARDED' || !existsSync(workspace)) return { ...record, status: 'DISCARDED', alreadyAbsent: true };
   const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
-  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === workspace)) {
+  const canonicalWorkspace = existsSync(workspace) ? realpathSync(workspace) : null;
+  const canonicalParent = existsSync(dirname(workspace)) ? realpathSync(dirname(workspace)) : null;
+  const directChild = canonicalWorkspace && canonicalParent && relative(canonicalParent, canonicalWorkspace) === basename(workspace);
+  const isRegistered = registered.ok && directChild && registered.stdout.split(/\r?\n/).some((line) => {
+    if (!line.startsWith('worktree ')) return false;
+    try {
+      const candidate = line.slice(9);
+      if (realpathSync(candidate) === canonicalWorkspace) return true;
+      const expected = statSync(workspace, { bigint: true });
+      const actual = statSync(candidate, { bigint: true });
+      return expected.ino !== 0n && expected.dev === actual.dev && expected.ino === actual.ino && actual.isDirectory();
+    } catch { return false; }
+  });
+  if (!isRegistered) {
     throw new Error('Sandbox workspace is not a registered worktree of the verified source repository.');
   }
   const removed = await exec('git', ['worktree', 'remove', '--force', workspace], project.root);
@@ -2445,8 +2458,18 @@ export async function discardAgentWorkspace(project, runId) {
     throw new Error('Agent evidence does not identify a CommandHUD-owned workspace.');
   }
   if (!existsSync(worktree)) return { id: runId, status: 'DISCARDED', worktree, alreadyAbsent: true };
+  const physicalWorktree = realpathSync.native(worktree);
+  const physicalRoot = realpathSync.native(worktreesRoot);
+  const physicalWithin = relative(physicalRoot, physicalWorktree);
+  if (!physicalWithin || physicalWithin.startsWith('..') || isAbsolute(physicalWithin) || dirname(physicalWithin) !== '.') {
+    throw new Error('Agent workspace escapes the CommandHUD worktree authority.');
+  }
   const registered = await exec('git', ['worktree', 'list', '--porcelain'], project.root, { trim: false });
-  if (!registered.ok || !registered.stdout.split(/\r?\n/).some((line) => line.startsWith('worktree ') && resolve(line.slice(9)) === worktree)) {
+  const registeredWorktree = registered.ok && registered.stdout.split(/\r?\n/).some((line) => {
+    if (!line.startsWith('worktree ')) return false;
+    try { return realpathSync.native(line.slice(9)) === physicalWorktree; } catch { return false; }
+  });
+  if (!registeredWorktree) {
     throw new Error('Agent workspace is not a registered worktree of the verified source repository.');
   }
   const removed = await exec('git', ['worktree', 'remove', '--force', worktree], project.root);
