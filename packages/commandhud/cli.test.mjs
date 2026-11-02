@@ -375,3 +375,29 @@ test('hud output does not substitute an older PASS when newest run metadata is u
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('hud output identifies newest outputless completion instead of showing older output', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-outputless-latest-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: join(root, '.state') };
+    const run = (script) => spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', script],
+      { cwd: root, env, encoding: 'utf8', timeout: 20_000 });
+    const older = run("console.log('older-visible-output')");
+    const latest = run('');
+    assert.equal(older.status, 0, older.stderr || older.stdout);
+    assert.equal(latest.status, 0, latest.stderr || latest.stdout);
+    const latestId = JSON.parse(latest.stdout).runId;
+    const result = spawnSync(process.execPath, [cli, 'output'],
+      { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /\\(no output\\)/);
+    assert.match(result.stdout, new RegExp(latestId));
+    assert.doesNotMatch(result.stdout, /older-visible-output/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
