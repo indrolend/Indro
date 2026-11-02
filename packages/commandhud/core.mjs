@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform, tmpdir } from 'node:os';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -406,7 +406,7 @@ export function inspectRuntimeAuthority({ executingPath, project = null, env = p
   return {
     status,
     productId,
-    executing: { ...executing, role: executing.path.includes(`${join('node_modules', '@indrolend', 'hate-this-meaningless-life')}`) ? 'installed' : 'source' },
+    executing: { ...executing, role: executing.path.includes(`${sep}${join('node_modules', '@indrolend', 'indro')}${sep}`) ? 'installed' : 'source' },
     source,
     sameBytes,
     sourceCandidates,
