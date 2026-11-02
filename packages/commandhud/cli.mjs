@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
-import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, classifyRunEvidenceIntegrity, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 Run from any Git repository:
@@ -663,6 +663,7 @@ async function main() {
     let unreadableRunId = null;
     let unreadablePolls = 0;
     let warnedUnreadableRunId = null;
+    let unavailableEvidenceRunId = null;
     const showLatest = () => {
       const runs = listRuns(project, 30, { reportUnreadable: true });
       for (const run of runs) {
@@ -681,16 +682,25 @@ async function main() {
           warnedUnreadableRunId = null;
         }
         if (run.status === 'running' || run.status === 'pending') continue;
+        const integrity = classifyRunEvidenceIntegrity(project, run);
+        if (integrity === 'MISSING' || integrity === 'CORRUPT') {
+          if (unavailableEvidenceRunId !== run.id) {
+            unavailableEvidenceRunId = run.id;
+            process.stdout.write(`OUTPUT EVIDENCE UNAVAILABLE run:${run.id} (${integrity.toLowerCase()} retained stream)\n`);
+          }
+          return;
+        }
+        unavailableEvidenceRunId = null;
         const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
         const content = projection.streams
           .map((stream) => stream.content || '')
           .filter((value) => value.trim().length > 0)
           .join('\n');
-        if (!content) continue;
+        const visible = content || `(no output) run:${run.id} status:${run.status.toUpperCase()} integrity:${integrity}`;
         if (run.id !== lastDisplayedId) {
           lastDisplayedId = run.id;
           process.stdout.write((lastDisplayedId && options.follow ? '\n' : '') +
-            content + (content.endsWith('\n') ? '' : '\n'));
+            visible + (visible.endsWith('\n') ? '' : '\n'));
         }
         return;
       }
