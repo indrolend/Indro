@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -79,7 +79,7 @@ test('client routes reject unknown, missing, irrelevant, and positional argument
 
     const selectedRoot = run(['state', '--json', '--root', root]);
     assert.equal(selectedRoot.status, 0, selectedRoot.stderr || selectedRoot.stdout);
-    assert.equal(JSON.parse(selectedRoot.stdout).project.root, root);
+    assert.equal(realpathSync.native(JSON.parse(selectedRoot.stdout).project.root), realpathSync.native(root));
 
     const clear = run(['objective', '--clear', '--root', root]);
     assert.equal(clear.status, 0, clear.stderr || clear.stdout);
