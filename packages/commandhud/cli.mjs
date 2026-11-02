@@ -671,9 +671,17 @@ async function main() {
       const completed = runs.filter((run) => run.status !== 'running' && run.status !== 'pending');
       // Initial inspection shows only the latest historical completion.
       // Subsequent polls emit every newly completed run, oldest first.
-      const candidates = initialized
+      let candidates = initialized
         ? completed.filter((run) => !seenRunIds.has(run.id))
         : completed.slice(0, 1);
+      if (initialized) {
+        // Keep an unreadable newest receipt ahead of older valid evidence.
+        if (candidates[0]?.status === 'unreadable') candidates = candidates.slice(0, 1);
+        else candidates.sort((left, right) =>
+          (Date.parse(right.endedAt || right.startedAt || '') || 0) -
+          (Date.parse(left.endedAt || left.startedAt || '') || 0) ||
+          right.id.localeCompare(left.id));
+      }
       if (!initialized) {
         initialized = true;
         for (const run of completed.slice(1)) seenRunIds.add(run.id);
