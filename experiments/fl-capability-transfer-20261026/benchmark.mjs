@@ -1,13 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const output = resolve(here, 'benchmark-runs.ndjson');
+const output = resolve(here, `benchmark-runs-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.ndjson`);
 const cli = resolve(here, '..', '..', 'packages', 'indro', 'cli.mjs');
-const original = 0.5554285714285714;
 const capability = 'fl.plugin.parameter.grain-spacing';
 
 function command(args) {
@@ -38,24 +38,34 @@ function conditionA(value) {
   if (!parameter) throw new Error('DISCOVERY_PARAMETER_NOT_FOUND');
   calls.push(command(['fl', 'plugin', 'get', '--channel', String(plugin.channel), '--param', String(parameter.index), '--json']));
   const pre = calls.at(-1).json?.value;
+  if (!Number.isFinite(pre)) return { calls, success: false, error: 'PRE_STATE_NOT_OBSERVED', preValue: pre, restoredToPre: false, probes: 15, discoveryOperations: 4 };
   calls.push(command(['fl', 'plugin', 'set', '--channel', String(plugin.channel), '--param', String(parameter.index), '--value', String(value), '--verify', '--json']));
   calls.push(command(['fl', 'plugin', 'set', '--channel', String(plugin.channel), '--param', String(parameter.index), '--value', String(pre), '--verify', '--json']));
-  return { calls, success: verified(calls.at(-2)) && verified(calls.at(-1)), set: calls.at(-2).json, restore: calls.at(-1).json, probes: 15, discoveryOperations: 4 };
+  const restored = calls.at(-1).json?.transaction?.post_observation?.value;
+  const restoredToPre = Number.isFinite(restored) && Math.abs(restored - pre) <= 0.001;
+  return { calls, success: verified(calls.at(-2)) && verified(calls.at(-1)) && restoredToPre,
+    preValue: pre, restoredToPre, set: calls.at(-2).json, restore: calls.at(-1).json, probes: 15, discoveryOperations: 4 };
 }
 
 function retained(value, optimized) {
   const flag = optimized ? ['--validation-snapshot'] : [];
-  const calls = [
-    command(['capability', 'invoke', capability, '--value', String(value), '--verify', '--authorize-write', ...flag, '--json']),
-    command(['capability', 'invoke', capability, '--value', String(original), '--verify', '--authorize-write', ...flag, '--json']),
-  ];
-  return { calls, success: calls.every(invoked), set: calls[0].json?.result, restore: calls[1].json?.result,
+  const calls = [command(['capability', 'invoke', capability, '--value', String(value), '--verify', '--authorize-write', ...flag, '--json'])];
+  const pre = calls[0].json?.result?.transaction?.pre_observation?.value;
+  // The first transaction observes the live pre-state before mutation; never restore a fixture constant.
+  if (Number.isFinite(pre)) {
+    calls.push(command(['capability', 'invoke', capability, '--value', String(pre), '--verify', '--authorize-write', ...flag, '--json']));
+  }
+  const restored = calls[1]?.json?.result?.transaction?.post_observation?.value;
+  const restoredToPre = Number.isFinite(pre) && Number.isFinite(restored) && Math.abs(restored - pre) <= 0.001;
+  return { calls, success: calls.length === 2 && calls.every(invoked) && restoredToPre,
+    error: Number.isFinite(pre) ? null : 'PRE_STATE_NOT_OBSERVED', preValue: pre, restoredToPre,
+    set: calls[0].json?.result, restore: calls[1]?.json?.result,
     probes: optimized ? 12 : 14, discoveryOperations: 0 };
 }
 
 const runners = { A: conditionA, B: value => retained(value, false), C: value => retained(value, true) };
 const orders = [['A', 'B', 'C'], ['B', 'C', 'A'], ['C', 'A', 'B']];
-const records = [];
+process.stdout.write(`EVIDENCE=${output}\n`);
 for (let trial = 0; trial < 10; trial++) {
   const value = Number((0.21 + trial * 0.031).toFixed(3));
   for (const condition of orders[trial % orders.length]) {
@@ -66,6 +76,7 @@ for (let trial = 0; trial < 10; trial++) {
     const record = {
       schema: 'indro.fl-capability-benchmark/v1', trial: trial + 1, order: orders[trial % orders.length], condition, target: value,
       wallMs: performance.now() - started, success: outcome.success, error: outcome.error ?? null,
+      preValue: Number.isFinite(outcome.preValue) ? outcome.preValue : null, restoredToPre: outcome.restoredToPre ?? null,
       cliCommands: outcome.calls.length, toolCalls: outcome.calls.length, hostProbes: outcome.probes, discoveryOperations: outcome.discoveryOperations,
       failures: outcome.calls.filter(call => call.status !== 0).length,
       set: outcome.set ? { readback: outcome.set.transaction?.post_observation?.value, receipt: outcome.set.evidence?.path, sha256: outcome.set.evidence?.sha256 } : null,
@@ -73,8 +84,7 @@ for (let trial = 0; trial < 10; trial++) {
       commands: outcome.calls.map(call => ({ args: call.args, durationMs: call.durationMs, status: call.status, stderr: call.stderr })),
       modelTokens: null,
     };
-    records.push(record);
-    writeFileSync(output, `${records.map(item => JSON.stringify(item)).join('\n')}\n`);
+    appendFileSync(output, `${JSON.stringify(record)}\n`);
     process.stdout.write(`${condition}${trial + 1} ${record.success ? 'PASS' : 'FAIL'} ${record.wallMs.toFixed(1)}ms\n`);
     if (!record.success) process.exitCode = 1;
   }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -79,7 +79,7 @@ test('client routes reject unknown, missing, irrelevant, and positional argument
 
     const selectedRoot = run(['state', '--json', '--root', root]);
     assert.equal(selectedRoot.status, 0, selectedRoot.stderr || selectedRoot.stdout);
-    assert.equal(JSON.parse(selectedRoot.stdout).project.root, root);
+    assert.equal(realpathSync.native(JSON.parse(selectedRoot.stdout).project.root), realpathSync.native(root));
 
     const clear = run(['objective', '--clear', '--root', root]);
     assert.equal(clear.status, 0, clear.stderr || clear.stdout);
@@ -99,8 +99,11 @@ test('hud doctor returns a tiny bounded summary and retained evidence', () => {
     const result = spawnSync(process.execPath, [cli, 'doctor', '--root', root], {
       cwd: root, encoding: 'utf8', timeout: 15_000, env: { ...process.env, HUD_STATE_ROOT: state },
     });
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /^DOCTOR PASS 4\/4/m);
+    const search = spawnSync('rg', ['--version'], { cwd: root, encoding: 'utf8', timeout: 2000 });
+    const searchAvailable = search.status === 0 && /^ripgrep /m.test(search.stdout || '');
+    assert.equal(result.status, searchAvailable ? 0 : 1, result.stderr || result.stdout);
+    assert.match(result.stdout, searchAvailable ? /^DOCTOR PASS 4\/4/m : /^DOCTOR FAIL 3\/4/m);
+    if (!searchAvailable) assert.match(result.stdout, /^search BLOCKED run:/m);
     assert.match(result.stdout, /^EVIDENCE /m);
     assert.ok(result.stdout.trimEnd().split(/\r?\n/).length <= 3);
   } finally {

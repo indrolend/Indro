@@ -10,7 +10,7 @@
     "blocked": 13
   },
   "validation": {
-    "pythonSelfTests": 12,
+    "pythonSelfTests": 11,
     "hudBenchmark": "pass",
     "languageGeneralizationBenchmark": "pass",
     "prefixCanonicalCrosscheck": {
@@ -172,13 +172,13 @@
     },
     {
       "path": "fl/adapter.mjs",
-      "bytes": 8938,
-      "sha256": "434bb2ceaae249b12b8ab08ecb549a5d7f2075edf197e893cc9b0fe31759c3d4"
+      "bytes": 9094,
+      "sha256": "c9b98fef872296e57270e0e183fe872423ac54994b8b939f736cc68ce18c3ee8"
     },
     {
       "path": "fl/adapter.test.mjs",
-      "bytes": 2245,
-      "sha256": "f932851950dbd825adacb41c360a6d03c34a1150f80c445355a0403a6ef736f9"
+      "bytes": 4117,
+      "sha256": "89f7f4ba8e9a6b126a7e64183b5b70e35ddcbdf8c6431974916a5df57a8ceb61"
     },
     {
       "path": "fl/bridge/device_INDROFLBridge.py",
@@ -327,8 +327,8 @@
     },
     {
       "path": "tools/test-all.py",
-      "bytes": 680,
-      "sha256": "67794367675f8ea94d9a145d1a86176a8afd03a5e9b339be4dca1cf6f4a16e70"
+      "bytes": 1158,
+      "sha256": "41d43ce8b1c5b496c347c433df56eb72d045a96855a25d63578113755cad102a"
     },
     {
       "path": "tools/test-cli.py",

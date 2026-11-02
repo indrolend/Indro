@@ -666,6 +666,8 @@ test('repository command declarations fail closed when malformed, duplicate, or 
 
 test('repository command execution resolves a current discovered identity and records evidence', async () => {
   const root = fixture();
+  // Undo must restore the fixture's LF bytes, independent of the runner's Git checkout policy.
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: root });
   mkdirSync(join(root, 'tools'));
   writeFileSync(join(root, 'tools', 'run-native-tests.mjs'), 'import { writeFileSync } from "node:fs"; writeFileSync(new URL("../file.txt", import.meta.url), "changed by command\\n"); console.log("100% tests passed, 0 tests failed out of 3"); console.log("NATIVE_TESTS=PASS count=3")\n');
   const identityPath = join(root, 'distribution', 'project.json');
@@ -1079,6 +1081,8 @@ test('PowerShell missing commands are blocked without treating ordinary stderr a
     message: "rg: The term 'rg' is not recognized as a name of a cmdlet, function, script file, or executable program.",
   });
   assert.equal(classifyPowerShellShellFailure('warning: optional cache is unavailable'), null);
+  const wrappedDiagnostic = "cmd: The term 'cmd' is not recognized as a\n    | name of a cmdlet, function, script file, or executable program. Check the spelling.";
+  assert.equal(classifyPowerShellShellFailure(wrappedDiagnostic)?.kind, 'command-not-found');
 
   const project = await fixtureProject();
   const powershell = (await discoverShells(project.root)).find((entry) => entry.id === 'powershell');
@@ -1519,7 +1523,9 @@ test('search records real scoped matches, truthful zero results, raw evidence, a
 
   writeFileSync(join(project.root, 'src', 'huge.txt'), Array.from({ length: 300 }, () => `huge-needle ${'x'.repeat(9000)}`).join('\n'));
   const huge = await searchRepository(project, 'huge-needle', 'src', fixtureSearchOptions);
-  assert.equal(huge.operation.matchCount, 300);
+  const hugeRaw = readFileSync(huge.stdoutPath, 'utf8');
+  const hugeRawRows = (hugeRaw.match(/(?:^|\n)src[\\/]huge\.txt:\d+:huge-needle/g) || []).length;
+  assert.equal(huge.operation.matchCount, 300, `rawRows=${hugeRawRows} rawBytes=${Buffer.byteLength(hugeRaw)} capturedBytes=${huge.evidence.stdout.bytes} exit=${huge.exitCode} status=${huge.status}`);
   assert.equal(huge.operation.fileCount, 1);
   assert.equal(huge.operation.files[0].count, 300);
   assert.equal(huge.operation.files[0].lines.length, 200);
@@ -1575,7 +1581,7 @@ test('terminal commands preserve exact intent and working directory across avail
   for (const shell of shells.filter((entry) => entry.available)) {
     const example = cases[shell.id];
     const record = await runTerminalCommand(project, example.command, { shell: shell.id });
-    assert.equal(record.status, 'pass', `${shell.id}: ${readFileSync(record.stderrPath, 'utf8')}`);
+    assert.equal(record.status, 'pass', `${shell.id}: ${JSON.stringify({ executable: shell.executable, exitCode: record.exitCode, processExitCode: record.processExitCode, reason: record.reason ?? record.reduction?.reason ?? null, stdout: readFileSync(record.stdoutPath, 'utf8').slice(0, 2000), stderr: readFileSync(record.stderrPath, 'utf8').slice(0, 2000), operation: record.operation })}`);
     assert.equal(record.command, example.command);
     assert.equal(record.inputText, example.command);
     assert.equal(record.operationId, record.id);

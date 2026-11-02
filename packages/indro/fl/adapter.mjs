@@ -110,9 +110,13 @@ export function createFlAdapter(options = {}) {
       const value = await transport.request(operation, { arguments: args, target, authorization: 'read-only' });
       if (value.response.error) throw new Error(value.response.error);
       const result = value.response.result;
-      return capability === 'fl.plugin.parameter'
-        ? { ...result, value: result.value, observation_source: 'FL Studio plugins.getParamValue' }
-        : { ...result, observation_source: 'FL Studio scripting API' };
+      if (capability === 'fl.plugin.parameter') {
+        if (!Number.isFinite(result?.value) || result.value < 0 || result.value > 1) {
+          throw new Error('FL_PARAMETER_OBSERVATION_INVALID');
+        }
+        return { ...result, observation_source: 'FL Studio plugins.getParamValue' };
+      }
+      return { ...result, observation_source: 'FL Studio scripting API' };
     },
     async invoke(target, capability, args, context) {
       if (capability.id !== 'fl.plugin.parameter') return { error: 'UNSUPPORTED_FL_CAPABILITY' };
