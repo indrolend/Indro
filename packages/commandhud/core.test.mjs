@@ -1519,7 +1519,9 @@ test('search records real scoped matches, truthful zero results, raw evidence, a
 
   writeFileSync(join(project.root, 'src', 'huge.txt'), Array.from({ length: 300 }, () => `huge-needle ${'x'.repeat(9000)}`).join('\n'));
   const huge = await searchRepository(project, 'huge-needle', 'src', fixtureSearchOptions);
-  assert.equal(huge.operation.matchCount, 300);
+  const hugeRaw = readFileSync(huge.stdoutPath, 'utf8');
+  const hugeRawRows = (hugeRaw.match(/(?:^|\n)src[\\/]huge\.txt:\d+:huge-needle/g) || []).length;
+  assert.equal(huge.operation.matchCount, 300, `rawRows=${hugeRawRows} rawBytes=${Buffer.byteLength(hugeRaw)} capturedBytes=${huge.evidence.stdout.bytes} exit=${huge.exitCode} status=${huge.status}`);
   assert.equal(huge.operation.fileCount, 1);
   assert.equal(huge.operation.files[0].count, 300);
   assert.equal(huge.operation.files[0].lines.length, 200);
