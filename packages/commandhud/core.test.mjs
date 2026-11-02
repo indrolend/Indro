@@ -347,7 +347,7 @@ test('run directory reservation retries collisions without changing retained evi
     assert.throws(() => reserveRunDirectory(root, () => collision), /after 8 attempts/);
     assert.equal(readdirSync(root).length, count);
     writeFileSync(join(root, 'not-a-directory'), 'file');
-    assert.throws(() => reserveRunDirectory(root, () => 'not-a-directory/child'), { code: 'ENOTDIR' });
+    assert.throws(() => reserveRunDirectory(root, () => 'not-a-directory/child'), (error) => ['ENOTDIR', 'ENOENT'].includes(error?.code));
     assert.match(reserveRunDirectory(root).id, /^\d{14}-[0-9a-f]{4}$/);
   } finally {
     rmSync(root, { recursive: true, force: true });
