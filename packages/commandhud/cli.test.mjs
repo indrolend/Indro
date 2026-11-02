@@ -394,29 +394,29 @@ test('hud output identifies newest outputless completion instead of showing olde
     const result = spawnSync(process.execPath, [cli, 'output'],
       { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /\\(no output\\)/);
+    assert.match(result.stdout, /\(no output\)/);
     assert.match(result.stdout, new RegExp(latestId));
     assert.doesNotMatch(result.stdout, /older-visible-output/);
     const runRoot = join(env.HUD_STATE_ROOT, 'runs', readdirSync(join(env.HUD_STATE_ROOT, 'runs'))[0]);
     const record = JSON.parse(readFileSync(join(runRoot, latestId, 'run.json'), 'utf8'));
-    writeFileSync(record.stdoutPath, 'forged-empty-output\\n');
+    writeFileSync(record.stdoutPath, 'forged-empty-output\n');
     const corrupted = spawnSync(process.execPath, [cli, 'output'],
       { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
     assert.equal(corrupted.status, 0, corrupted.stderr || corrupted.stdout);
-    assert.match(corrupted.stdout, new RegExp('OUTPUT EVIDENCE UNAVAILABLE[^\\\\n]*' + latestId));
-    assert.doesNotMatch(corrupted.stdout, /forged-empty-output|older-visible-output|\\(no output\\)/);
+    assert.match(corrupted.stdout, new RegExp('OUTPUT EVIDENCE UNAVAILABLE[^\\n]*' + latestId));
+    assert.doesNotMatch(corrupted.stdout, /forged-empty-output|older-visible-output|\(no output\)/);
     writeFileSync(record.stdoutPath, '');
     const restored = spawnSync(process.execPath, [cli, 'output'],
       { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
     assert.equal(restored.status, 0, restored.stderr || restored.stdout);
-    assert.match(restored.stdout, /\\(no output\\)/);
+    assert.match(restored.stdout, /\(no output\)/);
     const newer = run("console.log('newest-visible-output')");
     assert.equal(newer.status, 0, newer.stderr || newer.stdout);
     const outputful = spawnSync(process.execPath, [cli, 'output'],
       { cwd: root, env, encoding: 'utf8', timeout: 10_000 });
     assert.equal(outputful.status, 0, outputful.stderr || outputful.stdout);
     assert.match(outputful.stdout, /newest-visible-output/);
-    assert.doesNotMatch(outputful.stdout, /older-visible-output|\\(no output\\)/);
+    assert.doesNotMatch(outputful.stdout, /older-visible-output|\(no output\)/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
