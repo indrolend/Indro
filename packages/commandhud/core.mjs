@@ -1005,7 +1005,7 @@ export function reduceOutput(command, stdout, stderr, exitCode, { root = '', kin
 }
 
 export function classifyPowerShellShellFailure(stderr) {
-  const text = normalizeTerminalText(String(stderr || ''));
+  const text = normalizeTerminalText(String(stderr || '')).replace(/\n\s*\|\s*/g, ' ');
   const commandNotFound = firstMatch(text, [
     /^.*The term '[^']+' is not recognized as a name of a cmdlet, function, script file, or executable program.*$/im,
     /^.*CommandNotFoundException.*$/im,
@@ -1323,7 +1323,7 @@ export async function runCommand(project, tokens, {
     reduction.cause ||= capturedFailure.message || 'The shell reported that the requested operation failed.';
     reduction.classification ||= capturedFailure.classification || 'command';
   }
-  const missingCommand = exitCode !== 0 && /(?:command not found|is not recognized as (?:a name of |the name of )?a? ?(?:cmdlet|function|script file|executable program)|ENOENT)/i.test(normalizeTerminalText(`${stdout}\n${stderr}`));
+  const missingCommand = exitCode !== 0 && (capturedFailure?.kind === 'command-not-found' || /(?:command not found|is not recognized as (?:a name of |the name of )?a? ?(?:cmdlet|function|script file|executable program)|ENOENT)/i.test(normalizeTerminalText(`${stdout}\n${stderr}`)));
   const evidenceValidity = validateOperationEvidence({ stdout, stderr }, policy.requiredOutput);
   const accepted = acceptedExitCodes.includes(exitCode);
   const record = {
@@ -1340,9 +1340,9 @@ export async function runCommand(project, tokens, {
     } : null,
     startedAt: started.toISOString(), endedAt: ended.toISOString(), durationMs: ended - started,
     exitCode, processExitCode: exitCode,
-    status: timeoutRequested ? 'timeout' : cancellationRequested ? 'cancelled' : capturedFailure ? 'fail' : missingCommand ? 'blocked' : !accepted || !evidenceValidity.valid ? 'fail' : 'pass',
-    resultClassification: timeoutRequested ? 'TIMEOUT' : cancellationRequested ? 'CANCELLED' : capturedFailure ? 'FAIL' : missingCommand ? 'BLOCKED' : !accepted || !evidenceValidity.valid ? 'FAIL' : 'PASS',
-    resultReason: timeoutRequested ? 'DEADLINE_EXCEEDED' : cancellationRequested ? 'USER_CANCELLED' : capturedFailure ? (capturedFailure.reason || 'POWERSHELL_ERROR_RECORD') : missingCommand ? 'COMMAND_UNAVAILABLE' : !accepted ? 'NONZERO_EXIT' : !evidenceValidity.valid ? 'INVALID_OUTPUT' : 'ACCEPTED_EXIT_CODE',
+    status: timeoutRequested ? 'timeout' : cancellationRequested ? 'cancelled' : missingCommand ? 'blocked' : capturedFailure ? 'fail' : !accepted || !evidenceValidity.valid ? 'fail' : 'pass',
+    resultClassification: timeoutRequested ? 'TIMEOUT' : cancellationRequested ? 'CANCELLED' : missingCommand ? 'BLOCKED' : capturedFailure ? 'FAIL' : !accepted || !evidenceValidity.valid ? 'FAIL' : 'PASS',
+    resultReason: timeoutRequested ? 'DEADLINE_EXCEEDED' : cancellationRequested ? 'USER_CANCELLED' : missingCommand ? 'COMMAND_UNAVAILABLE' : capturedFailure ? (capturedFailure.reason || 'POWERSHELL_ERROR_RECORD') : !accepted ? 'NONZERO_EXIT' : !evidenceValidity.valid ? 'INVALID_OUTPUT' : 'ACCEPTED_EXIT_CODE',
     mode: policy.mode, timeoutMs: policy.timeoutMs, timedOut: timeoutRequested,
     capturedFailure,
     dirtyBefore: before.dirty, dirtyAfter: after.dirty,
