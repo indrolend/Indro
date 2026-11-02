@@ -97,7 +97,7 @@ function fixtureProject() {
   writeFileSync(join(root, 'media', 'tone.wav'), Buffer.from('RIFFtestWAVE'));
   writeFileSync(join(root, 'media', 'clip.mp4'), Buffer.from('test-mp4'));
   writeFileSync(join(root, 'media', 'clip.mov'), Buffer.from('test-mov'));
-  writeFileSync(join(root, 'tools', 'run-native-tests.mjs'), 'import { writeFileSync } from "node:fs"; console.log("STARTED"); writeFileSync(new URL("../media/generated.txt", import.meta.url), "created by command\\n"); await new Promise((resolve) => setTimeout(resolve, 1200)); console.log("x".repeat(70000)); console.log("100% tests passed, 0 tests failed out of 2")\n');
+  writeFileSync(join(root, 'tools', 'run-native-tests.mjs'), 'import { writeFileSync } from "node:fs"; console.log("STARTED"); writeFileSync(new URL("../media/generated.txt", import.meta.url), "created by command\\n"); console.log("ARTIFACT_READY"); await new Promise((resolve) => setTimeout(resolve, 1200)); console.log("x".repeat(70000)); console.log("100% tests passed, 0 tests failed out of 2")\n');
   writeFileSync(join(root, 'tools', 'lint.mjs'), 'console.log("LINT=PASS javascript=1 typescript=1 whitespace=1")\n');
   execFileSync('git', ['init', '-b', 'main'], { cwd: root });
   execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
@@ -493,6 +493,7 @@ test('HUD server serializes typed operations and exposes bounded evidence, live 
   });
   const cancellingRuntime = await waitForActiveRun(base);
   assert.equal(cancellingRuntime.busy.state, 'running');
+  await waitForActiveEvidence(base, cancellingRuntime.busy.runId, /ARTIFACT_READY/);
   const cancelResponse = await fetch(`${base}/operations/cancel`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: cancellingRuntime.busy.runId }),
   });
