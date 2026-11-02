@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -418,6 +418,67 @@ test('hud output identifies newest outputless completion instead of showing olde
     assert.match(outputful.stdout, /newest-visible-output/);
     assert.doesNotMatch(outputful.stdout, /older-visible-output|\(no output\)/);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hud output --follow retains every completion between polls', { skip: process.platform === 'win32', timeout: 30_000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-follow-burst-'));
+  let follower;
+  let stopped = false;
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: join(root, '.state') };
+    const run = (marker) => spawnSync(process.execPath,
+      [cli, 'run', '--json', '--', process.execPath, '-e', `console.log('${marker}')`],
+      { cwd: root, env, encoding: 'utf8', timeout: 20_000 });
+    const seed = run('seed-follow-marker');
+    assert.equal(seed.status, 0, seed.stderr || seed.stdout);
+    follower = spawn(process.execPath, [cli, 'output', '--follow'],
+      { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    let errors = '';
+    follower.stdout.on('data', (chunk) => { output += chunk.toString(); });
+    follower.stderr.on('data', (chunk) => { errors += chunk.toString(); });
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 8_000;
+      while (!predicate() && Date.now() < deadline && follower.exitCode === null) {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      assert.ok(predicate(), `${label}: ${output.slice(-1000)} ${errors}`);
+    };
+    await waitFor(() => output.includes('seed-follow-marker'), 'initial follower observation');
+    process.kill(follower.pid, 'SIGSTOP');
+    stopped = true;
+    for (const marker of ['burst-one', 'burst-two', 'burst-three']) {
+      const result = run(marker);
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+    }
+    process.kill(follower.pid, 'SIGCONT');
+    stopped = false;
+    await waitFor(() => ['burst-one', 'burst-two', 'burst-three'].every((marker) => output.includes(marker)),
+      'all completed runs must be observed');
+    assert.equal(errors, '');
+    for (const marker of ['burst-one', 'burst-two', 'burst-three']) {
+      assert.equal(output.split(marker).length - 1, 1, output);
+    }
+    assert.ok(output.indexOf('burst-one') < output.indexOf('burst-two') &&
+      output.indexOf('burst-two') < output.indexOf('burst-three'), output);
+  } finally {
+    if (follower) {
+      if (stopped) { try { process.kill(follower.pid, 'SIGCONT'); } catch {} }
+      if (follower.exitCode === null) {
+        follower.kill('SIGTERM');
+        await Promise.race([
+          new Promise((resolve) => follower.once('exit', resolve)),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+        if (follower.exitCode === null) follower.kill('SIGKILL');
+      }
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });
