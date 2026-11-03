@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -478,6 +479,79 @@ test('hud output --follow retains every completion between polls', { skip: proce
         ]);
         if (follower.exitCode === null) follower.kill('SIGKILL');
       }
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test('hud output --follow covers a 101-run completion burst beyond the initial polling window', { timeout: 25_000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-follow-window-'));
+  let follower;
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const state = join(root, '.state');
+    const env = { ...process.env, HUD_STATE_ROOT: state };
+    const seed = spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', "console.log('seed-follow-window')"], {
+      cwd: root, env, encoding: 'utf8', timeout: 20_000,
+    });
+    assert.equal(seed.status, 0, seed.stderr || seed.stdout);
+    const runRoot = join(state, 'runs', readdirSync(join(state, 'runs'))[0]);
+    const seedRecord = JSON.parse(readFileSync(join(runRoot, JSON.parse(seed.stdout).runId, 'run.json'), 'utf8'));
+    const makeRecord = (i, status) => {
+      const id = '20990101000000-' + i.toString(16).padStart(4, '0');
+      const directory = join(runRoot, id);
+      mkdirSync(directory, { recursive: true });
+      const stdoutPath = join(directory, 'stdout.log');
+      const stderrPath = join(directory, 'stderr.log');
+      const output = 'window-marker-' + i + '\n';
+      writeFileSync(stdoutPath, output);
+      writeFileSync(stderrPath, '');
+      writeFileSync(join(directory, 'run.json'), JSON.stringify({
+        ...seedRecord, id, status, exitCode: status === 'running' ? null : 0,
+        stdoutPath, stderrPath,
+        startedAt: new Date(Date.UTC(2099, 0, 1, 0, 0, 0, i)).toISOString(),
+        endedAt: status === 'running' ? null : new Date(Date.UTC(2099, 0, 1, 0, 0, 0, i)).toISOString(),
+        evidence: { ...seedRecord.evidence, stdout: {
+          bytes: Buffer.byteLength(output),
+          sha256: 'sha256:' + createHash('sha256').update(output).digest('hex'),
+        } },
+      }));
+    };
+    for (let i = 0; i < 100; i++) makeRecord(i, 'running');
+    follower = spawn(process.execPath, [cli, 'output', '--follow'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    follower.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    follower.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    const startupDeadline = Date.now() + 5_000;
+    while (!stdout.includes('seed-follow-window') && Date.now() < startupDeadline && follower.exitCode === null) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    assert.match(stdout, /seed-follow-window/);
+    for (let i = 0; i < 101; i++) makeRecord(i, 'pass');
+    const completionCount = () => (stdout.match(/window-marker-\d+\n/g) || []).length;
+    const deadline = Date.now() + 9_000;
+    while (completionCount() < 101 && Date.now() < deadline && follower.exitCode === null) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    assert.equal(stderr, '');
+    assert.equal(completionCount(), 101, 'lost completed records: ' + completionCount() + '/101');
+    for (let i = 0; i < 101; i++) {
+      assert.equal(stdout.split('window-marker-' + i + '\n').length - 1, 1, 'missing/duplicate completion ' + i);
+    }
+    assert.ok(stdout.indexOf('window-marker-0\n') < stdout.indexOf('window-marker-100\n'), 'completion order changed');
+  } finally {
+    if (follower && follower.exitCode === null) {
+      follower.kill('SIGTERM');
+      await Promise.race([
+        new Promise((resolve) => follower.once('exit', resolve)),
+        new Promise((resolve) => setTimeout(resolve, 1200)),
+      ]);
+      if (follower.exitCode === null) follower.kill('SIGKILL');
     }
     rmSync(root, { recursive: true, force: true });
   }

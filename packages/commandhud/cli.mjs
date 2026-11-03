@@ -662,12 +662,40 @@ async function main() {
     let lastDisplayedId = null;
     let initialized = false;
     const seenRunIds = new Set();
+    const observedRunIds = new Set();
+    const pendingRunIds = new Set();
+    let coverageWarned = false;
     let unreadableRunId = null;
     let unreadablePolls = 0;
     let warnedUnreadableRunId = null;
     let unavailableEvidenceRunId = null;
     const showLatest = () => {
-      const runs = listRuns(project, 30, { reportUnreadable: true });
+      let limit = 30;
+      let runs = listRuns(project, limit, { reportUnreadable: true });
+      if (options.follow) {
+        const coversPrior = () => {
+          if (!initialized) return !runs.some((run) => run.status === 'running' || run.status === 'pending');
+          const ids = new Set(runs.map((run) => run.id));
+          // The project state's lastRunId may be pinned ahead of newer directory IDs.
+          const pinned = runs.length > 1 && runs[0].id < runs[1].id ? runs[0].id : null;
+          return runs.some((run) => observedRunIds.has(run.id) && run.id !== pinned)
+            && [...pendingRunIds].every((id) => ids.has(id));
+        };
+        while (runs.length === limit && !coversPrior() && limit < 1600) {
+          limit = Math.min(limit * 2, 1600);
+          runs = listRuns(project, limit, { reportUnreadable: true });
+        }
+        if (runs.length === limit && !coversPrior() && !coverageWarned) {
+          process.stdout.write('OUTPUT COVERAGE UNCERTAIN: retained history exceeds 1600 records; inspect hud history\n');
+          coverageWarned = true;
+        }
+        for (const run of runs) {
+          observedRunIds.add(run.id);
+          if (run.status === 'running' || run.status === 'pending' || run.status === 'unreadable') {
+            pendingRunIds.add(run.id);
+          } else pendingRunIds.delete(run.id);
+        }
+      }
       const completed = runs.filter((run) => run.status !== 'running' && run.status !== 'pending');
       // Initial inspection shows only the latest historical completion.
       // Subsequent polls emit every newly completed run, oldest first.
