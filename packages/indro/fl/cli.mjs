@@ -113,8 +113,14 @@ export async function runFlCli(argv, out = console.log, err = console.error, dep
     if (words[1] === 'params') {
       out(JSON.stringify(await hostRequest(transport, 'plugin.params', { channel }, target), null, 2)); return 0;
     }
+    if (dependencies.expectedPluginName && target.plugin_name !== dependencies.expectedPluginName) {
+      throw new Error('WRONG_PLUGIN_IDENTITY');
+    }
     const parameter = integer(options.param, 'parameter');
-    const parameterTarget = { ...target, parameter };
+    const parameterTarget = {
+      ...target, parameter,
+      ...(dependencies.expectedParameterName ? { parameter_name: dependencies.expectedParameterName } : {}),
+    };
     if (words[1] === 'get') {
       out(JSON.stringify(await hostRequest(transport, 'plugin.get', { channel, parameter }, parameterTarget), null, 2)); return 0;
     }
