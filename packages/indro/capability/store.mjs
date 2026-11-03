@@ -21,6 +21,8 @@ export function capabilityRoot(options = {}) {
 }
 
 function adapterPath() { return resolve(here, '..', 'fl', 'adapter.mjs'); }
+function flCliPath() { return resolve(here, '..', 'fl', 'cli.mjs'); }
+function uaiTransactionPath() { return resolve(here, '..', 'uai', 'transaction.mjs'); }
 function paintVerifierPath() { return resolve(here, '..', 'paint', 'artifact.mjs'); }
 function bridgePath(mailbox = defaultMailbox()) {
   return join(dirname(resolve(mailbox)), 'device_FLGranulizerBridge.py');
@@ -75,7 +77,9 @@ export function retainFlParameterCapability({ receiptPath, mailbox = defaultMail
   const observation = tx.post_observation;
   if (tx.capability_id !== 'fl.plugin.parameter' || !observation?.parameter_name) throw new Error('RECEIPT_NOT_COMPILABLE');
   const session = discoverSession({ mailbox });
-  const id = `fl.plugin.parameter.${observation.parameter_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  const slug = value => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const identity = (value, caseInsensitive = false) => `${slug(value)}-${sha256(caseInsensitive ? value.toLowerCase() : value).slice(0, 16)}`;
+  const id = `fl.plugin.parameter.${identity(tx.target.plugin_name, true)}.${identity(observation.parameter_name)}`;
   const payload = {
     schema: CAPABILITY_SCHEMA,
     schema_version: 1,
@@ -98,6 +102,8 @@ export function retainFlParameterCapability({ receiptPath, mailbox = defaultMail
       bridge_schema: session.schema,
       bridge_version: session.bridge_version,
       adapter: fileIdentity(adapterPath()),
+      fl_cli: fileIdentity(flCliPath()),
+      uai_transaction: fileIdentity(uaiTransactionPath()),
       installed_bridge: fileIdentity(bridgePath(mailbox)),
     },
     evidence: [{ receipt: resolve(path), sha256: fileIdentity(path).sha256 }],
@@ -185,7 +191,11 @@ export async function validateCapability(id, options = {}) {
   catch (error) { return { valid: false, reusable: false, issues: [error.message], capability: record }; }
   if (record.target.application !== 'fl-studio') issues.push('WRONG_APPLICATION_IDENTITY');
   if (record.dependencies.bridge_schema !== session.schema || record.dependencies.bridge_version !== session.bridge_version) issues.push('BRIDGE_VERSION_MISMATCH');
-  for (const [name, currentPath] of [['adapter', adapterPath()], ['installed_bridge', bridgePath(options.mailbox ?? defaultMailbox())]]) {
+  for (const [name, currentPath] of [
+    ['adapter', adapterPath()], ['fl_cli', flCliPath()], ['uai_transaction', uaiTransactionPath()],
+    ['installed_bridge', bridgePath(options.mailbox ?? defaultMailbox())],
+  ]) {
+    if (!record.dependencies?.[name]?.sha256) { issues.push(`${name.toUpperCase()}_FINGERPRINT_MISSING`); continue; }
     try { if (record.dependencies[name].sha256 !== fileIdentity(currentPath).sha256) issues.push(`${name.toUpperCase()}_FINGERPRINT_MISMATCH`); }
     catch { issues.push(`${name.toUpperCase()}_UNAVAILABLE`); }
   }

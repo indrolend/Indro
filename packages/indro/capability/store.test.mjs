@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -115,4 +116,58 @@ test('retains Paint artifact capability in Continuum and validates exact applica
   assert.deepEqual((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '12' })).issues, ['PAINT_VERSION_MISMATCH']);
   writeFileSync(artifactPath, png(321, 240));
   assert.match((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' })).issues.join(','), /EVIDENCE_WIDTH_MISMATCH|EVIDENCE_ARTIFACT_DIGEST_MISMATCH/);
+});
+
+test('distinct FL plugin and parameter identities survive slug collisions', () => {
+  const first = fixture({ plugin: 'Fruity EQ 2', parameterName: 'Grain spacing' });
+  const retainOther = (plugin, parameterName, channel) => {
+    const receipt = persistFlReceipt({ transaction: {
+      operation_id: 'identity-' + channel, capability_id: 'fl.plugin.parameter', verdict: 'STATE_CONFIRMED',
+      target: { session_id: 'session-1', channel, plugin_name: plugin, parameter: 4 },
+      milestones: { STATE_CONFIRMED: true },
+      post_observation: { channel, plugin_name: plugin, parameter: 4, parameter_name: parameterName, value: 0.5 },
+    } }, { evidenceRoot: join(first.root, 'receipts') });
+    return retainFlParameterCapability({ ...first.options, receiptPath: receipt.path });
+  };
+  const pluginCollision = retainOther('Fruity EQ-2', 'Grain spacing', 6);
+  const parameterCollision = retainOther('Fruity EQ 2', 'Grain-spacing', 7);
+  const ids = [first.id, pluginCollision.capability.id, parameterCollision.capability.id];
+  assert.equal(new Set(ids).size, 3, 'distinct observed identities must not share a retained address');
+  assert.deepEqual(listCapabilities(first.options).map(x => x.id).sort(), ids.sort());
+  assert.equal(loadCapability(first.id, first.options).target.plugin_name, 'Fruity EQ 2');
+  assert.equal(loadCapability(pluginCollision.capability.id, first.options).target.plugin_name, 'Fruity EQ-2');
+  assert.equal(loadCapability(parameterCollision.capability.id, first.options).target.parameter_name, 'Grain-spacing');
+  assert.equal(fixture({ plugin: 'FRUITY EQ 2', parameterName: 'Grain spacing' }).id, first.id);
+});
+
+test('retained FL execution-source fingerprints fail closed before host access', async () => {
+  const baseline = fixture();
+  assert.equal((await validateCapability(baseline.id, validationOptions(baseline))).reusable, true);
+  for (const dependency of ['fl_cli', 'uai_transaction']) {
+    assert.match(baseline.retained.capability.dependencies[dependency].sha256, /^[a-f0-9]{64}$/);
+    for (const kind of ['mismatch', 'missing']) {
+      const f = fixture();
+      const envelope = JSON.parse(readFileSync(f.retained.path, 'utf8'));
+      if (kind === 'mismatch') envelope.payload.dependencies[dependency].sha256 = '0'.repeat(64);
+      else delete envelope.payload.dependencies[dependency];
+      envelope.integrity.digest = createHash('sha256').update(JSON.stringify(envelope.payload)).digest('hex');
+      writeFileSync(f.retained.path, JSON.stringify(envelope));
+      assert.equal(loadCapability(f.id, f.options).id, f.id, 'historical record remains readable');
+      let probes = 0;
+      let writes = 0;
+      const options = validationOptions(f, { transport: {
+        name: 'must-not-probe', async request() { probes++; throw new Error('UNEXPECTED_HOST_PROBE'); },
+      } });
+      const expected = dependency.toUpperCase() + (kind === 'mismatch' ? '_FINGERPRINT_MISMATCH' : '_FINGERPRINT_MISSING');
+      const invalid = await validateCapability(f.id, options);
+      assert.equal(invalid.reusable, false);
+      assert.deepEqual(invalid.issues, [expected]);
+      await assert.rejects(invokeCapability(f.id, 0.25, {
+        ...options, authorization: 'explicit-user-write',
+        runFlCli: async () => { writes++; throw new Error('UNEXPECTED_HOST_WRITE'); },
+      }), /CAPABILITY_NOT_REUSABLE/);
+      assert.equal(probes, 0);
+      assert.equal(writes, 0);
+    }
+  }
 });
