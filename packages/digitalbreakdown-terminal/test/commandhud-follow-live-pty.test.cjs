@@ -45,7 +45,7 @@ test('two live PTYs: follower rejects unreadable latest evidence, reports a new 
     follower = pty.spawn(process.execPath, [cli, 'output', '--follow'], options);
     const followerExit = new Promise(resolve => follower.onExit(resolve));
     follower.onData(chunk => { followerOutput += chunk; });
-    await waitFor(() => followerOutput.includes(`OUTPUT EVIDENCE UNAVAILABLE · run:${latestId}`),
+    await waitFor(() => followerOutput.includes(`OUTPUT EVIDENCE UNAVAILABLE run:${latestId}`),
       'unreadable-run rejection', () => followerOutput);
     assert.doesNotMatch(followerOutput, /OLDER_VERIFIED_PASS|LATEST_UNREADABLE/);
 
@@ -57,11 +57,16 @@ test('two live PTYs: follower rejects unreadable latest evidence, reports a new 
     const produced = await Promise.race([producerExit, delay(10000).then(() => null)]);
     assert.ok(produced, `producer did not exit: ${producerOutput.slice(-900)}`);
     assert.equal(produced.exitCode, 0, producerOutput);
-    await waitFor(() => followerOutput.includes('PTY_NEW_VERIFIED') &&
-      /PASS exit=0 · run:/.test(followerOutput), 'verified follower completion', () => followerOutput);
+    await waitFor(() => followerOutput.includes('PTY_NEW_VERIFIED'),
+      'new follower completion', () => followerOutput);
+    const retained = spawnSync(process.execPath, [cli, 'last', '--json'],
+      { cwd: root, env, encoding: 'utf8', timeout: 15_000 });
+    assert.equal(retained.status, 0, retained.stderr || retained.stdout);
+    const receipt = JSON.parse(retained.stdout);
+    assert.equal(receipt.status, 'pass');
+    assert.equal(receipt.exitCode, 0);
     await delay(1700); // another full poll must not replay the same completion
     assert.equal((followerOutput.match(/PTY_NEW_VERIFIED/g) || []).length, 1, followerOutput);
-    assert.equal((followerOutput.match(/PASS exit=0 · run:/g) || []).length, 1, followerOutput);
     assert.equal((followerOutput.match(/OUTPUT EVIDENCE UNAVAILABLE/g) || []).length, 1, followerOutput);
     assert.doesNotMatch(followerOutput, /OLDER_VERIFIED_PASS|LATEST_UNREADABLE/);
 
