@@ -91,12 +91,16 @@ export function validateReplay({ stdout, stderr = '', exitCode, captureDir, comm
   if (frames.some((frame) => !Number.isInteger(frame)) || frames.some((frame, index) => index && frame < frames[index - 1])) errors.push('INVALID_SIMULATION_PROGRESSION');
   const requestedSteps = [...commandsText.matchAll(/^step(?:\s+.*?frames=(\d+))?/gm)].reduce((sum, match) => sum + Number(match[1] || 1), 0);
   if (requestedSteps && frames.length && frames.at(-1) - frames[0] !== requestedSteps) errors.push('INVALID_SIMULATION_PROGRESSION');
-  const expectedAssertions = (commandsText.match(/^assert\s+/gm) || []).length;
-  if (assertionLines.length !== expectedAssertions) errors.push('ASSERTION_RESULTS_INCOMPLETE');
+  const expectedAssertions = commandsText.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('assert '))
+    .map((line) => line.slice('assert '.length).trim().split(/ +/).join(' '));
+  if (assertionLines.length !== expectedAssertions.length ||
+      assertionLines.some((line, index) => parseFields(line).expectations !== expectedAssertions[index])) errors.push('ASSERTION_RESULTS_INCOMPLETE');
   const captures = existsSync(captureDir) ? readdirSync(captureDir).filter((name) => name.toLowerCase().endsWith('.png')).sort() : [];
   if (requireCapture && captures.length !== observations.length) errors.push('CAPTURE_COUNT_MISMATCH');
   for (const [index, row] of observations.entries()) {
-    if (requireCapture && (row.frame_capture !== '1' || !captures[index])) errors.push('CAPTURE_RECORD_INVALID');
+    if (requireCapture && (row.frame_capture !== '1' || !captures[index] || !row.frame_file || path.resolve(row.frame_file) !== path.resolve(captureDir, captures[index]))) errors.push('CAPTURE_RECORD_INVALID');
     if (captures[index]) {
       const file = path.join(captureDir, captures[index]);
       if (!verifyPng(file).valid) errors.push('CAPTURE_FILE_INVALID');
