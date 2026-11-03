@@ -556,3 +556,31 @@ test('hud output --follow covers a 101-run completion burst beyond the initial p
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test('hud output renders retained terminal control bytes as inert text', () => {
+  const root = mkdtempSync(join(tmpdir(), 'commandhud-output-control-bytes-'));
+  try {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+    const env = { ...process.env, HUD_STATE_ROOT: join(root, '.state') };
+    const script = String.raw`process.stdout.write('plain-before\n\x1b]52;c;Zm9v\x07\x1b[31mRED\x1b[0m\nplain-after\n')`;
+    const run = spawnSync(process.execPath, [cli, 'run', '--json', '--', process.execPath, '-e', script], {
+      cwd: root, env, encoding: 'utf8', timeout: 20_000,
+    });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    const output = spawnSync(process.execPath, [cli, 'output'], {
+      cwd: root, env, encoding: 'utf8', timeout: 10_000,
+    });
+    assert.equal(output.status, 0, output.stderr || output.stdout);
+    assert.match(output.stdout, /plain-before/);
+    assert.match(output.stdout, /plain-after/);
+    assert.match(output.stdout, /␛]52;c;Zm9v\\x07/);
+    assert.match(output.stdout, /␛\[31mRED␛\[0m/);
+    assert.doesNotMatch(output.stdout, /[\x1b\x07\x9b\x9d]/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
