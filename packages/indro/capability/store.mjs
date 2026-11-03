@@ -21,6 +21,8 @@ export function capabilityRoot(options = {}) {
 }
 
 function adapterPath() { return resolve(here, '..', 'fl', 'adapter.mjs'); }
+function flCliPath() { return resolve(here, '..', 'fl', 'cli.mjs'); }
+function uaiTransactionPath() { return resolve(here, '..', 'uai', 'transaction.mjs'); }
 function paintVerifierPath() { return resolve(here, '..', 'paint', 'artifact.mjs'); }
 function bridgePath(mailbox = defaultMailbox()) {
   return join(dirname(resolve(mailbox)), 'device_FLGranulizerBridge.py');
@@ -100,6 +102,8 @@ export function retainFlParameterCapability({ receiptPath, mailbox = defaultMail
       bridge_schema: session.schema,
       bridge_version: session.bridge_version,
       adapter: fileIdentity(adapterPath()),
+      fl_cli: fileIdentity(flCliPath()),
+      uai_transaction: fileIdentity(uaiTransactionPath()),
       installed_bridge: fileIdentity(bridgePath(mailbox)),
     },
     evidence: [{ receipt: resolve(path), sha256: fileIdentity(path).sha256 }],
@@ -187,7 +191,11 @@ export async function validateCapability(id, options = {}) {
   catch (error) { return { valid: false, reusable: false, issues: [error.message], capability: record }; }
   if (record.target.application !== 'fl-studio') issues.push('WRONG_APPLICATION_IDENTITY');
   if (record.dependencies.bridge_schema !== session.schema || record.dependencies.bridge_version !== session.bridge_version) issues.push('BRIDGE_VERSION_MISMATCH');
-  for (const [name, currentPath] of [['adapter', adapterPath()], ['installed_bridge', bridgePath(options.mailbox ?? defaultMailbox())]]) {
+  for (const [name, currentPath] of [
+    ['adapter', adapterPath()], ['fl_cli', flCliPath()], ['uai_transaction', uaiTransactionPath()],
+    ['installed_bridge', bridgePath(options.mailbox ?? defaultMailbox())],
+  ]) {
+    if (!record.dependencies?.[name]?.sha256) { issues.push(`${name.toUpperCase()}_FINGERPRINT_MISSING`); continue; }
     try { if (record.dependencies[name].sha256 !== fileIdentity(currentPath).sha256) issues.push(`${name.toUpperCase()}_FINGERPRINT_MISMATCH`); }
     catch { issues.push(`${name.toUpperCase()}_UNAVAILABLE`); }
   }
