@@ -116,3 +116,25 @@ test('retains Paint artifact capability in Continuum and validates exact applica
   writeFileSync(artifactPath, png(321, 240));
   assert.match((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' })).issues.join(','), /EVIDENCE_WIDTH_MISMATCH|EVIDENCE_ARTIFACT_DIGEST_MISMATCH/);
 });
+
+test('distinct FL plugin and parameter identities survive slug collisions', () => {
+  const first = fixture({ plugin: 'Fruity EQ 2', parameterName: 'Grain spacing' });
+  const retainOther = (plugin, parameterName, channel) => {
+    const receipt = persistFlReceipt({ transaction: {
+      operation_id: 'identity-' + channel, capability_id: 'fl.plugin.parameter', verdict: 'STATE_CONFIRMED',
+      target: { session_id: 'session-1', channel, plugin_name: plugin, parameter: 4 },
+      milestones: { STATE_CONFIRMED: true },
+      post_observation: { channel, plugin_name: plugin, parameter: 4, parameter_name: parameterName, value: 0.5 },
+    } }, { evidenceRoot: join(first.root, 'receipts') });
+    return retainFlParameterCapability({ ...first.options, receiptPath: receipt.path });
+  };
+  const pluginCollision = retainOther('Fruity EQ-2', 'Grain spacing', 6);
+  const parameterCollision = retainOther('Fruity EQ 2', 'Grain-spacing', 7);
+  const ids = [first.id, pluginCollision.capability.id, parameterCollision.capability.id];
+  assert.equal(new Set(ids).size, 3, 'distinct observed identities must not share a retained address');
+  assert.deepEqual(listCapabilities(first.options).map(x => x.id).sort(), ids.sort());
+  assert.equal(loadCapability(first.id, first.options).target.plugin_name, 'Fruity EQ 2');
+  assert.equal(loadCapability(pluginCollision.capability.id, first.options).target.plugin_name, 'Fruity EQ-2');
+  assert.equal(loadCapability(parameterCollision.capability.id, first.options).target.parameter_name, 'Grain-spacing');
+  assert.equal(fixture({ plugin: 'FRUITY EQ 2', parameterName: 'Grain spacing' }).id, first.id);
+});
