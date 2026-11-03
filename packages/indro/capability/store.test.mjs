@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -115,4 +116,37 @@ test('retains Paint artifact capability in Continuum and validates exact applica
   assert.deepEqual((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '12' })).issues, ['PAINT_VERSION_MISMATCH']);
   writeFileSync(artifactPath, png(321, 240));
   assert.match((await validateCapability(retained.capability.id, { ...options, paintAppVersion: '11.2605.81.0' })).issues.join(','), /EVIDENCE_WIDTH_MISMATCH|EVIDENCE_ARTIFACT_DIGEST_MISMATCH/);
+});
+
+
+test('retained FL execution-source fingerprints fail closed before host access', async () => {
+  const baseline = fixture();
+  assert.equal((await validateCapability(baseline.id, validationOptions(baseline))).reusable, true);
+  for (const dependency of ['fl_cli', 'uai_transaction']) {
+    assert.match(baseline.retained.capability.dependencies[dependency].sha256, /^[a-f0-9]{64}$/);
+    for (const kind of ['mismatch', 'missing']) {
+      const f = fixture();
+      const envelope = JSON.parse(readFileSync(f.retained.path, 'utf8'));
+      if (kind === 'mismatch') envelope.payload.dependencies[dependency].sha256 = '0'.repeat(64);
+      else delete envelope.payload.dependencies[dependency];
+      envelope.integrity.digest = createHash('sha256').update(JSON.stringify(envelope.payload)).digest('hex');
+      writeFileSync(f.retained.path, JSON.stringify(envelope));
+      assert.equal(loadCapability(f.id, f.options).id, f.id, 'historical record remains readable');
+      let probes = 0;
+      let writes = 0;
+      const options = validationOptions(f, { transport: {
+        name: 'must-not-probe', async request() { probes++; throw new Error('UNEXPECTED_HOST_PROBE'); },
+      } });
+      const expected = dependency.toUpperCase() + (kind === 'mismatch' ? '_FINGERPRINT_MISMATCH' : '_FINGERPRINT_MISSING');
+      const invalid = await validateCapability(f.id, options);
+      assert.equal(invalid.reusable, false);
+      assert.deepEqual(invalid.issues, [expected]);
+      await assert.rejects(invokeCapability(f.id, 0.25, {
+        ...options, authorization: 'explicit-user-write',
+        runFlCli: async () => { writes++; throw new Error('UNEXPECTED_HOST_WRITE'); },
+      }), /CAPABILITY_NOT_REUSABLE/);
+      assert.equal(probes, 0);
+      assert.equal(writes, 0);
+    }
+  }
 });
