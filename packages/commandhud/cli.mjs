@@ -669,6 +669,11 @@ async function main() {
     let unreadablePolls = 0;
     let warnedUnreadableRunId = null;
     let unavailableEvidenceRunId = null;
+    // Retained command output is evidence, not trusted terminal instructions.
+    const inert = (value) => String(value)
+      .replaceAll('\r\n', '\n').replaceAll('\r', '\\r').replaceAll('\x1b', '␛')
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g,
+        (character) => '\\x' + character.charCodeAt(0).toString(16).padStart(2, '0'));
     const showLatest = () => {
       let limit = 30;
       let runs = listRuns(project, limit, { reportUnreadable: true });
@@ -744,7 +749,7 @@ async function main() {
           .map((stream) => stream.content || '')
           .filter((value) => value.trim().length > 0)
           .join('\n');
-        const visible = content || `(no output) run:${run.id} status:${run.status.toUpperCase()} integrity:${integrity}`;
+        const visible = content ? inert(content) : `(no output) run:${run.id} status:${run.status.toUpperCase()} integrity:${integrity}`;
         ready.push({ run, visible });
         seenRunIds.add(run.id);
       }
