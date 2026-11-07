@@ -13,7 +13,10 @@ Language:
   indro proof-plan <proof...> --state <state.json> [--cache <cache.json>]
   indro language-test
   indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
-  indro work inspect <path>\n  indro work compare <left> <right>\n  indro work evidence <id>\n  indro app help
+  indro work inspect <path>
+  indro work compare <left> <right>
+  indro work evidence <id>
+  indro app help
   indro app fixture set <number> --json  # offline fixture
 
 Execution and evidence (CommandHUD compatibility):
