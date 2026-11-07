@@ -2,8 +2,8 @@ const { existsSync } = require("node:fs");
 const { resolve } = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-const DEFAULT_ROOT = "C:\\Users\\indro\\Projects\\data-game";
-const DEFAULT_CORE = "C:\\Users\\indro\\Projects\\Indro\\packages\\commandhud\\core.mjs";
+const DEFAULT_ROOT = resolve(__dirname, "..", "..");
+const DEFAULT_CORE = resolve(__dirname, "..", "commandhud", "core.mjs");
 
 function projectKey(identity) {
   return String(identity?.id || "").replace(/[^a-z0-9_-]+/gi, "_").toLowerCase();

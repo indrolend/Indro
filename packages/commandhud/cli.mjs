@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
+import { writeClipboard } from './clipboard-transport.mjs';
 import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
@@ -48,6 +48,11 @@ Use --root <path> to select an explicit Git repository.`;
 function parse(argv) {
   const args = [...argv];
   const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false, follow: false };
+  let leadingRoot = null;
+  if (args[0] === '--root') {
+    if (args.length < 2 || args[1].startsWith('--')) throw new Error('--root requires a value.');
+    leadingRoot = args.splice(0, 2)[1];
+  }
   const command = args.shift() || 'context';
   const positionals = [];
   const usedOptions = new Set();
@@ -82,6 +87,11 @@ function parse(argv) {
     else if (value.startsWith('-')) throw new Error(`Unknown hud option: ${value}`);
     else if (command === 'run') { positionals.push(...args.slice(index)); break; }
     else positionals.push(value);
+  }
+  if (leadingRoot !== null) {
+    if (usedOptions.has('root')) throw new Error('--root may be specified only once.');
+    options.root = leadingRoot;
+    usedOptions.add('root');
   }
   return { command, args: positionals, options, usedOptions };
 }
@@ -149,10 +159,10 @@ function printObject(object) {
 }
 
 function copy(text) {
-  const tool = process.platform === 'win32' ? ['clip.exe', []]
-    : process.platform === 'darwin' ? ['pbcopy', []] : ['sh', ['-c', 'command -v wl-copy >/dev/null && wl-copy || xclip -selection clipboard']];
-  const result = spawnSync(tool[0], tool[1], { input: text, encoding: 'utf8', windowsHide: true });
-  if (result.status !== 0) throw new Error('Clipboard tool is unavailable. Packet was still printed.');
+  const delivery = writeClipboard(text);
+  if (delivery.state === 'sent') console.error(`CLIPBOARD SENT transport=${delivery.transport} receipt=unverified bytes=${delivery.bytes}`);
+  else console.error(`CLIPBOARD COPIED transport=${delivery.transport} bytes=${delivery.bytes}`);
+  return delivery;
 }
 
 function printEvidenceProjection(value) {

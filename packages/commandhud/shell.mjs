@@ -1,3 +1,4 @@
+import { encodeNativeClipboardInput, writeClipboard } from './clipboard-transport.mjs';
 import { spawnSync } from 'node:child_process';
 import { basename, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -21,7 +22,6 @@ export function encodeComposerPaste(text) {
     .replaceAll('\r', `${COMPOSER_ESCAPE}r`)
     .replaceAll('\n', `${COMPOSER_ESCAPE}l`);
 }
-
 export function decodeComposerText(text) {
   return String(text).replace(new RegExp(`${COMPOSER_ESCAPE}([enrl])`, 'g'), (_, code) => (
     code === 'e' ? COMPOSER_ESCAPE : code === 'n' ? '\r\n' : code === 'r' ? '\r' : '\n'
@@ -159,15 +159,14 @@ export function createTuiInputRouter(options) {
 }
 
 export function encodeClipboardInput(text, targetPlatform = process.platform) {
-  return targetPlatform === 'win32' ? Buffer.from(String(text), 'utf16le') : String(text);
+  return encodeNativeClipboardInput(text, targetPlatform === 'win32' ? 'windows' : 'linux');
 }
 
-function clipboard(text) {
-  const tool = process.platform === 'win32' ? ['clip.exe', []]
-    : process.platform === 'darwin' ? ['pbcopy', []]
-      : ['sh', ['-c', 'command -v wl-copy >/dev/null && wl-copy || xclip -selection clipboard']];
-  const result = spawnSync(tool[0], tool[1], { input: encodeClipboardInput(text), windowsHide: true });
-  if (result.status !== 0) throw new Error('Clipboard tool is unavailable.');
+function clipboard(text) { return writeClipboard(text); }
+
+function successfulClipboardDelivery(delivery, source) {
+  if (delivery?.state === 'sent') return `SENT ${source} · OSC 52 receipt unverified`;
+  return `COPIED ${source}`;
 }
 
 function displayCwd(project, cwd) {
@@ -177,9 +176,9 @@ function displayCwd(project, cwd) {
 export function deliverShellProjection(value, show, clipboardWriter = clipboard, source = 'evidence') {
   show(`${value}\n\n`);
   try {
-    clipboardWriter(value);
-    show(`COPIED ${source}\n\n`);
-    return { value, copied: true };
+    const delivery = clipboardWriter(value);
+    show(`${successfulClipboardDelivery(delivery, source)}\n\n`);
+    return { value, copied: delivery?.state !== 'sent', sent: true, delivery: delivery || null };
   } catch (error) {
     show(`NOT COPIED · ${error.message}\nProjection remains visible above.\n\n`);
     return { value, copied: false };
@@ -205,9 +204,9 @@ export async function deliverShellResult(project, record, output, clipboardWrite
   const context = currentContext.handoff;
   output.write(`${renderShellResult(project, record, currentContext)}\n\nSHORTENED OUTPUT\n${context}\n`);
   try {
-    clipboardWriter(context);
-    output.write(`\nCOPIED · run:${record.id}\n\n`);
-    return { context, copied: true };
+    const delivery = clipboardWriter(context);
+    output.write(`\n${successfulClipboardDelivery(delivery, `· run:${record.id}`)}\n\n`);
+    return { context, copied: delivery?.state !== 'sent', sent: true, delivery: delivery || null };
   } catch (error) {
     output.write(`\nNOT COPIED · ${error.message}\nUse /copy to try again.\n\n`);
     return { context, copied: false };
@@ -268,7 +267,10 @@ export async function startHudShell(project, {
     if (result.provider) layout.updateShell(result.provider.label);
     if (result.record) show(`${renderShellResult(project, result.record)}\n\n`);
     else if (result.name === 'copy') {
-      try { clipboardWriter(result.clipboard); show(`COPIED ${result.clipboardSource}\n\n${result.text}`); }
+      try {
+        const delivery = clipboardWriter(result.clipboard);
+        show(`${successfulClipboardDelivery(delivery, result.clipboardSource)}\n\n${result.text}`);
+      }
       catch (error) { show(`NOT COPIED · ${error.message}\nContext remains available with /context ${result.clipboardSource.slice(4)}.\n\n`); }
     }
     else if (result.clipboard) deliverShellProjection(result.text, show, clipboardWriter, result.clipboardSource);
@@ -385,7 +387,7 @@ export async function startHudShell(project, {
           const currentContext = await buildCurrentOperationContext(project, record);
           const context = currentContext.handoff;
           let copyState;
-          try { clipboardWriter(context); copyState = `COPIED · run:${record.id}`; }
+          try { copyState = successfulClipboardDelivery(clipboardWriter(context), `· run:${record.id}`); }
           catch (error) { copyState = `NOT COPIED · ${error.message} · use /copy to retry`; }
           layout.renderDisclosure(
             `${renderShellResult(project, record, currentContext)}\n${copyState}\n\nDETAILS HIDDEN · /details opens compact evidence`,
