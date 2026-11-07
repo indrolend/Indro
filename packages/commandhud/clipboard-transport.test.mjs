@@ -82,3 +82,4 @@ test('transport failures and OSC non-TTY use explicit errors', () => {
     transport: 'linux', spawn: () => ({ status: null, error: new Error('missing') }),
   }), /unavailable/);
 });
+// Clipboard transport failures remain fail-closed.

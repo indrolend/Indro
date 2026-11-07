@@ -78,4 +78,4 @@ export function writeClipboard(text, {
     throw new Error('Clipboard tool is unavailable.');
   }
   return { transport, state: 'copied', acknowledged: true, bytes: bytes.length };
-}
+} // writeClipboard

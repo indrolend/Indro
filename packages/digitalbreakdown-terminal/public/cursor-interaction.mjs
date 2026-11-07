@@ -3,7 +3,6 @@ export function quotePowerShellPath(path) {
   if (/[\r\n\0]/.test(path)) throw new TypeError("Invalid path");
   return "'" + path.replace(/'/g, "''") + "'";
 }
-
 export function droppedText(transfer) {
   if (!transfer) return "";
   const files = Array.from(transfer.files ?? []);
