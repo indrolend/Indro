@@ -87,7 +87,10 @@ Never generate every artifact “just in case.” Start with telemetry/assertion
 - Implementation authority: `packages/commandhud/evidence-reuse.mjs`.
 - Reuse requires explicit repository identity, argv, inputs, dependencies, and environment; fingerprints are deterministic SHA-256 hashes.
 - Raw stdout/stderr sizes and hashes are checked. Invalid or incomplete identity requires fresh execution.
-- Reuse applies to defined verification, not arbitrary mutations. `indro run` delegates to CommandHUD; it does not imply reusable verification.
+- Reuse applies to defined verification, not arbitrary mutations. Plain `indro run -- <command>` delegates to CommandHUD; it does not imply reusable verification.
+- For a repository with retained replay history, `indro run --objective "Verify the current Godot gameplay replay."` recovers the latest replay options, recomputes current source/runtime/dependency identity, and then executes or reuses the existing verified workflow. It fails closed when no matching retained workflow exists; use an explicit `indro godot replay ...` once to establish one.
+- Objective selection now shares one bounded candidate selector across Godot replay and native verification. Candidates must be successful, current-project workflow definitions before cost ranking; domain validators still own applicability and behavior.
+- Native selection requires one successful historical `indro run --objective ... -- <verify-native argv>` with `--declare-runtime-closure`. Thereafter, `indro run --objective "Verify the current native test suite."` recovers that invocation and lets the native verifier build, validate its source/compiler/CMake/CTest/runtime/verifier/Node identity, then execute or reuse its append-only receipt. Do not declare closure unless every relevant external runtime file is named with `--runtime-file`.
 - Before rerunning, search history/evidence and compare the recorded identity with current state. Reuse the conclusion only when the behavioral contract and dependencies match.
 
 ## Analysis and profiling decision rules
@@ -172,3 +175,13 @@ Choose a verifier for each claim instead of treating one green signal as univers
 - Detailed reports stay with their evidence; this guide keeps only the smallest reusable conclusion and pointer.
 
 After a meaningful investigation: search this file, confirm the observed result, update/consolidate the smallest relevant entry, and remove or qualify contradicted advice. Current runtime evidence overrides previously verified knowledge.
+
+## GPU layout, rendered parity, and inactive work
+
+Historical evidence: data-game/evidence/performance/GGG-PERF-004.md and GGG-PERF-005.md.
+
+- GPU layout is a runtime contract. CPU round-trip checks passed with a malformed 16-byte vertex stream; Godot required 20 bytes including the tangent word. Assert runtime-reported strides and offsets.
+- Rendered parity overrides performance gains. The malformed all-target candidate produced faceting. Dynamic tangents restored visual parity but regressed performance; fixed valid tangents preserved parity without unnecessary computation.
+- Eliminate inactive work at its owning boundary. The fixture had nine live targets but generated geometry for 32 slots. Skip dead-slot geometry while preserving state, visibility, death, and reuse synchronization.
+- Preserve matched controls. DB_DISABLE_PACKED_ENEMIES=1 restored reconstruction. Historical dead-skip A/B: frame median 8.175 to 4.607 ms; p95 8.733 to 5.263 ms.
+- Retain rejected evidence. GGG-PERF-005 superseded the original visual acceptance in GGG-PERF-004.

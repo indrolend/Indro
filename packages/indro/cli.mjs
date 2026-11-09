@@ -24,6 +24,8 @@ Execution and evidence (CommandHUD compatibility):
   indro godot benchmark [--warmups 1] [--trials 3] [--timeout-ms 120000] [--output DIR]
   indro shell | tui | desktop
   indro run -- <command>
+  indro run --objective "Verify the current Godot gameplay replay."
+  indro run --objective "Verify the current native test suite."
   indro state --json
   indro search <query> [scope]
   indro history [count]
@@ -66,6 +68,9 @@ if (command === 'help' || command === '--help' || command === '-h') {
 } else if (command === 'godot') {
   const { runGodotCli } = await import('./godot-replay.mjs');
   process.exitCode = await runGodotCli(args);
+} else if (command === 'run' && args[0] === '--objective' && args.length === 2) {
+  const { runObjectiveCli } = await import('./objective-resolution.mjs');
+  process.exitCode = await runObjectiveCli(args[1]);
 } else if (command === 'language-test') {
   process.exitCode = python(path.join(here, 'tools', 'test-all.py'), args);
 } else {

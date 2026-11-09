@@ -107,13 +107,13 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 2856,
-      "sha256": "f766d1bf4b848bc89d4684a23341ed55b57cf02f8108e31f9e542300f260e5eb"
+      "bytes": 3197,
+      "sha256": "efde5c79085ec67740865abf237017d3b69d83c70446e9cd9554e22804d2d32e"
     },
     {
       "path": "cli.test.mjs",
-      "bytes": 2303,
-      "sha256": "01697e4381ada1e353fb67228a3c881a5d37d83330ee4886d91a7aa690fc9887"
+      "bytes": 2359,
+      "sha256": "55e9dd187de8af6bc4d199f8d543df77894095b4831194b63b58e8479d048416"
     },
     {
       "path": "doctor.ps1",
@@ -127,13 +127,13 @@
     },
     {
       "path": "godot-replay.mjs",
-      "bytes": 15353,
-      "sha256": "3a5ac471694709ecab392a3ccddc0e91f6415fad04920830d82d2fa8ae6ace58"
+      "bytes": 25379,
+      "sha256": "053c70ffcb4db9e65ea0a718216a736ee66d9b195e04b0972c9f655dfd05f038"
     },
     {
       "path": "godot-replay.test.mjs",
-      "bytes": 3496,
-      "sha256": "420daf2890b2e7158db36c99b4cd6daec3fff67a318b3ded56154f968288a86c"
+      "bytes": 6248,
+      "sha256": "d83a0c6455733a7990ae6831c1ed490c7abb13e52afc46b1e26cd50344897580"
     },
     {
       "path": "examples/digital-breakdown-convergence.indro",
@@ -197,13 +197,18 @@
     },
     {
       "path": "native-verify.mjs",
-      "bytes": 14082,
-      "sha256": "dc422e914f1e118edebb050ec2f8082ebefe6612394f4af767d085120f8be364"
+      "bytes": 16146,
+      "sha256": "77ea1d0f76062791514175a28d2daeec3b4ab8adad43701d715e483152910664"
     },
     {
       "path": "native-verify.test.mjs",
-      "bytes": 14755,
-      "sha256": "d7587ac25881fe8de624f2fe4a2d8d55e2cb555fa2e6672ea3be51d0ec8ad568"
+      "bytes": 16138,
+      "sha256": "2182bc585b37a0bf9230a6e0d6d94090136ef7ebfa4c542c25f9facb26be0a9d"
+    },
+    {
+      "path": "objective-resolution.mjs",
+      "bytes": 2146,
+      "sha256": "43082951cf8ab8e40b2a1d68fa76430cd454d44b653a09ebe52da9d23587c4e4"
     },
     {
       "path": "package.json",

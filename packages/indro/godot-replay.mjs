@@ -4,9 +4,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { executeReusableVerification, readRetainedOutput } from '../commandhud/evidence-reuse.mjs';
+import { listRuns, resolveProject } from '../commandhud/core.mjs';
 
 export const PROTOCOL_SCHEMA = 4;
 export const SCENARIOS = Object.freeze({ smoke: 'observe\nstep frames=1\nassert room=1\n' });
+export const GODOT_REPLAY_OBJECTIVE = 'Verify the current Godot gameplay replay.';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(here, '..', '..');
@@ -115,6 +118,15 @@ function gitIdentity(root) {
   };
 }
 
+function runtimeGitIdentity(root, scope = root) {
+  const identity = gitIdentity(root);
+  const relativeScope = path.relative(root, scope).replaceAll('\\', '/') || '.';
+  const tracked = command('git', ['diff', '--binary', 'HEAD', '--', relativeScope], root);
+  const untracked = command('git', ['ls-files', '--others', '--exclude-standard', '-z', '--', relativeScope], root)
+    .split('\0').filter(Boolean).sort().map((name) => ({ name, sha256: sha256File(path.join(root, name)) }));
+  return { ...identity, worktreeSha256: createHash('sha256').update(JSON.stringify({ tracked, untracked })).digest('hex') };
+}
+
 function writeManifest(directory, excluded = new Set()) {
   const files = [];
   function walk(current) {
@@ -130,6 +142,49 @@ function writeManifest(directory, excluded = new Set()) {
   files.sort((a, b) => a.path.localeCompare(b.path));
   writeFileSync(path.join(directory, 'sha256-manifest.json'), `${JSON.stringify({ schema: 'indro.godot-replay-artifacts/v1', files }, null, 2)}\n`);
   return files;
+}
+
+function verifyManifest(directory) {
+  const reasons = [];
+  try {
+    const manifest = JSON.parse(readFileSync(path.join(directory, 'sha256-manifest.json'), 'utf8'));
+    if (manifest.schema !== 'indro.godot-replay-artifacts/v1' || !Array.isArray(manifest.files)) return { valid: false, reasons: ['INVALID_ARTIFACT_MANIFEST'] };
+    for (const entry of manifest.files) {
+      const file = path.resolve(directory, entry.path);
+      if (!file.startsWith(`${path.resolve(directory)}${path.sep}`) || !existsSync(file)) reasons.push('MISSING_CAPTURED_ARTIFACT');
+      else if (statSync(file).size !== entry.bytes || sha256File(file) !== entry.sha256) reasons.push('CORRUPT_CAPTURED_ARTIFACT');
+    }
+  } catch { reasons.push('INVALID_ARTIFACT_MANIFEST'); }
+  return { valid: reasons.length === 0, reasons: [...new Set(reasons)] };
+}
+
+const RESULT_PREFIX = 'INDRO_GODOT_REPLAY_RESULT=';
+
+function retainedReplayResult(record) {
+  const line = readRetainedOutput(record).split(/\r?\n/).find((value) => value.startsWith(RESULT_PREFIX));
+  if (!line) throw new Error('Reusable replay evidence has no result descriptor.');
+  return JSON.parse(line.slice(RESULT_PREFIX.length));
+}
+
+function validateReplayArtifacts(record, commandsText) {
+  const reasons = [];
+  let result = null;
+  let validation = null;
+  try {
+    result = retainedReplayResult(record);
+    const directory = path.resolve(result.directory);
+    const zipPath = path.resolve(result.zipPath);
+    reasons.push(...verifyManifest(directory).reasons);
+    if (!existsSync(zipPath) || sha256File(zipPath) !== result.zipSha256) reasons.push('CORRUPT_EVIDENCE_ZIP');
+    const exitCode = Number(readFileSync(path.join(directory, 'exit-code.txt'), 'utf8').trim());
+    validation = validateReplay({
+      stdout: readFileSync(path.join(directory, 'stdout.log'), 'utf8'),
+      stderr: readFileSync(path.join(directory, 'stderr.log'), 'utf8'),
+      exitCode, captureDir: path.join(directory, 'captures'), commandsText, requireCapture: true,
+    });
+    if (!validation.valid) reasons.push(...validation.errors.map((reason) => `REPLAY_${reason}`));
+  } catch { reasons.push('INVALID_REPLAY_ARTIFACTS'); }
+  return { valid: reasons.length === 0, reasons: [...new Set(reasons)], result, validation };
 }
 
 export function requireConfirmedClipboardResult(result) {
@@ -159,7 +214,7 @@ function zipDirectory(directory, zipPath) {
   if (result.error || result.status !== 0 || !existsSync(zipPath)) throw new Error(`Evidence ZIP creation failed: ${(result.stderr || result.error?.message || '').trim()}`);
 }
 
-export async function replay(options, dependencies = {}) {
+async function executeFreshReplay(options, dependencies = {}) {
   const started = Date.now();
   const project = resolveGodotProject(dependencies.project);
   const sourceRoot = command('git', ['rev-parse', '--show-toplevel'], project);
@@ -218,6 +273,114 @@ export async function replay(options, dependencies = {}) {
   return { directory, zipPath, video, durationMs: Date.now() - started, validation, metadata, zipSha256: sha256File(zipPath) };
 }
 
+export async function replay(options, dependencies = {}) {
+  const project = resolveGodotProject(dependencies.project);
+  const sourceRoot = command('git', ['rev-parse', '--show-toplevel'], project);
+  const godot = resolveExecutable('godot_console.exe', dependencies.godot || process.env.INDRO_GODOT_EXECUTABLE);
+  const evidenceRoot = path.resolve(dependencies.evidenceRoot || process.env.INDRO_EVIDENCE_ROOT || path.join(repositoryRoot, 'evidence', 'godot-replay'));
+  const commandsText = options.commands ? readFileSync(path.resolve(options.commands), 'utf8') : SCENARIOS[options.scenario];
+  if (!commandsText.trim()) throw new Error('Command file is empty.');
+  const runtime = { path: godot, bytes: statSync(godot).size, sha256: sha256File(godot), version: command(godot, ['--version'], sourceRoot) };
+  const payload = { options, dependencies: { project, godot, evidenceRoot, timeout: dependencies.timeout } };
+  const descriptor = {
+    identity: 'indro/godot/replay',
+    argv: [process.execPath, fileURLToPath(import.meta.url), '--execute-replay-worker', Buffer.from(JSON.stringify(payload)).toString('base64url')],
+    inputs: { scenario: options.scenario, commandsSha256: createHash('sha256').update(commandsText).digest('hex') },
+    dependencies: {
+      source: runtimeGitIdentity(sourceRoot, project), runtime, protocolSchema: PROTOCOL_SCHEMA,
+      indroFiles: ['godot-replay.mjs', '../commandhud/evidence-reuse.mjs', '../commandhud/core.mjs'].map((name) => ({ name, sha256: sha256File(path.resolve(here, name)) })),
+    },
+    environment: { platform: process.platform, arch: process.arch, node: process.version },
+  };
+  const hudProject = await resolveProject({ root: sourceRoot });
+  const reusable = await executeReusableVerification(hudProject, descriptor, {
+    requiredOutput: 'stdout', objective: 'Verify Godot replay', origin: 'core-api',
+    validateEvidence: async ({ record }) => validateReplayArtifacts(record, commandsText),
+  });
+  if (!reusable.validation.valid) throw new Error(`Godot replay reusable evidence failed: ${reusable.validation.reasons.join(', ')}`);
+  const retained = reusable.validation.domain?.result || retainedReplayResult(reusable.record);
+  const validation = reusable.validation.domain?.validation || validateReplayArtifacts(reusable.record, commandsText).validation;
+  return { ...retained, validation, metadata: JSON.parse(readFileSync(path.join(retained.directory, 'metadata.json'), 'utf8')), durationMs: reusable.timing.totalNs / 1e6, executed: reusable.executed, skipped: reusable.skipped, cacheDecision: reusable.executed ? (reusable.rejected ? 'rejected' : 'cold') : 'reused', cacheRejection: reusable.rejected?.reasons || [] };
+}
+
+export function recognizesGodotReplayObjective(objective) {
+  const words = new Set(String(objective || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+  return words.has('godot') && words.has('replay') && (words.has('verify') || words.has('check'));
+}
+
+export function retainedReplayOptions(record) {
+  const descriptor = record?.operation?.reusableEvidence?.descriptor;
+  if (descriptor?.identity !== 'indro/godot/replay') return null;
+  const marker = descriptor.argv?.indexOf('--execute-replay-worker');
+  if (marker < 0 || !descriptor.argv[marker + 1]) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(descriptor.argv[marker + 1], 'base64url').toString('utf8'));
+    return payload?.options && typeof payload.options === 'object' ? structuredClone(payload.options) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function runGodotReplayObjective(objective, dependencies = {}) {
+  if (!recognizesGodotReplayObjective(objective)) throw new Error(`No verified workflow matches objective: ${objective}`);
+  const projectRoot = (dependencies.resolveGodotProject || resolveGodotProject)(dependencies.project);
+  const sourceRoot = command('git', ['rev-parse', '--show-toplevel'], projectRoot);
+  const project = await (dependencies.resolveProject || resolveProject)({ root: sourceRoot });
+  const records = (dependencies.listRuns || listRuns)(project, dependencies.searchLimit || 1000);
+  const historical = records.find((record) => record?.status === 'pass' && record?.exitCode === 0 && retainedReplayOptions(record));
+  if (!historical) throw new Error('No retained Godot replay workflow exists for the current repository. Run indro godot replay explicitly once.');
+  const options = retainedReplayOptions(historical);
+  const result = await (dependencies.replay || replay)(options, dependencies);
+  return { objective, selectedRunId: historical.id, options, result };
+}
+
+export async function discoverGodotReplayWorkflow(objective, dependencies = {}) {
+  if (!recognizesGodotReplayObjective(objective)) return null;
+  let records = dependencies.records;
+  if (!records) {
+    const sourceRoot = dependencies.projectRoot || command('git', ['rev-parse', '--show-toplevel'], (dependencies.resolveGodotProject || resolveGodotProject)(dependencies.project));
+    const project = await (dependencies.resolveProject || resolveProject)({ root: sourceRoot });
+    records = (dependencies.listRuns || listRuns)(project, dependencies.searchLimit || 1000);
+  }
+  const historical = records.find((record) => record?.status === 'pass' && record?.exitCode === 0 && retainedReplayOptions(record));
+  if (!historical) return null;
+  const options = retainedReplayOptions(historical);
+  return {
+    id: 'indro/godot/replay', evidenceId: historical.id, confidence: 100,
+    expectedCostMs: Number.isFinite(historical.durationMs) ? historical.durationMs : Number.POSITIVE_INFINITY,
+    execute: () => (dependencies.replay || replay)(options, dependencies),
+    render: printReplayResult,
+  };
+}
+
+export function printReplayResult(result) {
+  console.log(`INDRO_GODOT_REPLAY PASS observations=${result.validation.observations.length} assertions=${result.validation.assertions.length} captures=${result.validation.captures.length} duration_ms=${result.durationMs} executed=${result.executed ? 1 : 0} cache=${result.cacheDecision}`);
+  if (result.cacheRejection?.length) console.log(`CACHE_REJECTION=${result.cacheRejection.join(',')}`);
+  console.log(`EVIDENCE=${result.directory}`);
+  console.log(`ZIP=${result.zipPath}`);
+  console.log(`ZIP_SHA256=${result.zipSha256}`);
+  if (result.video) console.log(`VIDEO=${result.video}`);
+}
+
+export async function runGodotObjectiveCli(objective) {
+  try {
+    const resolution = await runGodotReplayObjective(objective);
+    console.log(`INDRO_OBJECTIVE PASS workflow=indro/godot/replay selected_run=${resolution.selectedRunId}`);
+    printReplayResult(resolution.result);
+    return 0;
+  } catch (error) {
+    console.error(`INDRO_OBJECTIVE FAIL ${error.message}`);
+    return 1;
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv[2] === '--execute-replay-worker') {
+  const payload = JSON.parse(Buffer.from(process.argv[3], 'base64url').toString('utf8'));
+  executeFreshReplay(payload.options, payload.dependencies).then((result) => {
+    console.log(`${RESULT_PREFIX}${JSON.stringify({ directory: result.directory, zipPath: result.zipPath, video: result.video, zipSha256: result.zipSha256 })}`);
+  }).catch((error) => { console.error(error.stack || error.message); process.exitCode = 1; });
+}
+
 export async function runGodotCli(args) {
   try {
     if (args[0] === 'benchmark') {
@@ -226,13 +389,9 @@ export async function runGodotCli(args) {
     }
     const options = parseArgs(args);
     const result = await replay(options);
-    console.log(`INDRO_GODOT_REPLAY PASS observations=${result.validation.observations.length} assertions=${result.validation.assertions.length} captures=${result.validation.captures.length} duration_ms=${result.durationMs}`);
-    console.log(`EVIDENCE=${result.directory}`);
-    console.log(`ZIP=${result.zipPath}`);
-    console.log(`ZIP_SHA256=${result.zipSha256}`);
+    printReplayResult(result);
     if (options.clipboard) console.log('CLIPBOARD=file-drop-confirmed');
     if (options.clipboardImage) console.log('CLIPBOARD_IMAGE=image-confirmed');
-    if (result.video) console.log(`VIDEO=${result.video}`);
     return 0;
   } catch (error) {
     console.error(`INDRO_GODOT_REPLAY FAIL ${error.message}`);

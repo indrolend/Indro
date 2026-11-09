@@ -91,6 +91,14 @@ export async function executeReusableVerification(project, definition, options =
     if (record?.operation?.type !== 'reusable-verification' || record.operation.identity !== descriptor.identity) continue;
     const tick = process.hrtime.bigint();
     const validation = validateReusableCommandEvidence(project, record, descriptor);
+    if (validation.valid && options.validateEvidence) {
+      const domainValidation = await options.validateEvidence({ project, record, descriptor, validation });
+      validation.domain = domainValidation;
+      if (!domainValidation?.valid) {
+        validation.valid = false;
+        validation.reasons = [...new Set([...validation.reasons, ...(domainValidation?.reasons || ['DOMAIN_EVIDENCE_REJECTED'])])];
+      }
+    }
     validationNs += process.hrtime.bigint() - tick;
     if (validation.valid) {
       return {
@@ -125,6 +133,14 @@ export async function executeReusableVerification(project, definition, options =
   const executionNs = process.hrtime.bigint() - executionStarted;
   const tick = process.hrtime.bigint();
   const validation = validateReusableCommandEvidence(project, record, descriptor);
+  if (validation.valid && options.validateEvidence) {
+    const domainValidation = await options.validateEvidence({ project, record, descriptor, validation });
+    validation.domain = domainValidation;
+    if (!domainValidation?.valid) {
+      validation.valid = false;
+      validation.reasons = [...new Set([...validation.reasons, ...(domainValidation?.reasons || ['DOMAIN_EVIDENCE_REJECTED'])])];
+    }
+  }
   validationNs += process.hrtime.bigint() - tick;
   return {
     executed: true, skipped: false, record, validation, rejected,

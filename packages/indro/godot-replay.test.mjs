@@ -3,7 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { requireConfirmedClipboardResult, resolveExecutable, validateReplay } from './godot-replay.mjs';
+import { recognizesGodotReplayObjective, requireConfirmedClipboardResult, retainedReplayOptions, runGodotReplayObjective, resolveExecutable, validateReplay } from './godot-replay.mjs';
+import { resolveObjective, selectWorkflowCandidate } from './objective-resolution.mjs';
 
 const png = Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001', 'hex');
 const commands = 'observe\nstep frames=1\nassert room=1\n';
@@ -34,3 +35,43 @@ test('rejects malformed command protocol result', () => { const value = fixture(
 test('rejects absent EOF', () => { const value = fixture(); value.stdout = value.stdout.replace('AGENT_PLAYTEST_EOF frame=1', ''); assert.match(validateReplay(value).errors.join(), /MISSING_SUCCESSFUL_TERMINATION/); });
 test('rejects a missing executable explicitly', () => assert.throws(() => resolveExecutable('godot_console.exe', path.join(os.tmpdir(), 'definitely-missing-godot.exe')), /does not exist/));
 test('rejects clipboard failure without confirmation', () => assert.throws(() => requireConfirmedClipboardResult({ status: 1, stdout: '', stderr: 'clipboard unavailable' }), /Clipboard transfer failed/));
+
+test('resolves a Godot replay objective from retained workflow identity', async () => {
+  const options = { scenario: 'smoke', commands: null, capture: true, clipboard: false, clipboardImage: false, video: false };
+  const payload = Buffer.from(JSON.stringify({ options, dependencies: {} })).toString('base64url');
+  const record = {
+    id: 'historical-replay',
+    status: 'pass', exitCode: 0,
+    operation: { reusableEvidence: { descriptor: { identity: 'indro/godot/replay', argv: ['node', 'godot-replay.mjs', '--execute-replay-worker', payload] } } },
+  };
+  let received = null;
+  const resolution = await runGodotReplayObjective('Verify the current Godot gameplay replay.', {
+    project: process.cwd(),
+    resolveGodotProject: (value) => value,
+    resolveProject: async () => ({ root: process.cwd() }),
+    listRuns: () => [{ id: 'other' }, record],
+    replay: async (value) => { received = value; return { cacheDecision: 'reused' }; },
+  });
+  assert.equal(recognizesGodotReplayObjective('check Godot replay'), true);
+  assert.deepEqual(retainedReplayOptions(record), options);
+  assert.deepEqual(received, options);
+  assert.equal(resolution.selectedRunId, record.id);
+  assert.equal(resolution.result.cacheDecision, 'reused');
+});
+
+test('objective resolution fails closed without a retained replay workflow', async () => {
+  await assert.rejects(() => runGodotReplayObjective('Verify the current Godot gameplay replay.', {
+    project: process.cwd(), resolveGodotProject: (value) => value, resolveProject: async () => ({ root: process.cwd() }), listRuns: () => [],
+  }), /No retained Godot replay workflow/);
+  await assert.rejects(() => runGodotReplayObjective('build everything', { project: process.cwd() }), /No verified workflow matches/);
+});
+
+test('shared objective selection rejects absent candidates and ranks eligible cost', async () => {
+  const slow = { id: 'slow', evidenceId: 'a', confidence: 100, expectedCostMs: 500, execute: async () => 'slow' };
+  const fast = { id: 'fast', evidenceId: 'b', confidence: 100, expectedCostMs: 50, execute: async () => 'fast' };
+  assert.equal(selectWorkflowCandidate([null, slow, fast]), fast);
+  const resolution = await resolveObjective('verify', { resolveProject: async () => ({ root: process.cwd() }), records: [], candidates: [slow, fast] });
+  assert.equal(resolution.workflow, 'fast');
+  assert.equal(resolution.result, 'fast');
+  await assert.rejects(() => resolveObjective('unknown', { resolveProject: async () => ({ root: process.cwd() }), records: [], candidates: [] }), /No eligible verified workflow/);
+});

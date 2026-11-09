@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { snapshotNative, verifyNative, changedExecutablePaths } from './native-verify.mjs';
+import { snapshotNative, verifyNative, changedExecutablePaths, discoverNativeVerificationWorkflow, nativeOptionsFromArgv } from './native-verify.mjs';
 
 function fixture() {
   const parent = mkdtempSync(join(tmpdir(), 'indro-native-proof-'));
@@ -20,6 +20,18 @@ function fixture() {
   execFileSync('cmake', ['-S', root, '-B', build], { stdio: 'pipe' });
   return { parent, root, build, store, runtimeClosureDeclared: true };
 }
+
+test('native objective candidate recovers only a successful reusable historical invocation', () => {
+  const root = process.cwd(), build = root, store = join(tmpdir(), 'indro-native-history');
+  const argv = ['node', 'cli.mjs', 'verify-native', '--root', root, '--build', build, '--store', store, '--configuration', 'Release', '--runtime-file', join(root, 'runtime.dll'), '--declare-runtime-closure'];
+  assert.deepEqual(nativeOptionsFromArgv(argv), { root, build, store, configuration: 'Release', runtimeFiles: [join(root, 'runtime.dll')], runtimeClosureDeclared: true });
+  const record = { id: 'native-history', status: 'pass', exitCode: 0, durationMs: 123, operation: { argv } };
+  const candidate = discoverNativeVerificationWorkflow('Verify the current native test suite.', { projectRoot: root, records: [record] });
+  assert.equal(candidate.id, 'indro/native/verify');
+  assert.equal(candidate.evidenceId, record.id);
+  assert.equal(discoverNativeVerificationWorkflow('Verify the current native test suite.', { projectRoot: root, records: [{ ...record, status: 'fail' }] }), null);
+  assert.equal(discoverNativeVerificationWorkflow('Verify the current native test suite.', { projectRoot: root, records: [{ ...record, operation: { argv: argv.filter(value => value !== '--declare-runtime-closure') } }] }), null);
+});
 
 test('real CTest execution and unchanged reuse', () => {
   const f = fixture();

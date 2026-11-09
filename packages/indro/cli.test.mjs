@@ -13,6 +13,7 @@ test('Indro help exposes language and CommandHUD authority', () => {
   assert.match(result.stdout, /indro compile/);
   assert.match(result.stdout, /CommandHUD compatibility/);
   assert.match(result.stdout, /indro godot replay/);
+  assert.match(result.stdout, /indro run --objective/);
 });
 
 test('Indro compiles compact source through the canonical CLI', () => {

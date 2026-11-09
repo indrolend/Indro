@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { fileURLToPath } from 'node:url';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const digest = value => sha(JSON.stringify(value));
@@ -114,6 +115,8 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     testPlan: digest(plan.tests),
     executables: [...executables].sort(([a], [b]) => a.localeCompare(b)),
     compilers, tools, runtime,
+    verifier: { path: fileURLToPath(import.meta.url), sha256: fileHash(fileURLToPath(import.meta.url)) },
+    node: { path: realpathSync(process.execPath), sha256: fileHash(process.execPath), version: process.version },
     cmake: run('cmake', ['--version'], root).split('\n')[0],
     ctest: run('ctest', ['--version'], root).split('\n')[0],
     environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL',
@@ -205,12 +208,51 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
     buildMs, testMs, elapsedMs: performance.now() - started, receipt: filename, exitCode: result.status, stable };
 }
 
+export function nativeOptionsFromArgv(argv) {
+  if (!Array.isArray(argv)) return null;
+  const marker = argv?.indexOf('verify-native');
+  if (marker < 0) return null;
+  const args = argv.slice(marker + 1);
+  const get = flag => { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; };
+  const root = get('--root'), build = get('--build'), store = get('--store');
+  if (!root || !build || !store) return null;
+  const runtimeFiles = args.flatMap((value, index) => value === '--runtime-file' && args[index + 1] ? [args[index + 1]] : []);
+  return { root, build, store, configuration: get('--configuration') || 'Release', runtimeFiles, runtimeClosureDeclared: args.includes('--declare-runtime-closure') };
+}
+
+export function recognizesNativeVerificationObjective(objective) {
+  const words = new Set(String(objective || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+  return words.has('native') && (words.has('verify') || words.has('verification'));
+}
+
+export function discoverNativeVerificationWorkflow(objective, { projectRoot, records = [] } = {}) {
+  if (!recognizesNativeVerificationObjective(objective)) return null;
+  const root = projectRoot ? realpathSync(projectRoot) : null;
+  for (const record of records) {
+    if (record?.status !== 'pass' || record?.exitCode !== 0) continue;
+    const options = nativeOptionsFromArgv(record.operation?.argv);
+    if (!options || !options.runtimeClosureDeclared || !existsSync(options.build)) continue;
+    try {
+      if (root && realpathSync(options.root) !== root) continue;
+    } catch { continue; }
+    return {
+      id: 'indro/native/verify', evidenceId: record.id, confidence: 100,
+      expectedCostMs: Number.isFinite(record.durationMs) ? record.durationMs : Number.POSITIVE_INFINITY,
+      execute: () => verifyNative(options),
+      render(result) {
+        console.log(`INDRO_NATIVE_VERIFY PASS outcome=${result.outcome} tests=${result.testCount} build_ms=${result.buildMs.toFixed(1)} test_ms=${(result.testMs || 0).toFixed(1)} elapsed_ms=${result.elapsedMs.toFixed(1)} reuse=${result.reuseDecision}`);
+        console.log(`RECEIPT=${options.store}\\${result.receipt}`);
+      },
+    };
+  }
+  return null;
+}
+
 export function runNativeCli(args) {
-  const get = flag => { const i = args.indexOf(flag); return i < 0 ? undefined : args[i + 1]; };
   try {
-    if (!get('--root') || !get('--build') || !get('--store')) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--declare-runtime-closure]');
-    const runtimeFiles = args.flatMap((value, index) => value === '--runtime-file' && args[index + 1] ? [args[index + 1]] : []);
-    const result = verifyNative({ root: get('--root'), build: get('--build'), store: get('--store'), configuration: get('--configuration') || 'Release', runtimeFiles, runtimeClosureDeclared: args.includes('--declare-runtime-closure') });
+    const options = nativeOptionsFromArgv(['verify-native', ...args]);
+    if (!options) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--declare-runtime-closure]');
+    const result = verifyNative(options);
     console.log(JSON.stringify(result));
     return result.outcome === 'FAILED' ? 1 : 0;
   } catch (error) { console.error('INDRO_NATIVE_VERIFY_ERROR ' + error.message); return 2; }

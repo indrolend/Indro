@@ -79,3 +79,23 @@ test('reuse rejects changed inputs, failed records, missing bytes, tampering, st
   assert.ok(rerun.rejected.reasons.includes('TAMPERED_EVIDENCE'));
   assert.notEqual(rerun.record.id, cold.record.id);
 });
+
+test('domain evidence rejection forces a fresh execution', async (t) => {
+  const { project, definition } = await fixture(t);
+  const cold = await executeReusableVerification(project, definition, {
+    validateEvidence: async () => ({ valid: true, reasons: [] }),
+  });
+  let checks = 0;
+  const rerun = await executeReusableVerification(project, definition, {
+    validateEvidence: async ({ record }) => {
+      checks += 1;
+      return record.id === cold.record.id
+        ? { valid: false, reasons: ['CAPTURE_ARTIFACT_CORRUPT'] }
+        : { valid: true, reasons: [] };
+    },
+  });
+  assert.equal(rerun.executed, true);
+  assert.equal(checks, 2);
+  assert.ok(rerun.rejected.reasons.includes('CAPTURE_ARTIFACT_CORRUPT'));
+  assert.equal(rerun.validation.valid, true);
+});
