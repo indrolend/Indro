@@ -24,6 +24,8 @@
 
 ## Required change workflow
 
+Consult `TIPSANDTRICKS.md` before broad reconnaissance or new tooling; it contains verified low-cost operational paths and known causal failures.
+
 1. Resolve exact branch, commit, origin, and dirty state.
 2. Inspect existing implementations before editing.
 3. Make the smallest coherent change.
