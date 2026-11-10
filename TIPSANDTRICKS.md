@@ -201,6 +201,8 @@ For any committed Git checkout, `indro run --objective "Verify current repositor
 
 For an external CMake/CTest repository, first record one explicit `indro run --objective "Verify current native tests behavior." -- node <indro-cli> verify-native ... --declare-runtime-closure` invocation with every relevant runtime file named. Equivalent future objectives recover that exact workflow. The hosted fmt assay ran 22 tests, reused equivalent evidence in 365 ms versus 3,932 ms cold, rejected both HEAD transitions, and showed that rebuild time—not CTest—dominated invalidation cost. Never infer runtime closure from a passing exit alone; retain the CTest plan, environment, executable/toolchain identities, and enumerated dynamic libraries. Receipt: `docs/evidence/external-fmt-native-e0d7456.json`.
 
+For third-party behavioral dogfooding, use the repository's own smallest stable test contract through `packages/indro/tools/external-command-assay.mjs`. Confirm the command directly before treating a nonzero result as an INDRO regression: the hosted assay found an absent Express lockfile and a nightly-only Rust benchmark target. Never attribute a cold-first direct/INDRO timing difference to INDRO; direct execution may warm compiler and test caches. Require symmetric warm-up or balanced order for a causal speed claim. The general `indro run` funnel records verified output and failure evidence but does not reuse arbitrary test results.
+
 ## Persistent authorities and retention
 
 - `AGENTS.md`: permanent safety, ownership, and required workflow.

@@ -23,6 +23,8 @@ test('external command assay preserves success, failure, evidence, and worktree 
     assert.equal(result.report.worktree.unchanged, true);
     assert.equal(result.report.observations.length, 2);
     assert.equal(result.report.observations.find(value => value.mode === 'indro').integrity, 'VERIFIED');
-    assert.equal(JSON.parse(readFileSync(output, 'utf8')).schema, 'indro.external-command-assay/v1');
+    const report = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(report.schema, 'indro.external-command-assay/v2');
+    assert.equal(report.claims.firstExecutionAccelerationSupported, false);
   } finally { rmSync(parent, { recursive: true, force: true }); }
 });

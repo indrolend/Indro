@@ -212,8 +212,8 @@
     },
     {
       "path": "external-command-assay.test.mjs",
-      "bytes": 1759,
-      "sha256": "2d5b3e54c3ac58a52e5d4f97fac6d52a796e56e4d29520e4aa90db34158d4293"
+      "bytes": 1862,
+      "sha256": "0d16d9c348e2748a2447256dc19261780eb0ab9006178cd18ac7fd6b8b55de46"
     },
     {
       "path": "godot-replay.mjs",
@@ -367,8 +367,8 @@
     },
     {
       "path": "tools/external-command-assay.mjs",
-      "bytes": 8566,
-      "sha256": "c5274e37dd4d1ca141636f76577a83223ea60ae720701adbaccdeda08d17c183"
+      "bytes": 8689,
+      "sha256": "52351720d30e5886017d629f80b31af8b7b169427f9c9b84b4f2390ff4362258"
     },
     {
       "path": "tools/mine-hud.py",

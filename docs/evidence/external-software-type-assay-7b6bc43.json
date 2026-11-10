@@ -1,0 +1,37 @@
+{
+  "schema": "indro.public-experiment-receipt/v1",
+  "subjectCommit": "7b6bc4380d6e8164bcf0b0ca878841e66bbcaa44",
+  "workflowRun": "https://github.com/indrolend/Indro/actions/runs/42820033870",
+  "result": "PASS",
+  "softwareTypes": [
+    "JavaScript server",
+    "Go CLI library",
+    "Rust library",
+    "Python library"
+  ],
+  "behavior": {
+    "expressTests": 1290,
+    "moreItertoolsTests": 936,
+    "negativeExitCode": 7,
+    "allRecordedEvidenceIntegrity": "VERIFIED",
+    "allWorktreesUnchanged": true
+  },
+  "measurements": [
+    {"name":"byteorder","directMedianMs":5932.068754,"indroMedianMs":291.994243,"retainedEvidenceBytes":87756,"resultSha256":"8943453c1917a61fc8850ff6fd2d1a256e402a4ac9ffdbf9eaa7088df674047b"},
+    {"name":"cobra","directMedianMs":8206.4298825,"indroMedianMs":975.546060500001,"retainedEvidenceBytes":152,"resultSha256":"b9950b09432d06661480c3d282aaf4f36c276f60d6e6652c89b43811fadf9b8c"},
+    {"name":"express","directMedianMs":2723.387397,"indroMedianMs":2903.8518115,"retainedEvidenceBytes":142278,"resultSha256":"963ac4c5355cef6518356eaa52fed245bffc6e6b0d68850e4f750d4dec0190c2"},
+    {"name":"more-itertools","directMedianMs":8065.558914,"indroMedianMs":8014.7409005,"retainedEvidenceBytes":2096,"resultSha256":"da124330304372bd5b5363981ce5e0f493a0ebb23347a0f039b3a0f35e5331d1"}
+  ],
+  "conclusions": {
+    "generalEvidenceFunnelPreservedSuccessfulCommands": true,
+    "generalEvidenceFunnelPreservedFailingCommands": true,
+    "automaticFirstExecutionAccelerationSupported": false,
+    "arbitraryTestResultReuseMeasured": false,
+    "causalTimingConclusion": "Cold-first direct execution warmed compiler and test caches before INDRO; lower later medians are not INDRO acceleration. Express measured 180.4644145 ms of median recording overhead."
+  },
+  "falsifiedOrCorrectedAssumptions": [
+    "A pinned JavaScript repository necessarily has a lockfile suitable for npm ci.",
+    "cargo test --all-targets is necessarily a stable-Rust behavioral contract.",
+    "A lower later INDRO median in a cold-first sequence establishes acceleration."
+  ]
+}

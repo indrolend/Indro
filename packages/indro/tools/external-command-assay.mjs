@@ -90,7 +90,7 @@ export async function runAssay(options) {
   const directMedianMs = median(direct.map(value => value.elapsedMs));
   const indroMedianMs = median(indro.map(value => value.elapsedMs));
   const report = {
-    schema: 'indro.external-command-assay/v1',
+    schema: 'indro.external-command-assay/v2',
     generatedAt: new Date().toISOString(),
     repository: { name: options.name, type: options.type, root, head, origin: git(root, 'remote', 'get-url', 'origin') },
     command: directCommand,
@@ -111,18 +111,20 @@ export async function runAssay(options) {
       indroMedianMs,
       overheadMs: indroMedianMs - directMedianMs,
       overheadRatio: directMedianMs ? indroMedianMs / directMedianMs : null,
+      observedIndroMedianLower: indroMedianMs < directMedianMs,
       retainedEvidenceBytes: indro.reduce((sum, value) => sum + value.evidenceBytes, 0),
     },
     claims: {
       behaviorPreserved: [...direct, ...indro].every(value => value.exitCode === 0) && indro.every(value => value.recordedExitCode === 0 && value.recordedStatus === 'pass' && value.integrity === 'VERIFIED'),
       failurePreserved: negative.exitCode === 1 && negativeRecord?.exitCode === 7 && negativeRecord?.status === 'fail' && classifyRunEvidenceIntegrity(project, negativeRecord) === 'VERIFIED',
-      firstExecutionAccelerationSupported: indroMedianMs < directMedianMs,
+      firstExecutionAccelerationSupported: false,
       resultReuseMeasured: false,
     },
     limitations: [
       'Exit behavior and evidence integrity are compared; repository-specific semantic assertions remain owned by each test command.',
       'Recorded execution does not reuse test results, so any speedup would be incidental and is not an INDRO caching claim.',
       'Process startup, filesystem caches, scheduler noise, and interleaving order remain part of the end-to-end measurement.',
+      'Direct execution runs first, so a lower INDRO median cannot establish acceleration; compiler and test caches are a known confounder.',
     ],
   };
   mkdirSync(dirname(output), { recursive: true });
@@ -137,7 +139,7 @@ export async function runAssay(options) {
 async function main() {
   const options = parse(process.argv.slice(2));
   const result = await runAssay(options);
-  console.log(`INDRO_EXTERNAL_ASSAY PASS name=${options.name} direct_ms=${result.report.measurements.directMedianMs.toFixed(1)} indro_ms=${result.report.measurements.indroMedianMs.toFixed(1)} accelerated=${result.report.claims.firstExecutionAccelerationSupported ? 1 : 0}`);
+  console.log(`INDRO_EXTERNAL_ASSAY PASS name=${options.name} direct_ms=${result.report.measurements.directMedianMs.toFixed(1)} indro_ms=${result.report.measurements.indroMedianMs.toFixed(1)} causal_acceleration=0`);
   console.log(`EVIDENCE=${result.output} SHA256=${result.sha256}`);
 }
 
