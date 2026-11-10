@@ -125,10 +125,12 @@ export async function runAssay(options) {
       'Process startup, filesystem caches, scheduler noise, and interleaving order remain part of the end-to-end measurement.',
     ],
   };
-  if (!report.claims.behaviorPreserved || !report.claims.failurePreserved || !report.worktree.unchanged) throw new Error(`Assay correctness failed: ${JSON.stringify({ claims: report.claims, worktree: report.worktree })}`);
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
   const bytes = readFileSync(output);
+  if (!report.claims.behaviorPreserved || !report.claims.failurePreserved || !report.worktree.unchanged) {
+    throw new Error(`Assay correctness failed; diagnostic receipt retained at ${output}: ${JSON.stringify({ claims: report.claims, worktree: report.worktree })}`);
+  }
   return { report, output, bytes: statSync(output).size, sha256: sha256(bytes) };
 }
 

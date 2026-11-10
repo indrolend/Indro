@@ -367,8 +367,8 @@
     },
     {
       "path": "tools/external-command-assay.mjs",
-      "bytes": 8514,
-      "sha256": "b2e4c9bcf16ce091ff85525add98f1bcce0e69064441b467e0eec9f6d274a774"
+      "bytes": 8566,
+      "sha256": "c5274e37dd4d1ca141636f76577a83223ea60ae720701adbaccdeda08d17c183"
     },
     {
       "path": "tools/mine-hud.py",
