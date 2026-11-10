@@ -397,8 +397,8 @@
     },
     {
       "path": "tools/test-convergence-gauntlet.py",
-      "bytes": 301,
-      "sha256": "51031933e7b5c2d039097fb7c6db4df52cc1f4c86b5c7f72fc51e0a020e475b3"
+      "bytes": 590,
+      "sha256": "6fd850e2b2882624ee7d777bb5ba954c4bafc0b5426e89120db043b7218a8100"
     },
     {
       "path": "tools/test-compiler.py",

@@ -125,7 +125,7 @@ test('global --root selects a repository before the command from outside Git', (
       env: { ...process.env, HUD_STATE_ROOT: join(outside, '.state') },
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.equal(JSON.parse(result.stdout).project.root, root);
+    assert.equal(realpathSync(JSON.parse(result.stdout).project.root), realpathSync(root));
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });
