@@ -42,6 +42,7 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   });
   t.after(() => socket.close());
   let output = "";
+  let cursorReplies = 0;
   socket.on("message", data => {
     const raw = data.toString();
     try {
@@ -49,6 +50,11 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
       if (event.type === "session.snapshot") output += event.output || "";
       if (event.type === "terminal.output") output += event.data || "";
     } catch { output += raw; }
+    const requests = (output.match(/\x1b\[6n/g) || []).length;
+    while (cursorReplies < requests) {
+      cursorReplies += 1;
+      socket.send(JSON.stringify({ type: "input", data: "\x1b[1;1R" }));
+    }
   });
   await new Promise((resolve, reject) => {
     socket.once("open", resolve);
