@@ -1,0 +1,39 @@
+{
+  "schema": "indro.public-multilanguage-objective-receipt/v1",
+  "indro_commit": "e0b816a9f9428cf866f7cc72914b98edf53dbcf8",
+  "github_run": {
+    "id": 42763592566,
+    "url": "https://github.com/indrolend/Indro/actions/runs/42763592566",
+    "conclusion": "success",
+    "artifact": "multilanguage-repository-state-evidence"
+  },
+  "objective": "Verify current repository state.",
+  "repositories": {
+    "ripgrep": { "language": "Rust", "head": "178cc027e283fd965cb72d0a7395b219eada170c" },
+    "cobra": { "language": "Go", "head": "adbc8813901bba65827259daa8e22ff94ec1f30e" },
+    "express": { "language": "JavaScript", "head": "43fca52d28a422c8be48fd489cbd4f2d6152bab6" },
+    "fmt": { "language": "C++", "head": "e7e6e3f71033fbfc71eba1709789328bcb0ceb28" }
+  },
+  "contract": {
+    "invocations": 16,
+    "cold_executions": 4,
+    "warm_reuses": 4,
+    "changed_head_invalidations": 4,
+    "restored_head_reuses": 4,
+    "unexpected_results": 0,
+    "third_party_source_executed": false
+  },
+  "cli_wall_ms": {
+    "cold": { "min": 102, "median": 116.5, "max": 126 },
+    "warm": { "min": 62, "median": 63.5, "max": 64 },
+    "changed_head": { "min": 103, "median": 117, "max": 124 },
+    "restored": { "min": 63, "median": 65, "max": 69 }
+  },
+  "artifact": {
+    "files": 49,
+    "bytes": 55160,
+    "manifest_sha256": "eb522fc4d8596a4c879cc7e98db8e939163af3a1a99c78d83046269fb6bbcd7f",
+    "manifest_failures": 0
+  },
+  "boundary": "This proves language-independent Git HEAD, branch, and worktree-state evidence selection and invalidation. It does not prove external application behavior."
+}

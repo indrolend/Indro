@@ -197,6 +197,8 @@ Use `indro run --objective "Verify current repository state."` when the claim is
 
 For safe public-history experiments, reuse `packages/indro/tools/ndra_repo_gauntlet.py` and its pinned GitHub workflow before executing third-party code. The first hosted five-repository assay accounted for all 3,058 function records with zero false skips, but semantic proof reuse saved no evaluations beyond exact caching. Treat exact caching as the preferred baseline until a new corpus demonstrates additional proof-directed savings; see `docs/evidence/open-source-gauntlet-c0964ff.json`.
 
+For any committed Git checkout, `indro run --objective "Verify current repository state."` is the established language-independent first proof. A hosted Rust/Go/JavaScript/C++ trial verified cold execution, exact warm reuse, changed-HEAD invalidation, and original-evidence reuse after restoration in every repository without executing third-party source. Use this before installing dependencies or running repository-owned code; it proves source state only. Receipt: `docs/evidence/multilanguage-repository-state-e0b816a.json`.
+
 ## Persistent authorities and retention
 
 - `AGENTS.md`: permanent safety, ownership, and required workflow.
