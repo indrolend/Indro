@@ -328,6 +328,11 @@ function terminalEvent(raw) {
     );
   } else if (event.type === "signal.state" || event.type === "session.exited") {
     updateSignal(event);
+    if (event.type === "session.exited") {
+      connected = false;
+      executionState = "disconnected";
+      renderContext();
+    }
   }
 }
 
@@ -365,11 +370,11 @@ function connectSignal(sessionId) {
 }
 
 terminal.onData(data => {
-	if (traceSocket?.readyState === WebSocket.OPEN && data.includes("\r")) {
+	if (connected && traceSocket?.readyState === WebSocket.OPEN && data.includes("\r")) {
 		executionState = "running";
 		renderContext();
 	}
-  if (traceSocket?.readyState === WebSocket.OPEN) {
+  if (connected && traceSocket?.readyState === WebSocket.OPEN) {
     runFunctionalThenObserve(
       () => traceSocket.send(JSON.stringify({ type: "input", data })),
       () => observeOptional("terminal.input", { kind: classifyInput(data), length: data.length })

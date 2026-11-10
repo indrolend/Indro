@@ -33,8 +33,9 @@ test("terminal uses a true monospace stack and responsive chrome", () => {
 });
 
 test("persistent terminal input uses the active trace session transport", () => {
-  assert.match(client, /traceSocket\?\.readyState === WebSocket\.OPEN/);
+  assert.match(client, /connected && traceSocket\?\.readyState === WebSocket\.OPEN/);
   assert.doesNotMatch(client, /if \(socket\.readyState === WebSocket\.OPEN/);
+  assert.match(client, /event\.type === "session\.exited"[\s\S]*executionState = "disconnected"/);
 });
 
 test("OSC shell metadata cannot unconditionally overwrite transport execution state", () => {
