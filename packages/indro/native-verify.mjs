@@ -378,7 +378,7 @@ export function discoverNativeVerificationWorkflow(objective, { projectRoot, rec
       claims, execute: () => verifyNativeClaims(options, claims),
       render(result) {
         console.log(`INDRO_NATIVE_VERIFY PASS claims=${result.claims.join(',')} outcome=${result.outcome} tests=${result.testCount} build_ms=${result.buildMs.toFixed(1)} test_ms=${(result.testMs || 0).toFixed(1)} elapsed_ms=${result.elapsedMs.toFixed(1)} reuse=${result.reuseDecision}`);
-        console.log(`RECEIPT=${result.receipt ? `${options.store}\\${result.receipt}` : 'none'}`);
+        console.log(`RECEIPT=${result.receipt ? join(options.store, result.receipt) : 'none'}`);
       },
     };
   }

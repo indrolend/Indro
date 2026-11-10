@@ -1,0 +1,55 @@
+{
+  "schema": "indro.public-external-native-objective-receipt/v1",
+  "indro_commit": "e0d74560a2b7391307ad0dda20b5c4299b15e162",
+  "github_run": {
+    "id": 42764226530,
+    "url": "https://github.com/indrolend/Indro/actions/runs/42764226530",
+    "conclusion": "success",
+    "elapsed_seconds": 269,
+    "artifact": "external-fmt-native-verification-evidence"
+  },
+  "repository": {
+    "name": "fmt",
+    "language": "C++",
+    "head": "e7e6e3f71033fbfc71eba1709789328bcb0ceb28",
+    "changed_head": "aa2ce7d30d83ca1a6271139157a75f6d7cb301c1"
+  },
+  "objective": "Verify current native tests behavior.",
+  "contract": {
+    "ctest_tests": 22,
+    "cold": "EXECUTED",
+    "warm": "REUSED",
+    "changed_head": "EXECUTED",
+    "changed_head_warm": "REUSED",
+    "restored": "EXECUTED",
+    "restored_warm": "REUSED",
+    "failed_phases": 0
+  },
+  "runtime_files": [
+    "/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+    "/usr/lib/x86_64-linux-gnu/libm.so.6",
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+  ],
+  "cli_wall_ms": {
+    "cold": 3932,
+    "warm": 365,
+    "changed_head": 73417,
+    "changed_head_warm": 375,
+    "restored": 76055,
+    "restored_warm": 387
+  },
+  "artifact": {
+    "files": 17,
+    "bytes": 57938,
+    "manifest_sha256": "f8bfad4a97a23991d701e6aed8b0403dd6611601ba217941c787c447f219076c",
+    "manifest_failures": 0
+  },
+  "observations": [
+    "Equivalent warm verification was 90.7 percent faster than the prebuilt no-receipt cold invocation.",
+    "Changed and restored source required approximately 72 to 75 seconds of rebuilding; CTest itself took approximately 0.14 seconds.",
+    "Restoration executed once because the verifier fails closed against the newest changed-HEAD receipt instead of falling back to older success.",
+    "The hosted result exposed a Linux receipt-display path separator defect; commit following this receipt replaced the literal backslash with platform-aware joining."
+  ],
+  "boundary": "This proves the recorded fmt CMake/CTest plan under the tracked source, selected environment, toolchain fingerprints, and enumerated dynamic libraries; it is not a universal C++ correctness claim."
+}

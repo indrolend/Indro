@@ -47,6 +47,13 @@ test('native objective candidate recovers only a successful reusable historical 
   assert.deepEqual(candidate.claims, ['provenance', 'behavior', 'runtime_closure']);
   assert.deepEqual(nativeVerificationClaims('Verify native provenance.'), ['provenance']);
   assert.equal(discoverNativeVerificationWorkflow('Verify the current native test suite.', { projectRoot: root, records: [{ ...record, status: 'fail' }] }), null);
+  const rendered = [];
+  const originalLog = console.log;
+  try {
+    console.log = value => rendered.push(value);
+    candidate.render({ claims: candidate.claims, outcome: 'REUSED', testCount: 1, buildMs: 0, elapsedMs: 1, reuseDecision: 'CURRENT', receipt: 'receipt.json' });
+  } finally { console.log = originalLog; }
+  assert.equal(rendered[1], `RECEIPT=${join(store, 'receipt.json')}`);
 });
 
 test('provenance-only native objective validates current snapshot without executing tests', () => {

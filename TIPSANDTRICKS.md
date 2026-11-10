@@ -199,6 +199,8 @@ For safe public-history experiments, reuse `packages/indro/tools/ndra_repo_gaunt
 
 For any committed Git checkout, `indro run --objective "Verify current repository state."` is the established language-independent first proof. A hosted Rust/Go/JavaScript/C++ trial verified cold execution, exact warm reuse, changed-HEAD invalidation, and original-evidence reuse after restoration in every repository without executing third-party source. Use this before installing dependencies or running repository-owned code; it proves source state only. Receipt: `docs/evidence/multilanguage-repository-state-e0b816a.json`.
 
+For an external CMake/CTest repository, first record one explicit `indro run --objective "Verify current native tests behavior." -- node <indro-cli> verify-native ... --declare-runtime-closure` invocation with every relevant runtime file named. Equivalent future objectives recover that exact workflow. The hosted fmt assay ran 22 tests, reused equivalent evidence in 365 ms versus 3,932 ms cold, rejected both HEAD transitions, and showed that rebuild time—not CTest—dominated invalidation cost. Never infer runtime closure from a passing exit alone; retain the CTest plan, environment, executable/toolchain identities, and enumerated dynamic libraries. Receipt: `docs/evidence/external-fmt-native-e0d7456.json`.
+
 ## Persistent authorities and retention
 
 - `AGENTS.md`: permanent safety, ownership, and required workflow.
