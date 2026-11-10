@@ -256,6 +256,11 @@
       "sha256": "ca5ec303e50179c80f38d50ab1364f9db7518d49876a26b2d8e00cb094285fda"
     },
     {
+      "path": "tools/claim-coverage-experiment.mjs",
+      "bytes": 4310,
+      "sha256": "369e28714e709b492f6b534e3a9cf576719cd26733f4f73b8fa2eedc25e1ff5d"
+    },
+    {
       "path": "tools/crosscheck-hud.py",
       "bytes": 2801,
       "sha256": "c5b8ef508e879010090f76c1b6a53348124198ec0e9775a9239c19ebac4028d0"
