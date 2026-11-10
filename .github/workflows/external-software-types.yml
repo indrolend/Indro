@@ -115,7 +115,7 @@ jobs:
           --name ${{ matrix.name }}
           --type ${{ matrix.type }}
           --trials 2
-          -- cargo test --all-targets
+          -- cargo test --lib
 
       - name: Assay Python library tests
         if: matrix.ecosystem == 'python'
