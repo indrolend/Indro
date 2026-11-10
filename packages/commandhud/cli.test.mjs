@@ -2,7 +2,7 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -125,7 +125,9 @@ test('global --root selects a repository before the command from outside Git', (
       env: { ...process.env, HUD_STATE_ROOT: join(outside, '.state') },
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.equal(realpathSync(JSON.parse(result.stdout).project.root), realpathSync(root));
+    const selected = statSync(JSON.parse(result.stdout).project.root);
+    const expected = statSync(root);
+    assert.deepEqual([selected.dev, selected.ino], [expected.dev, expected.ino]);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });

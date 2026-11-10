@@ -1,0 +1,93 @@
+name: Open-source bounded semantic gauntlet
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/open-source-gauntlet.yml'
+      - 'packages/indro/tools/ndra_repo_gauntlet.py'
+      - 'packages/indro/tools/test-ndra-repo-gauntlet.py'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  pull_request:
+    paths:
+      - '.github/workflows/open-source-gauntlet.yml'
+      - 'packages/indro/tools/ndra_repo_gauntlet.py'
+      - 'packages/indro/tools/test-ndra-repo-gauntlet.py'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-python-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out INDRO
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out toolz
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: pytoolz/toolz
+          ref: 451af60dec590a6010e2babdbf391ea8f815122f
+          path: fixtures/toolz
+          fetch-depth: 11
+          persist-credentials: false
+
+      - name: Check out boltons
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mahmoud/boltons
+          ref: d31d821d56c8f7756af9c30a864077f2e5855321
+          path: fixtures/boltons
+          fetch-depth: 11
+          persist-credentials: false
+
+      - name: Check out more-itertools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: more-itertools/more-itertools
+          ref: 00383df5e6e3059501efee0fec8a51b13031dd4e
+          path: fixtures/more-itertools
+          fetch-depth: 11
+          persist-credentials: false
+
+      - name: Check out funcy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Suor/funcy
+          ref: a876c7e1cf11e7c746e91fce4632ebfa93865428
+          path: fixtures/funcy
+          fetch-depth: 11
+          persist-credentials: false
+
+      - name: Check out attrs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: python-attrs/attrs
+          ref: 9d9f94a043de7fc4012459853a4ed597a5577855
+          path: fixtures/attrs
+          fetch-depth: 11
+          persist-credentials: false
+
+      - name: Verify the bounded model
+        run: python packages/indro/tools/ndra_repo_gauntlet.py --self-test
+
+      - name: Compare pinned public history
+        run: >-
+          python packages/indro/tools/ndra_repo_gauntlet.py
+          --workspace fixtures
+          --output evidence
+          --history 10
+          --max-inputs 128
+          --trials 3
+
+      - name: Retain measured evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: open-source-bounded-semantic-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

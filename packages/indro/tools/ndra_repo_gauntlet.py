@@ -302,4 +302,6 @@ def main():
     if args.self_test:self_test();return
     if args.history<1 or args.max_inputs<1 or args.trials<1:p.error("history, max-inputs, and trials must be positive")
     report=run(args);print(json.dumps({"counts":report["counts"],"audit":report["audit"],"output":str(pathlib.Path(args.output).resolve())},indent=2))
+    if report["audit"]["false_skips"] or not report["audit"]["all_changed_functions_accounted"]:
+        raise SystemExit(1)
 if __name__=="__main__":main()
