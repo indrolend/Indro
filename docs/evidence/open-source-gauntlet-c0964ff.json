@@ -1,0 +1,50 @@
+{
+  "schema": "indro.public-open-source-validation-receipt/v1",
+  "indro_commit": "c0964ff1879230d559893615fbc8c7442022c99f",
+  "github_run": {
+    "id": 42763181487,
+    "url": "https://github.com/indrolend/Indro/actions/runs/42763181487",
+    "conclusion": "success",
+    "elapsed_seconds": 15,
+    "artifact": "open-source-bounded-semantic-evidence"
+  },
+  "configuration": {
+    "history_per_repository": 10,
+    "max_inputs_per_function": 128,
+    "trials": 3,
+    "third_party_code_executed": false
+  },
+  "repositories": {
+    "toolz": "451af60dec590a6010e2babdbf391ea8f815122f",
+    "boltons": "d31d821d56c8f7756af9c30a864077f2e5855321",
+    "more-itertools": "00383df5e6e3059501efee0fec8a51b13031dd4e",
+    "funcy": "a876c7e1cf11e7c746e91fce4632ebfa93865428",
+    "attrs": "9d9f94a043de7fc4012459853a4ed597a5577855"
+  },
+  "coverage": {
+    "adjacent_commit_pairs": 50,
+    "comparisons": 140,
+    "exclusions": 2918,
+    "total_function_records": 3058,
+    "verdicts": { "UNKNOWN": 139, "EQUIVALENT": 1 },
+    "false_skips": 0,
+    "all_changed_functions_accounted": true
+  },
+  "warm_median_ms": {
+    "full": 22.52,
+    "exact_cache": 1.28,
+    "ndra_proof_reuse": 1.18
+  },
+  "verification_evaluations": {
+    "full": 25806,
+    "exact_cache": 12903,
+    "ndra_proof_reuse": 12903
+  },
+  "artifact_files": {
+    "comparisons.csv": { "bytes": 31101, "sha256": "c19a3b9fa27223a1aa52bffe7c6c73a8cb447042fffecdd77c97634d4edbc467" },
+    "exclusions.csv": { "bytes": 555631, "sha256": "cf4dfd5e9ea43e05958838642289ab4469042ed43eefd845a4baa69b1de09d34" },
+    "results.json": { "bytes": 1627742, "sha256": "70db173c92e05ad46f1eb2c873099eba67a10549f29e277311722b5581bc4b67" },
+    "reuse.jsonl": { "bytes": 331929, "sha256": "1491a4ac4321a3bc4f7be9ae96e25695d0957d11540e9a2222ad05c9ec8cbc59" }
+  },
+  "conclusion": "Exact caching produced all observed verification-evaluation savings; this corpus does not establish an additional semantic-proof-reuse advantage."
+}
