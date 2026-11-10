@@ -195,6 +195,8 @@ For native work, `Verify native provenance` validates the complete current sourc
 
 Use `indro run --objective "Verify current repository state."` when the claim is the current Git HEAD, branch, and dirty-state bytes. The repository adapter performs one live porcelain-v2 status acquisition, then reuses only evidence whose exact status fingerprint and retained output still match. It does not establish runtime behavior or remote freshness. Observed warm evidence validation was 45.2 ms; the full warm CLI path was 258.2 ms, dominated by project/history acquisition.
 
+For safe public-history experiments, reuse `packages/indro/tools/ndra_repo_gauntlet.py` and its pinned GitHub workflow before executing third-party code. The first hosted five-repository assay accounted for all 3,058 function records with zero false skips, but semantic proof reuse saved no evaluations beyond exact caching. Treat exact caching as the preferred baseline until a new corpus demonstrates additional proof-directed savings; see `docs/evidence/open-source-gauntlet-c0964ff.json`.
+
 ## Persistent authorities and retention
 
 - `AGENTS.md`: permanent safety, ownership, and required workflow.
