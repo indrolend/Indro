@@ -1,0 +1,135 @@
+name: External native claim-directed verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/external-native-fmt.yml'
+      - 'packages/indro/native-verify.mjs'
+      - 'packages/indro/objective-resolution.mjs'
+      - 'packages/commandhud/evidence-reuse.mjs'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  pull_request:
+    paths:
+      - '.github/workflows/external-native-fmt.yml'
+      - 'packages/indro/native-verify.mjs'
+      - 'packages/indro/objective-resolution.mjs'
+      - 'packages/commandhud/evidence-reuse.mjs'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fmt-native-behavior:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out INDRO
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out pinned fmt
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fmtlib/fmt
+          ref: e7e6e3f71033fbfc71eba1709789328bcb0ceb28
+          path: fixtures/fmt
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Configure and establish runtime closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S fixtures/fmt -B build/fmt -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DFMT_TEST=ON -DFMT_DOC=OFF -DFMT_INSTALL=OFF
+          cmake --build build/fmt --config Release
+          ctest --test-dir build/fmt -C Release --show-only=json-v1 > test-plan.json
+          mkdir -p evidence/native evidence/hud evidence/receipts
+          python3 - <<'PY' > evidence/test-executables.txt
+          import json
+          from pathlib import Path
+          plan = json.loads(Path('test-plan.json').read_text())
+          print('\n'.join(sorted({test['command'][0] for test in plan['tests']})))
+          PY
+          while IFS= read -r executable; do
+            ldd "$executable" || true
+          done < evidence/test-executables.txt \
+            | awk '/=> \// {print $3} /^\// {print $1}' \
+            | sort -u > evidence/runtime-files.txt
+          test -s evidence/runtime-files.txt
+
+      - name: Verify historical selection, reuse, and invalidation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli="$GITHUB_WORKSPACE/packages/indro/cli.mjs"
+          root="$GITHUB_WORKSPACE/fixtures/fmt"
+          build="$GITHUB_WORKSPACE/build/fmt"
+          store="$GITHUB_WORKSPACE/evidence/native"
+          receipts="$GITHUB_WORKSPACE/evidence/receipts"
+          export HUD_STATE_ROOT="$GITHUB_WORKSPACE/evidence/hud"
+          objective='Verify current native tests behavior.'
+          runtime_args=()
+          while IFS= read -r file; do runtime_args+=(--runtime-file "$file"); done < "$GITHUB_WORKSPACE/evidence/runtime-files.txt"
+          verify_args=(verify-native --root "$root" --build "$build" --store "$store" --configuration Release "${runtime_args[@]}" --declare-runtime-closure)
+          printf 'phase,wall_ms,outcome,reuse_decision,tests\n' > "$GITHUB_WORKSPACE/evidence/measurements.csv"
+
+          measure() {
+            local phase="$1" expected_outcome="$2" expected_reuse="$3"
+            shift 3
+            local receipt="$receipts/$phase.txt" start end status
+            start="$(date +%s%N)"
+            set +e
+            "$@" > "$receipt" 2>&1
+            status=$?
+            set -e
+            end="$(date +%s%N)"
+            test "$status" -eq 0
+            grep -q "outcome=$expected_outcome " "$receipt"
+            grep -q "reuse=$expected_reuse" "$receipt"
+            tests="$(sed -n 's/.* tests=\([0-9][0-9]*\) .*/\1/p' "$receipt" | tail -n 1)"
+            test -n "$tests"
+            printf '%s,%s,%s,%s,%s\n' "$phase" "$(( (end-start)/1000000 ))" "$expected_outcome" "$expected_reuse" "$tests" >> "$GITHUB_WORKSPACE/evidence/measurements.csv"
+          }
+
+          cd "$root"
+          original="$(git rev-parse HEAD)"
+          test -z "$(git status --short)"
+
+          start="$(date +%s%N)"
+          node "$cli" run --objective "$objective" -- node "$cli" "${verify_args[@]}" > "$receipts/cold.txt" 2>&1
+          end="$(date +%s%N)"
+          grep -q '"outcome":"EXECUTED"' "$receipts/cold.txt"
+          grep -q '"reusable":true' "$receipts/cold.txt"
+          tests="$(sed -n 's/.*"testCount":\([0-9][0-9]*\).*/\1/p' "$receipts/cold.txt" | tail -n 1)"
+          test -n "$tests"
+          printf 'cold,%s,EXECUTED,NO_RECEIPT,%s\n' "$(( (end-start)/1000000 ))" "$tests" >> "$GITHUB_WORKSPACE/evidence/measurements.csv"
+
+          measure warm REUSED CURRENT node "$cli" run --objective "$objective"
+
+          git checkout --quiet --detach HEAD^
+          measure changed-head EXECUTED INPUT_CHANGED node "$cli" run --objective "$objective"
+          measure changed-head-warm REUSED CURRENT node "$cli" run --objective "$objective"
+
+          git checkout --quiet --detach "$original"
+          measure restored EXECUTED INPUT_CHANGED node "$cli" run --objective "$objective"
+          measure restored-warm REUSED CURRENT node "$cli" run --objective "$objective"
+          test -z "$(git status --short)"
+
+          cd "$GITHUB_WORKSPACE"
+          find evidence -type f ! -name manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > evidence/manifest.sha256
+
+      - name: Retain measured native evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: external-fmt-native-verification-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
