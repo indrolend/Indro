@@ -30,3 +30,9 @@ Only Git state is observed; no external build, test, package lifecycle, or repos
 The `External native claim-directed verification` workflow builds and tests pinned fmt source through the existing CMake/CTest verifier. The workflow derives the declared shared-library closure from the configured CTest executables, records one explicit verified invocation, and then resolves `Verify current native tests behavior.` from retained CommandHUD history.
 
 It asserts warm reuse, changed-HEAD execution, reuse at the changed HEAD, restored-HEAD execution, and subsequent restored-state reuse. Restoration intentionally executes once: the native verifier fails closed against the newest receipt and does not silently fall back to an older success. Receipts retain source, build graph, compiler, CMake, CTest, executable, environment, runtime-file, behavioral output, and cost evidence. This is the first external application-behavior assay; its runtime-closure claim is bounded to the recorded CTest plan, tracked source, selected environment, and enumerated dynamic libraries.
+
+## External software-type execution assay
+
+The `External software-type command assay` runs repository-owned tests directly and through `indro run --objective` in interleaved order for a pinned JavaScript server, Go CLI library, Rust library, and Python library. It verifies successful exit behavior, immutable stdout/stderr integrity, faithful preservation of an exit-7 negative control, and an unchanged Git worktree. Toolchain identity and complete end-to-end timing are retained with each result.
+
+This assay does not reuse test results. Its purpose is to quantify the cost and correctness of INDRO's general evidence funnel and to falsify any claim that evidence recording automatically accelerates first execution. Repository-specific test commands remain the behavioral authority.

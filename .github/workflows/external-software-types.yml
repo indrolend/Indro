@@ -1,0 +1,137 @@
+name: External software-type command assay
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/external-software-types.yml'
+      - 'packages/indro/tools/external-command-assay.mjs'
+      - 'packages/indro/external-command-assay.test.mjs'
+      - 'packages/commandhud/core.mjs'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  pull_request:
+    paths:
+      - '.github/workflows/external-software-types.yml'
+      - 'packages/indro/tools/external-command-assay.mjs'
+      - 'packages/indro/external-command-assay.test.mjs'
+      - 'packages/commandhud/core.mjs'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  command-assay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: express
+            type: JavaScript-server
+            repository: expressjs/express
+            ref: 43fca52d28a422c8be48fd489cbd4f2d6152bab6
+            ecosystem: javascript
+          - name: cobra
+            type: Go-CLI-library
+            repository: spf13/cobra
+            ref: adbc8813901bba65827259daa8e22ff94ec1f30e
+            ecosystem: go
+          - name: byteorder
+            type: Rust-library
+            repository: BurntSushi/byteorder
+            ref: 5a82625fae462e8ba64cec8146b24a372b4d75c6
+            ecosystem: rust
+          - name: more-itertools
+            type: Python-library
+            repository: more-itertools/more-itertools
+            ref: 00383df5e6e3059501efee0fec8a51b13031dd4e
+            ecosystem: python
+
+    steps:
+      - name: Check out INDRO
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out pinned external repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.ref }}
+          path: fixtures/${{ matrix.name }}
+          persist-credentials: false
+
+      - name: Set up Node.js for INDRO
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install JavaScript dependencies
+        if: matrix.ecosystem == 'javascript'
+        run: npm ci
+        working-directory: fixtures/${{ matrix.name }}
+
+      - name: Record toolchain identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ matrix.ecosystem }}' in
+            javascript) identity="$(node --version); npm $(npm --version)" ;;
+            go) identity="$(go version)" ;;
+            rust) identity="$(rustc --version); $(cargo --version)" ;;
+            python) identity="$(python3 --version); $(python3 -m pip --version)" ;;
+          esac
+          printf 'INDRO_ASSAY_TOOLCHAIN=%s\n' "$identity" >> "$GITHUB_ENV"
+
+      - name: Assay JavaScript server tests
+        if: matrix.ecosystem == 'javascript'
+        run: >-
+          node packages/indro/tools/external-command-assay.mjs
+          --root fixtures/${{ matrix.name }}
+          --output evidence/${{ matrix.name }}/result.json
+          --name ${{ matrix.name }}
+          --type ${{ matrix.type }}
+          --trials 2
+          -- npm test
+
+      - name: Assay Go CLI library tests
+        if: matrix.ecosystem == 'go'
+        run: >-
+          node packages/indro/tools/external-command-assay.mjs
+          --root fixtures/${{ matrix.name }}
+          --output evidence/${{ matrix.name }}/result.json
+          --name ${{ matrix.name }}
+          --type ${{ matrix.type }}
+          --trials 2
+          -- go test ./...
+
+      - name: Assay Rust library tests
+        if: matrix.ecosystem == 'rust'
+        run: >-
+          node packages/indro/tools/external-command-assay.mjs
+          --root fixtures/${{ matrix.name }}
+          --output evidence/${{ matrix.name }}/result.json
+          --name ${{ matrix.name }}
+          --type ${{ matrix.type }}
+          --trials 2
+          -- cargo test --all-targets
+
+      - name: Assay Python library tests
+        if: matrix.ecosystem == 'python'
+        run: >-
+          node packages/indro/tools/external-command-assay.mjs
+          --root fixtures/${{ matrix.name }}
+          --output evidence/${{ matrix.name }}/result.json
+          --name ${{ matrix.name }}
+          --type ${{ matrix.type }}
+          --trials 2
+          -- python3 -m unittest discover
+
+      - name: Retain assay evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: external-command-assay-${{ matrix.name }}
+          path: evidence/${{ matrix.name }}/
+          if-no-files-found: error
+          retention-days: 30

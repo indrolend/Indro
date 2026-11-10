@@ -211,6 +211,11 @@
       "sha256": "28c576b9f3c96f60f01d4f393d39f6ab723f3bb693874fadf51c6feaaa3c8484"
     },
     {
+      "path": "external-command-assay.test.mjs",
+      "bytes": 1759,
+      "sha256": "2d5b3e54c3ac58a52e5d4f97fac6d52a796e56e4d29520e4aa90db34158d4293"
+    },
+    {
       "path": "godot-replay.mjs",
       "bytes": 27545,
       "sha256": "fad21b08695914e35a6856f50fb1d35809ad118b6c6089a6e95cb412fe052fae"
@@ -267,8 +272,8 @@
     },
     {
       "path": "package.json",
-      "bytes": 567,
-      "sha256": "8b45511bce0b80a7bae0938636f0cb7a226a1f4e64e7a481c0622e63fadbc070"
+      "bytes": 601,
+      "sha256": "c40bc3e707a1c36c09d4ebca68850fc73e3db7ff24f72f1e09378f408dfded56"
     },
     {
       "path": "paint/artifact.mjs",
@@ -359,6 +364,11 @@
       "path": "tools/crosscheck-hud.py",
       "bytes": 2801,
       "sha256": "c5b8ef508e879010090f76c1b6a53348124198ec0e9775a9239c19ebac4028d0"
+    },
+    {
+      "path": "tools/external-command-assay.mjs",
+      "bytes": 8514,
+      "sha256": "b2e4c9bcf16ce091ff85525add98f1bcce0e69064441b467e0eec9f6d274a774"
     },
     {
       "path": "tools/mine-hud.py",
