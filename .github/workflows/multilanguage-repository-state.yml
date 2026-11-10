@@ -1,0 +1,136 @@
+name: Multilanguage claim-directed repository state
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/multilanguage-repository-state.yml'
+      - 'packages/indro/objective-resolution.mjs'
+      - 'packages/indro/repository-state.mjs'
+      - 'packages/commandhud/evidence-reuse.mjs'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  pull_request:
+    paths:
+      - '.github/workflows/multilanguage-repository-state.yml'
+      - 'packages/indro/objective-resolution.mjs'
+      - 'packages/indro/repository-state.mjs'
+      - 'packages/commandhud/evidence-reuse.mjs'
+      - 'docs/OPEN-SOURCE-VALIDATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out INDRO
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out ripgrep (Rust)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: BurntSushi/ripgrep
+          ref: 178cc027e283fd965cb72d0a7395b219eada170c
+          path: fixtures/ripgrep
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out cobra (Go)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: spf13/cobra
+          ref: adbc8813901bba65827259daa8e22ff94ec1f30e
+          path: fixtures/cobra
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out Express (JavaScript)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: expressjs/express
+          ref: 43fca52d28a422c8be48fd489cbd4f2d6152bab6
+          path: fixtures/express
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out fmt (C++)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fmtlib/fmt
+          ref: e7e6e3f71033fbfc71eba1709789328bcb0ceb28
+          path: fixtures/fmt
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Verify cold, warm, invalidated, and restored evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/evidence"
+          cli="$GITHUB_WORKSPACE/packages/indro/cli.mjs"
+          mkdir -p "$evidence/receipts" "$evidence/state"
+          printf 'repository,language,phase,wall_ms,evidence_id\n' > "$evidence/measurements.csv"
+
+          run_probe() {
+            local repository="$1" language="$2" phase="$3"
+            local receipt="$evidence/receipts/$repository-$phase.txt"
+            local start end status evidence_id
+            start="$(date +%s%N)"
+            set +e
+            node "$cli" run --objective 'Verify current repository state.' > "$receipt" 2>&1
+            status=$?
+            set -e
+            end="$(date +%s%N)"
+            test "$status" -eq 0
+            grep -q '^INDRO_OBJECTIVE PASS workflow=indro/repository/state ' "$receipt"
+            evidence_id="$(sed -n 's/^EVIDENCE=//p' "$receipt" | tail -n 1)"
+            test -n "$evidence_id"
+            printf '%s,%s,%s,%s,%s\n' "$repository" "$language" "$phase" "$(( (end-start)/1000000 ))" "$evidence_id" >> "$evidence/measurements.csv"
+          }
+
+          for specification in 'ripgrep:Rust' 'cobra:Go' 'express:JavaScript' 'fmt:C++'; do
+            repository="${specification%%:*}"
+            language="${specification#*:}"
+            export HUD_STATE_ROOT="$evidence/state/$repository"
+            cd "$GITHUB_WORKSPACE/fixtures/$repository"
+            original="$(git rev-parse HEAD)"
+            test -z "$(git status --short)"
+
+            run_probe "$repository" "$language" cold
+            grep -q ' reuse=cold$' "$evidence/receipts/$repository-cold.txt"
+            cold_evidence="$(sed -n 's/^EVIDENCE=//p' "$evidence/receipts/$repository-cold.txt" | tail -n 1)"
+
+            run_probe "$repository" "$language" warm
+            grep -q ' reuse=reused$' "$evidence/receipts/$repository-warm.txt"
+            test "$(sed -n 's/^EVIDENCE=//p' "$evidence/receipts/$repository-warm.txt" | tail -n 1)" = "$cold_evidence"
+
+            git checkout --quiet --detach HEAD^
+            run_probe "$repository" "$language" changed-head
+            grep -q ' reuse=invalidated$' "$evidence/receipts/$repository-changed-head.txt"
+            test "$(sed -n 's/^EVIDENCE=//p' "$evidence/receipts/$repository-changed-head.txt" | tail -n 1)" != "$cold_evidence"
+
+            git checkout --quiet --detach "$original"
+            run_probe "$repository" "$language" restored
+            grep -q ' reuse=reused$' "$evidence/receipts/$repository-restored.txt"
+            test "$(sed -n 's/^EVIDENCE=//p' "$evidence/receipts/$repository-restored.txt" | tail -n 1)" = "$cold_evidence"
+            test -z "$(git status --short)"
+          done
+
+          cd "$GITHUB_WORKSPACE"
+          find evidence -type f ! -name manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > evidence/manifest.sha256
+
+      - name: Retain measured evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: multilanguage-repository-state-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
