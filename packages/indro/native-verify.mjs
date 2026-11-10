@@ -1,44 +1,58 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, delimiter, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const digest = value => sha(JSON.stringify(value));
 const inside = (root, file) => { const r = relative(root, file); return r !== '' && r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r); };
+function assertExternalEvidenceStore(root, store) {
+  // Resolve the nearest existing ancestor so a symlink cannot redirect receipts into source.
+  let ancestor = store;
+  while (!existsSync(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) throw new Error('Evidence store path unavailable');
+    ancestor = parent;
+  }
+  const physical = resolve(realpathSync(ancestor), relative(ancestor, store));
+  if (physical === root || inside(root, physical)) throw new Error('Evidence store must be outside the source repository');
+}
+// Capture symlink text along the declared path, not only the resolved file bytes.
+function pathSymlinks(path) {
+  const absolute = resolve(path);
+  let cursor = parse(absolute).root;
+  const links = [];
+  for (const component of absolute.slice(cursor.length).split(sep).filter(Boolean)) {
+    cursor = join(cursor, component);
+    if (lstatSync(cursor).isSymbolicLink()) links.push([cursor, readlinkSync(cursor)]);
+  }
+  return links;
+}
 function run(exe, args, cwd) {
   const r = spawnSync(exe, args, { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true });
   if (r.error || r.status !== 0) throw new Error(`${basename(exe)} failed (${r.status ?? 'spawn'}): ${(r.stderr || r.error?.message || r.stdout || '').slice(-2000)}`);
   return r.stdout;
 }
+function assertGitRoot(root) {
+  const prefix = run('git', ['rev-parse', '--show-prefix'], root).trim();
+  if (prefix !== '') throw new Error('Source root must match Git worktree root');
+}
 function fileHash(path) { return sha(readFileSync(path)); }
-function toolProvenances(names, cwd) {
-  const result = {};
-  const directories = process.platform === 'win32'
-    ? [cwd, ...(process.env.PATH || '').split(delimiter)]
-    : (process.env.PATH || '').split(delimiter);
-  const windowsExtensions = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
-  for (const name of names) {
-    const suffixes = process.platform === 'win32' && !extname(name) ? windowsExtensions : [''];
-    for (const directory of directories) {
-      if (!directory) continue;
-      for (const suffix of suffixes) {
-        const candidate = resolve(directory, `${name}${suffix}`);
-        try {
-          accessSync(candidate, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
-          if (!lstatSync(candidate).isFile()) continue;
-          const path = realpathSync(candidate);
-          result[name] = { path, sha256: fileHash(path) };
-          break;
-        } catch { /* Continue through the declared executable search path. */ }
-      }
-      if (result[name]) break;
-    }
-    result[name] ||= null;
-  }
-  return result;
+function toolProvenance(name, cwd) {
+  const locator = process.platform === 'win32' ? 'where.exe' : 'which';
+  const found = spawnSync(locator, [name], { cwd, encoding: 'utf8', windowsHide: true });
+  if (found.error || found.status !== 0) return null;
+  const path = found.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+  if (!path || !isAbsolute(path) || !existsSync(path)) return null;
+  try {
+    const physical = realpathSync(path);
+    const executableMode = process.platform === 'win32' ? null : lstatSync(physical).mode & 0o111;
+    if (process.platform !== 'win32' && executableMode === 0) return null;
+    return { declaredPath: resolve(path), path: physical, symlinks: pathSymlinks(path), sha256: fileHash(path),
+      ...(executableMode === null ? {} : { executableMode: executableMode.toString(8) }) };
+  } catch { return null; }
 }
 // Length-frame each field: source bytes can contain NULs and must not mimic the next record.
 function hashField(hash, value) {
@@ -50,6 +64,9 @@ function hashField(hash, value) {
 function sourceFingerprint(root, build, store) {
   const paths = run('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root).split('\0').filter(Boolean).sort();
   const hash = createHash('sha256');
+  // Git's staged index can affect CTest even when working-tree bytes are unchanged.
+  hashField(hash, 'GIT_INDEX');
+  hashField(hash, run('git', ['ls-files', '--stage', '-z'], root));
   for (const name of paths) {
     const path = resolve(root, name);
     if (!inside(root, path) || path === build || inside(build, path) || path === store || inside(store, path)) throw new Error('Untracked build/store or unsafe source path: ' + name);
@@ -94,14 +111,44 @@ function compilerHashes(cache, build) {
     path ||= candidates[0];
     if (!path) continue;
     if (!isAbsolute(path) || !existsSync(path)) return null;
-    out[key] = { path: realpathSync(path), sha256: fileHash(path), metadata: metadata.sort(([a], [b]) => a.localeCompare(b)) };
+    const physical = realpathSync(path);
+    const executableMode = process.platform === 'win32' ? null : lstatSync(physical).mode & 0o111;
+    if (process.platform !== 'win32' && executableMode === 0) return null;
+    out[key] = { declaredPath: resolve(path), path: physical, symlinks: pathSymlinks(path), sha256: fileHash(path), metadata: metadata.sort(([a], [b]) => a.localeCompare(b)),
+      ...(executableMode === null ? {} : { executableMode: executableMode.toString(8) }) };
   }
   return Object.keys(out).length ? out : null;
+}
+// Fingerprint CMake generator entry points, not only compiled binaries and the test plan.
+function buildGraphHashes(build) {
+  const entries = readdirSync(build);
+  const names = entries.filter(name => name === 'Makefile' || name.endsWith('.ninja') ||
+    name.endsWith('.sln') || name.endsWith('.slnx'));
+  if (!names.length) return null;
+  names.push(...entries.filter(name => name.endsWith('.vcxproj')));
+  for (const name of ['CMakeFiles/Makefile2', 'CMakeFiles/Makefile.cmake', 'CMakeFiles/rules.ninja']) {
+    if (existsSync(join(build, name))) names.push(name);
+  }
+  // Makefile2 alone misses per-target compile and link instructions.
+  const cmakeFiles = join(build, 'CMakeFiles');
+  // Ninja Multi-Config stores per-configuration compile/link rules here.
+  if (existsSync(cmakeFiles)) names.push(...readdirSync(cmakeFiles)
+    .filter(name => name.startsWith('impl-') && name.endsWith('.ninja'))
+    .map(name => join('CMakeFiles', name)));
+  if (existsSync(cmakeFiles)) for (const dir of readdirSync(cmakeFiles, { withFileTypes: true })) {
+    if (!dir.isDirectory() || !dir.name.endsWith('.dir')) continue;
+    for (const name of ['build.make', 'flags.make', 'link.txt']) {
+      const path = join('CMakeFiles', dir.name, name);
+      if (existsSync(join(build, path))) names.push(path);
+    }
+  }
+  return names.sort().map(name => [name, fileHash(join(build, name))]);
 }
 /** A scoped, explicit-dependency CTest proof. Not a certificate of undeclared runtime dependencies. */
 export function snapshotNative({ root, build, store, configuration = 'Release', runtimeFiles = [] }) {
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
-  if (inside(root, store) || store === root) throw new Error('Evidence store must be outside the source repository');
+  assertGitRoot(root);
+  assertExternalEvidenceStore(root, store);
   const cache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
   if (realpathSync(cacheSource(cache)) !== root) throw new Error('CMake cache belongs to another source tree');
   const plan = JSON.parse(run('ctest', ['--test-dir', build, '-C', configuration, '--show-only=json-v1'], root));
@@ -114,26 +161,53 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
   for (const test of plan.tests) {
     const exe = test.command?.[0];
     if (!exe || !isAbsolute(exe) || !existsSync(exe) || !inside(build, realpathSync(exe))) { complete = false; continue; }
-    executables.set(realpathSync(exe), fileHash(exe));
+    const resolvedExe = realpathSync(exe);
+    const executableMode = lstatSync(resolvedExe).mode & 0o111;
+    if (process.platform !== 'win32' && executableMode === 0) complete = false;
+    executables.set(exe, `${fileHash(exe)}:${process.platform === 'win32' ? 'win32' : executableMode.toString(8)}:${digest([resolvedExe, pathSymlinks(exe)])}`);
   }
+  const buildGraph = buildGraphHashes(build);
   const compilers = compilerHashes(cache, build);
-  const tools = toolProvenances(['cmake', 'ctest', 'git'], root);
-  if (!compilers || Object.values(tools).some(value => !value)) complete = false;
+  const tools = Object.fromEntries(['cmake', 'ctest', 'git'].map(name => [name, toolProvenance(name, root)]));
+  // CMake delegates compilation to CMAKE_MAKE_PROGRAM; include the actual build-tool bytes.
+  const makeProgram = cache.match(/^CMAKE_MAKE_PROGRAM:(?:FILEPATH|STRING|UNINITIALIZED)=(.*)$/m)?.[1]?.trim();
+  let buildTool = null;
+  if (makeProgram) {
+    const path = isAbsolute(makeProgram) ? makeProgram : toolProvenance(makeProgram, root)?.path;
+    if (path && existsSync(path)) {
+      try {
+        const physical = realpathSync(path);
+        const executableMode = process.platform === 'win32' ? null : lstatSync(physical).mode & 0o111;
+        if (executableMode !== 0) buildTool = { declaredPath: makeProgram, path: physical,
+          symlinks: pathSymlinks(path), sha256: fileHash(path),
+          ...(executableMode === null ? {} : { executableMode: executableMode.toString(8) }) };
+      } catch { /* Unreadable build tools cannot establish provenance. */ }
+    }
+  }
+  const generator = cache.match(/^CMAKE_GENERATOR:INTERNAL=(.*)$/m)?.[1]?.trim();
+  if (!buildGraph || !compilers || Object.values(tools).some(value => !value) ||
+      (makeProgram && !buildTool) || (/Ninja|Makefiles/.test(generator || '') && !buildTool)) complete = false;
   const runtime = [];
   for (const path of runtimeFiles) {
     if (!existsSync(path)) { complete = false; continue; }
-    runtime.push({ path: realpathSync(path), sha256: fileHash(path) });
+    const physical = realpathSync(path);
+    runtime.push({ declaredPath: resolve(path), path: physical, symlinks: pathSymlinks(path), sha256: fileHash(path),
+      ...(process.platform === 'win32' ? {} : { executableMode: (lstatSync(physical).mode & 0o111).toString(8) }) });
   }
   runtime.sort((a, b) => a.path.localeCompare(b.path));
   const head = run('git', ['rev-parse', 'HEAD'], root).trim();
   const inputs = {
     root, build, configuration, head,
-    source: sourceFingerprint(root, build, store), cache: sha(cache),
+    source: sourceFingerprint(root, build, store), cache: sha(cache), buildGraph,
     testPlan: digest(plan.tests),
     executables: [...executables].sort(([a], [b]) => a.localeCompare(b)),
-    compilers, tools, runtime,
+    compilers, tools, buildTool, runtime,
     verifier: { path: fileURLToPath(import.meta.url), sha256: fileHash(fileURLToPath(import.meta.url)) },
     node: { path: realpathSync(process.execPath), sha256: fileHash(process.execPath), version: process.version },
+    cmake: run('cmake', ['--version'], root).split('\n')[0],
+    ctest: run('ctest', ['--version'], root).split('\n')[0],
+    // Digest every inherited variable: arbitrary CTest dependencies must not escape the fingerprint.
+    environmentDigest: digest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
     environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL',
       'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'LOCALAPPDATA', 'HOME',
       'XDG_DATA_HOME'].map(k => [k, process.env[k] ?? null])),
@@ -144,13 +218,22 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
 export function changedExecutablePaths(recorded, current, build) {
   if (!Array.isArray(recorded) || !Array.isArray(current)) return [];
   const previous = new Map(recorded), latest = new Map(current);
+  const physicalBuild = existsSync(build) ? realpathSync(build) : resolve(build);
   return [...new Set([...previous.keys(), ...latest.keys()])]
     .filter(path => previous.get(path) !== latest.get(path))
-    .map(path => relative(build, path).replaceAll('\\', '/')).sort();
+    // Canonicalize the parent, not the executable: preserve the symlink basename.
+    .map(path => {
+      const parent = dirname(path);
+      const physicalParent = existsSync(parent) ? realpathSync(parent) : resolve(parent);
+      return relative(physicalBuild, join(physicalParent, basename(path))).replaceAll('\\', '/');
+    }).sort();
 }
 function readReceipt(path) {
   try {
-    const value = JSON.parse(readFileSync(path, 'utf8'));
+    const bytes = readFileSync(path, 'utf8');
+    const value = JSON.parse(bytes);
+    // Reject byte-only edits: receipts are written in canonical JSON form.
+    if (bytes !== JSON.stringify(value, null, 2)) return null;
     const { integrity, ...body } = value;
     if (integrity !== digest(body)) return null;
     if (!value.snapshot?.inputs || value.snapshot.fingerprint !== digest(value.snapshot.inputs) ||
@@ -177,7 +260,8 @@ function newestReceipt(store) {
 export function verifyNative({ root, build, store, configuration = 'Release', runtimeFiles = [], runtimeClosureDeclared = false }) {
   const started = performance.now();
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
-  if (inside(root, store) || store === root) throw new Error('Evidence store must be outside the source repository');
+  assertGitRoot(root);
+  assertExternalEvidenceStore(root, store);
   const initialCache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
   if (realpathSync(cacheSource(initialCache)) !== root) throw new Error('CMake cache belongs to another source tree');
   const beforeBuild = snapshotNative({ root, build, store, configuration, runtimeFiles });
@@ -199,10 +283,11 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
       : !sourceStableDuringBuild ? 'SOURCE_CHANGED_DURING_BUILD' : 'NO_RECEIPT';
   let changedInputs = [];
   let changedExecutables = [];
-  if (reusable && previous.filename) {
+  if (reusable && existsSync(store)) {
+    const files = readdirSync(store).filter(x => x.endsWith('.json')).sort().reverse();
     // A corrupt newest receipt fails closed: do not fall back to an older success.
-    {
-      const receipt = previous.receipt;
+    if (files.length) {
+      const receipt = readReceipt(join(store, files[0]));
       if (!receipt) reuseDecision = 'RECEIPT_CORRUPT';
       else if (receipt.status !== 'PASS' || receipt.reusable !== true) reuseDecision = 'PREVIOUS_ATTEMPT_NOT_REUSABLE';
       else if (receipt.snapshot?.fingerprint !== before.fingerprint || receipt.snapshot?.testCount !== before.testCount) {
@@ -212,7 +297,7 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
         changedExecutables = changedExecutablePaths(receipt.snapshot.inputs.executables, before.inputs.executables, build);
       } else {
         return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [], changedExecutables: [],
-          testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: previous.filename };
+          testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: files[0] };
       }
     }
   }
@@ -237,7 +322,7 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
 
 export function nativeOptionsFromArgv(argv) {
   if (!Array.isArray(argv)) return null;
-  const marker = argv?.indexOf('verify-native');
+  const marker = argv.indexOf('verify-native');
   if (marker < 0) return null;
   const args = argv.slice(marker + 1);
   const get = flag => { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; };
@@ -266,17 +351,16 @@ export function verifyNativeClaims(options, claims) {
   if (claims.includes('behavior')) return { ...verifyNative(options), claims, checkedClaims: claims };
   const started = performance.now();
   const root = realpathSync(options.root), build = realpathSync(options.build), store = resolve(options.store);
-  if (inside(root, store) || store === root) throw new Error('Evidence store must be outside the source repository');
+  assertGitRoot(root);
+  assertExternalEvidenceStore(root, store);
   const initialCache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
   if (realpathSync(cacheSource(initialCache)) !== root) throw new Error('CMake cache belongs to another source tree');
   const snapshot = snapshotNative({ root, build, store, configuration: options.configuration, runtimeFiles: options.runtimeFiles });
   if (!snapshot.complete) throw new Error('Native provenance is incomplete.');
   if (claims.includes('runtime_closure') && options.runtimeClosureDeclared !== true) throw new Error('Native runtime closure is undeclared.');
-  return {
-    outcome: 'VALIDATED', reuseDecision: 'CLAIM_VALIDATED', changedInputs: [], changedExecutables: [],
+  return { outcome: 'VALIDATED', reuseDecision: 'CLAIM_VALIDATED', changedInputs: [], changedExecutables: [],
     testCount: snapshot.testCount, buildMs: 0, elapsedMs: performance.now() - started, receipt: null,
-    claims, checkedClaims: claims, snapshotFingerprint: snapshot.fingerprint,
-  };
+    claims, checkedClaims: claims, snapshotFingerprint: snapshot.fingerprint };
 }
 
 export function discoverNativeVerificationWorkflow(objective, { projectRoot, records = [] } = {}) {
@@ -286,9 +370,7 @@ export function discoverNativeVerificationWorkflow(objective, { projectRoot, rec
     if (record?.status !== 'pass' || record?.exitCode !== 0) continue;
     const options = nativeOptionsFromArgv(record.operation?.argv);
     if (!options || !options.runtimeClosureDeclared || !existsSync(options.build)) continue;
-    try {
-      if (root && realpathSync(options.root) !== root) continue;
-    } catch { continue; }
+    try { if (root && realpathSync(options.root) !== root) continue; } catch { continue; }
     const claims = nativeVerificationClaims(objective);
     return {
       id: 'indro/native/verify', evidenceId: record.id, confidence: 100,
@@ -304,10 +386,25 @@ export function discoverNativeVerificationWorkflow(objective, { projectRoot, rec
 }
 
 export function runNativeCli(args) {
+  const valueFlags = new Set(['--root', '--build', '--store', '--configuration', '--runtime-file']);
+  const values = new Map(), runtimeFiles = [];
   try {
-    const options = nativeOptionsFromArgv(['verify-native', ...args]);
-    if (!options) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--declare-runtime-closure]');
-    const result = verifyNative(options);
+    for (let i = 0; i < args.length; i++) {
+      const flag = args[i];
+      if (flag === '--declare-runtime-closure') continue;
+      if (!valueFlags.has(flag)) throw new Error('Unknown verify-native argument: ' + flag);
+      const value = args[++i];
+      if (!value || value.startsWith('--')) throw new Error('Missing value for ' + flag);
+      if (flag === '--runtime-file') runtimeFiles.push(value);
+      else {
+        if (values.has(flag)) throw new Error('Duplicate verify-native argument: ' + flag);
+        values.set(flag, value);
+      }
+    }
+    if (!values.get('--root') || !values.get('--build') || !values.get('--store')) throw new Error('Usage: indro verify-native --root PATH --build PATH --store PATH [--configuration Release] [--runtime-file PATH ...] [--declare-runtime-closure]');
+    const result = verifyNative({ root: values.get('--root'), build: values.get('--build'), store: values.get('--store'),
+      configuration: values.get('--configuration') || 'Release', runtimeFiles,
+      runtimeClosureDeclared: args.includes('--declare-runtime-closure') });
     console.log(JSON.stringify(result));
     return result.outcome === 'FAILED' ? 1 : 0;
   } catch (error) { console.error('INDRO_NATIVE_VERIFY_ERROR ' + error.message); return 2; }

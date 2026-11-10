@@ -2,6 +2,7 @@ const { existsSync } = require("node:fs");
 const { resolve } = require("node:path");
 const { pathToFileURL } = require("node:url");
 
+// Default to the owning checkout; a different project requires an explicit override.
 const DEFAULT_ROOT = resolve(__dirname, "..", "..");
 const DEFAULT_CORE = resolve(__dirname, "..", "commandhud", "core.mjs");
 

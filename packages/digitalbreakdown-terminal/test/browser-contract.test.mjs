@@ -25,13 +25,6 @@ test("visuals-off keeps terminal setup and only skips optional visuals", () => {
   assert.match(client, /terminal\.parser\.registerOscHandler\(777/);
 });
 
-test("jelly is a pointer-transparent public-buffer overlay with an independent toggle", () => {
-  assert.match(html, /id="jelly-toggle"/);
-  assert.match(html, /#jelly-overlay[\s\S]*pointer-events: none/);
-  assert.match(client, /createJellyOverlay/);
-  assert.match(client, /jellyOverlay\.setEnabled/);
-});
-
 test("terminal uses a true monospace stack and responsive chrome", () => {
   assert.match(client, /Cascadia Mono/);
   assert.doesNotMatch(client, /fontFamily:.*Digital Breakdown Grid V3/);
@@ -39,11 +32,9 @@ test("terminal uses a true monospace stack and responsive chrome", () => {
   assert.match(html, /text-overflow: ellipsis/);
 });
 
-test("INDRO exposes interactive TRACE and read-only SIGNAL displays", () => {
-  assert.match(html, /INDRO \/\/ TRACE/);
-  assert.match(html, /INDRO \/\/ SIGNAL/);
-  assert.match(client, /display=\$\{display\}/);
-  assert.match(client, /connectTrace\(id\)/);
-  assert.match(client, /connectSignal\(id\)/);
-  assert.doesNotMatch(client, /signalSocket\.send/);
+test("OSC shell metadata cannot unconditionally overwrite transport execution state", () => {
+  assert.match(client, /if \(!decoded \|\| !connected\) return false;/);
+  assert.match(client, /executionState = "reported ready";/);
+  assert.doesNotMatch(client, /executionState = "ready";\s*renderContext\(\);/);
+  assert.match(client, /executionState = "disconnected";/);
 });

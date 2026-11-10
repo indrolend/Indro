@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
+import { agentHarnessSpec, agentSession, buildAgentInvocation, buildCurrentOperationContext, buildOperationContext, buildOperationHandoff, buildPacket, buildWindowsServiceResetPlan, buildWorkflowPacket, classifyEvidence, classifyPowerShellShellFailure, classifyProofCurrency, compareFilesystemFiles, continuation, currentState, detectRepeatedOperationSequences, diffRunEvidence, discardAgentWorkspace, discoverAgentHarnesses, discoverCommands, discoverProjects, discoverShells, doctor, fetchUpdate, filesystemIdentity, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, gitSnapshot, inspectRuntimeAuthority, lintRepository, listAgentSessions, listRuns, operationDetail, operationHistory, parseCodexJsonEvents, parseLintDiagnostics, parseResultMarkers, parseSearchOutput, parseWindowsServiceObservation, planAgentRoute, projectRunEvidence, readProjectState, recordFilesystemComparison, recoverInterruptedRuns, reduceOutput, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, reserveRunDirectory, resolveCodexLauncher, resolveProject, resolveRegisteredProject, runAgentRequest, runById, runCommand, runRepositoryCommand, runTerminalCommand, searchRepository, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, validateProviderTransitionRequest, workingValue, workflowView } from './core.mjs';
 
 test('Make It rejects empty and oversized ideas before launching an agent', async () => {
   const project = await fixtureProject();
@@ -318,6 +318,7 @@ function fixture() {
   execFileSync('git', ['init', '-b', 'main'], { cwd: root });
   execFileSync('git', ['config', 'user.email', 'hud@example.invalid'], { cwd: root });
   execFileSync('git', ['config', 'user.name', 'HUD Test'], { cwd: root });
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: root });
   writeFileSync(join(root, 'file.txt'), 'initial\n');
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', ['commit', '-m', 'fixture'], { cwd: root });
@@ -328,6 +329,30 @@ function fixtureProject() {
   const root = fixture();
   return resolveProject({ cwd: root, env: { ...process.env, HUD_STATE_ROOT: mkdtempSync(join(tmpdir(), 'hud-state-')) } });
 }
+
+test('run directory reservation retries collisions without changing retained evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hud-run-reservation-'));
+  try {
+    const collision = '20261102130748-c9b8';
+    const next = '20261102130748-c9b9';
+    mkdirSync(join(root, collision));
+    writeFileSync(join(root, collision, 'run.json'), 'retained\n');
+    let attempts = 0;
+    const reserved = reserveRunDirectory(root, () => (++attempts === 1 ? collision : next));
+    assert.equal(attempts, 2);
+    assert.deepEqual(reserved, { id: next, directory: join(root, next) });
+    assert.equal(readFileSync(join(root, collision, 'run.json'), 'utf8'), 'retained\n');
+    assert.ok(existsSync(reserved.directory));
+    const count = readdirSync(root).length;
+    assert.throws(() => reserveRunDirectory(root, () => collision), /after 8 attempts/);
+    assert.equal(readdirSync(root).length, count);
+    writeFileSync(join(root, 'not-a-directory'), 'file');
+    assert.throws(() => reserveRunDirectory(root, () => 'not-a-directory/child'), (error) => ['ENOTDIR', 'ENOENT'].includes(error?.code));
+    assert.match(reserveRunDirectory(root).id, /^\d{14}-[0-9a-f]{4}$/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('registered project discovery returns only locally reverified Git authority', async () => {
   const project = await fixtureProject();
@@ -490,7 +515,7 @@ test('runtime authority distinguishes current, stale, and project-local duplicat
   const root = mkdtempSync(join(tmpdir(), 'hud-runtime-authority-'));
   const state = join(root, 'state');
   const source = join(root, 'source');
-  const installed = join(root, 'installed', 'node_modules', '@indrolend', 'hate-this-meaningless-life', 'packages', 'commandhud', 'cli.mjs');
+  const installed = join(root, 'installed', 'node_modules', '@indrolend', 'indro', 'packages', 'commandhud', 'cli.mjs');
   mkdirSync(join(source, 'packages', 'commandhud'), { recursive: true });
   mkdirSync(join(installed, '..'), { recursive: true });
   mkdirSync(join(state, 'projects'), { recursive: true });
@@ -498,7 +523,14 @@ test('runtime authority distinguishes current, stale, and project-local duplicat
   writeFileSync(installed, 'same');
   writeFileSync(join(state, 'projects', 'product.json'), JSON.stringify({ id: 'indrolend/Indro', root: source }));
   const env = { ...process.env, HUD_STATE_ROOT: state };
-  assert.equal(inspectRuntimeAuthority({ executingPath: installed, env }).status, 'CURRENT');
+  const current = inspectRuntimeAuthority({ executingPath: installed, env });
+  assert.equal(current.status, 'CURRENT');
+  assert.equal(current.executing.role, 'installed');
+  assert.equal(inspectRuntimeAuthority({ executingPath: join(source, 'packages', 'commandhud', 'cli.mjs'), env }).executing.role, 'source');
+  const prefixed = join(root, 'installed', 'node_modules', '@indrolend', 'indro-extra', 'packages', 'commandhud', 'cli.mjs');
+  mkdirSync(join(prefixed, '..'), { recursive: true });
+  writeFileSync(prefixed, 'same');
+  assert.equal(inspectRuntimeAuthority({ executingPath: prefixed, env }).executing.role, 'source');
   writeFileSync(installed, 'older');
   assert.equal(inspectRuntimeAuthority({ executingPath: installed, env }).status, 'STALE');
 
@@ -1063,6 +1095,17 @@ test('PowerShell unknown command is blocked but missing filesystem path is not',
   );
   assert.equal(blocked.status, 'blocked');
 
+  // The PowerShell diagnostic classifier must not turn a missing command into a generic failure.
+  const classifiedBlocked = await runCommand(
+    project,
+    [process.execPath, '-e', `console.error("x: The term 'x' is not recognized as a name of a cmdlet, function, script file, or executable program."); process.exit(1)`],
+    { stream: false, classifyCapturedFailure: ({ stderr }) => classifyPowerShellShellFailure(stderr) },
+  );
+  assert.equal(classifiedBlocked.status, 'blocked');
+  assert.equal(classifiedBlocked.resultClassification, 'BLOCKED');
+  assert.equal(classifiedBlocked.resultReason, 'COMMAND_UNAVAILABLE');
+  assert.equal(classifiedBlocked.capturedFailure?.kind, 'command-not-found');
+
   const ordinaryFailure = await runCommand(
     project,
     [process.execPath, '-e', `console.error("Get-Item: Cannot find path 'C:\\missing' because it does not exist."); process.exit(1)`],
@@ -1079,6 +1122,8 @@ test('PowerShell missing commands are blocked without treating ordinary stderr a
     message: "rg: The term 'rg' is not recognized as a name of a cmdlet, function, script file, or executable program.",
   });
   assert.equal(classifyPowerShellShellFailure('warning: optional cache is unavailable'), null);
+  const wrappedDiagnostic = "cmd: The term 'cmd' is not recognized as a\n    | name of a cmdlet, function, script file, or executable program. Check the spelling.";
+  assert.equal(classifyPowerShellShellFailure(wrappedDiagnostic)?.kind, 'command-not-found');
 
   const project = await fixtureProject();
   const powershell = (await discoverShells(project.root)).find((entry) => entry.id === 'powershell');
@@ -1087,7 +1132,12 @@ test('PowerShell missing commands are blocked without treating ordinary stderr a
   const record = await runTerminalCommand(project, command, { shell: 'powershell' });
   assert.notEqual(record.exitCode, 0);
   assert.notEqual(record.processExitCode, 0);
-  assert.equal(record.status, 'blocked');
+  assert.equal(record.status, 'blocked', JSON.stringify({
+    reason: record.resultReason,
+    capturedFailure: record.capturedFailure,
+    stderr: readFileSync(record.stderrPath, 'utf8').slice(-1200),
+    stdout: readFileSync(record.stdoutPath, 'utf8').slice(-400),
+  }));
   assert.equal(record.resultClassification, 'BLOCKED');
   assert.equal(record.resultReason, 'COMMAND_UNAVAILABLE');
   assert.equal(record.operation.status, 'blocked');
@@ -1575,7 +1625,7 @@ test('terminal commands preserve exact intent and working directory across avail
   for (const shell of shells.filter((entry) => entry.available)) {
     const example = cases[shell.id];
     const record = await runTerminalCommand(project, example.command, { shell: shell.id });
-    assert.equal(record.status, 'pass', `${shell.id}: ${readFileSync(record.stderrPath, 'utf8')}`);
+    assert.equal(record.status, 'pass', `${shell.id}: ${JSON.stringify({ executable: shell.executable, exitCode: record.exitCode, processExitCode: record.processExitCode, reason: record.reason ?? record.reduction?.reason ?? null, stdout: readFileSync(record.stdoutPath, 'utf8').slice(0, 2000), stderr: readFileSync(record.stderrPath, 'utf8').slice(0, 2000), operation: record.operation })}`);
     assert.equal(record.command, example.command);
     assert.equal(record.inputText, example.command);
     assert.equal(record.operationId, record.id);

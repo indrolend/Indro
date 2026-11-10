@@ -123,11 +123,11 @@ const signalEvent = document.getElementById("signal-event");
 function renderContext() {
   const view = contextView(shellContext, { connected, evidenceAvailable, execution: executionState });
   contextLocation.textContent = view.location;
-  contextLocation.title = shellContext?.cwd || view.location;
+  contextLocation.title = shellContext?.cwd ? `Shell-reported (unverified): ${shellContext.cwd}` : view.location;
   contextRepository.textContent = view.repository;
   contextBranch.textContent = view.branch;
   contextDirty.textContent = view.dirty;
-  contextDirty.dataset.state = view.dirty.toLowerCase();
+  contextDirty.dataset.state = shellContext?.repository ? (shellContext.dirty ? "dirty" : "clean") : "detached";
   connectionStatus.textContent = view.connection;
   connectionStatus.dataset.state = connected ? "active" : "lost";
   evidenceStatus.textContent = view.evidence;
@@ -139,9 +139,9 @@ function renderContext() {
 
 terminal.parser.registerOscHandler(777, encoded => {
   const decoded = decodeContextPayload(encoded);
-  if (!decoded) return false;
+  if (!decoded || !connected) return false;
   shellContext = decoded;
-  executionState = "ready";
+  executionState = "reported ready";
   renderContext();
   return true;
 });
@@ -365,7 +365,7 @@ function connectSignal(sessionId) {
 }
 
 terminal.onData(data => {
-	if (data.includes("\r")) {
+	if (socket.readyState === WebSocket.OPEN && data.includes("\r")) {
 		executionState = "running";
 		renderContext();
 	}

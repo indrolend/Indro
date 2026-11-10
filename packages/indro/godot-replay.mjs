@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { executeReusableVerification, readRetainedOutput } from '../commandhud/evidence-reuse.mjs';
 import { listRuns, resolveProject } from '../commandhud/core.mjs';
+import { verifyPng } from './paint/artifact.mjs';
 
 export const PROTOCOL_SCHEMA = 4;
 export const SCENARIOS = Object.freeze({ smoke: 'observe\nstep frames=1\nassert room=1\n' });
@@ -101,8 +102,7 @@ export function validateReplay({ stdout, stderr = '', exitCode, captureDir, comm
     if (requireCapture && (row.frame_capture !== '1' || !captures[index])) errors.push('CAPTURE_RECORD_INVALID');
     if (requireCapture && captures[index]) {
       const file = path.join(captureDir, captures[index]);
-      const bytes = readFileSync(file);
-      if (bytes.length < 24 || bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') errors.push('CAPTURE_FILE_INVALID');
+      if (!verifyPng(file).valid) errors.push('CAPTURE_FILE_INVALID');
     }
   }
   return { valid: errors.length === 0, errors: [...new Set(errors)], observations, assertions: assertionLines.map((raw) => ({ ...parseFields(raw), raw })), captures, protocolErrors, stderrBytes: Buffer.byteLength(stderr) };

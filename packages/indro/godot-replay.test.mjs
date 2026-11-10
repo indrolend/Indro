@@ -5,8 +5,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { godotReplayClaims, recognizesGodotReplayObjective, requireConfirmedClipboardResult, retainedReplayOptions, runGodotReplayObjective, resolveExecutable, validateReplay, validateReplayArtifacts } from './godot-replay.mjs';
 import { resolveObjective, selectWorkflowCandidate } from './objective-resolution.mjs';
+import { png as pngFixture } from './paint/png-fixture.test-helper.mjs';
 
-const png = Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001', 'hex');
+const png = pngFixture(1, 1);
 const commands = 'observe\nstep frames=1\nassert room=1\n';
 
 function fixture(overrides = {}) {

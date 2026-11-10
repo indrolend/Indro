@@ -188,6 +188,14 @@ def compare_functions(before,after,max_inputs):
     reason="unsupported-observations:"+",".join(k for k,_ in unsupported.most_common(3)) if unsupported else "bounded-observations-match-without-proof"
     return {"verdict":"UNKNOWN","reason":reason,"evaluations":len(cases)}
 
+def is_test_path(file):
+    parts=file.replace("\\","/").lower().split("/")
+    name=parts[-1]
+    return (any(part in ("test","tests") for part in parts[:-1])
+            or name in ("test.py","tests.py","conftest.py")
+            or name.startswith(("test_","test-"))
+            or name.endswith(("_test.py","_tests.py")))
+
 def changed_files(repo,before,after):
     rows=git(repo,"diff","--name-status","-z","-M",before,after,"--","*.py").split(b"\0");out=[];i=0
     while i<len(rows) and rows[i]:
@@ -196,7 +204,7 @@ def changed_files(repo,before,after):
         else:
             name=rows[i].decode("utf-8","surrogateescape");i+=1
             old,new=(None,name) if status=="A" else (name,None) if status=="D" else (name,name)
-        if not any("test" in (x or "").lower() for x in (old,new)):out.append((old,new))
+        if not any(is_test_path(x) for x in (old,new) if x):out.append((old,new))
     return out
 def blob(repo,revision,file):return b"" if file is None else git(repo,"show",f"{revision}:{file}")
 def pair_records(repo_name,repo,before,after,max_inputs):
@@ -282,6 +290,12 @@ def self_test():
     assert compare_functions(parse("def f(x):\n return x + 1\n"),parse("def f(x):\n return 1 + x\n"),16)["verdict"]=="UNKNOWN"
     attack=compare_functions(parse("def f(x):\n return __import__('os').system(x)\n"),parse("def f(x):\n return __import__('os').system(x) + 1\n"),16);assert attack["verdict"]=="UNKNOWN" and "global-name:__import__" in attack["reason"]
     method=parse_functions("x.py",b"class C:\n def f(self, x):\n  return x + 1\n")[0]["C.f"];assert method.exclusion=="instance-or-class-method"
+    assert not is_test_path("maths/greatest_common_divisor.py")
+    assert not is_test_path("src/testimonial.py")
+    assert is_test_path("tests/test_mathutils.py")
+    assert is_test_path("src/test_gcd.py")
+    assert is_test_path("src/gcd_test.py")
+    assert is_test_path("conftest.py")
     print("PASS: exact proof, real-shape counterexample, unsupported UNKNOWN, no bounded equivalence claim")
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument("--repos",nargs="+",choices=sorted(REPOS),default=list(REPOS));p.add_argument("--workspace",default=r"C:\Users\indro\Projects\NDRA-OpenSource");p.add_argument("--output",default=r"C:\Users\indro\Projects\NDRA-OpenSource-Evidence-v3");p.add_argument("--history",type=int,default=40);p.add_argument("--max-inputs",type=int,default=256);p.add_argument("--trials",type=int,default=7);p.add_argument("--self-test",action="store_true");args=p.parse_args()

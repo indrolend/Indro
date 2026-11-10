@@ -26,7 +26,10 @@ export async function executeTransaction(spec) {
     stage = 'invoke';
     // SUBMITTED means the invocation was attempted, not that the application received it.
     tx.milestones.SUBMITTED = true;
-    const result = await adapter.invoke(tx.target, capability, args, { operation_id: tx.operation_id });
+    const result = await adapter.invoke(tx.target, capability, args, {
+      operation_id: tx.operation_id,
+      authorization: tx.authorization
+    });
     for (const milestone of ['RECEIVED', 'ACCEPTED', 'EXECUTED']) {
       if (result?.milestones?.[milestone] === true) tx.milestones[milestone] = true;
     }
@@ -50,7 +53,10 @@ export async function executeTransaction(spec) {
         const equal = typeof actual === 'number' && typeof expected === 'number'
           ? Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) <= tolerance
           : Object.is(actual, expected);
-        if (equal) tx.milestones.STATE_CONFIRMED = true;
+        if (equal) {
+          tx.milestones.STATE_CONFIRMED = true;
+          tx.state_transition_observed = !Object.is(tx.pre_observation?.value, actual);
+        }
         else tx.verdict = 'READBACK_MISMATCH';
       }
     }

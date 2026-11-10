@@ -1,7 +1,7 @@
 name: UAI kernel
 on:
   push:
-    branches: [feat/uai-transaction-kernel]
+    branches: [main, feat/uai-transaction-kernel]
   pull_request:
     paths:
       - 'packages/indro/uai/**'

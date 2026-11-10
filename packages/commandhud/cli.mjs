@@ -1,9 +1,9 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runNdra } from './ndra.mjs';
-import { writeClipboard } from './clipboard-transport.mjs';
-import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
+import { agentSession, discardAgentWorkspace, discoverAgentHarnesses, discoverProjects, doctor, formatPacket, formatRepositoryCommandImpact, formatRepositoryCommandProof, resolveProject, gitSnapshot, repositoryCommandImpact, repositoryCommandProof, repositoryCurrency, repositoryTree, diffRunEvidence, discoverCapabilities, discoverCommands, lintRepository, listAgentSessions, runAgentRequest, runCommand, runRepositoryCommand, searchRepository, buildCurrentOperationContext, filesystemIdentity, inspectRuntimeAuthority, lastRun, listRuns, classifyRunEvidenceIntegrity, observeWindowsService, planWindowsServiceReset, projectRunEvidence, recordFilesystemComparison, repeatedOperationSequences, runById, fetchUpdate, continuation, setWorkingValue, startDetachedAgent, stopAgentSession, storageInventory, undoOperation, undoPlan, workingValue, workflowView, buildWorkflowPacket, currentState } from './core.mjs';
 
 const HELP = `Indro · CommandHUD execution and evidence
 Run from any Git repository:
@@ -47,15 +47,16 @@ Use --root <path> to select an explicit Git repository.`;
 
 function parse(argv) {
   const args = [...argv];
-  const options = { copy: false, quiet: false, root: null, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false, follow: false };
   let leadingRoot = null;
   if (args[0] === '--root') {
-    if (args.length < 2 || args[1].startsWith('--')) throw new Error('--root requires a value.');
-    leadingRoot = args.splice(0, 2)[1];
+    if (!args[1] || args[1].startsWith('--')) throw new Error('--root requires a value.');
+    leadingRoot = args[1];
+    args.splice(0, 2);
   }
+  const options = { copy: false, quiet: false, root: leadingRoot, shell: null, animation: true, tui: false, objective: null, request: null, requestB64: null, workflowId: null, workflowName: null, stage: null, stageIndex: null, stageCount: null, json: false, host: '127.0.0.1', port: 8765, agent: 'codex/local', expectedHead: null, detach: false, follow: false };
   const command = args.shift() || 'context';
   const positionals = [];
-  const usedOptions = new Set();
+  const usedOptions = new Set(leadingRoot === null ? [] : ['root']);
   const optionValue = (name, index) => {
     if (index + 1 >= args.length || args[index + 1].startsWith('--')) throw new Error(`${name} requires a value.`);
     usedOptions.add(name.slice(2));
@@ -87,11 +88,6 @@ function parse(argv) {
     else if (value.startsWith('-')) throw new Error(`Unknown hud option: ${value}`);
     else if (command === 'run') { positionals.push(...args.slice(index)); break; }
     else positionals.push(value);
-  }
-  if (leadingRoot !== null) {
-    if (usedOptions.has('root')) throw new Error('--root may be specified only once.');
-    options.root = leadingRoot;
-    usedOptions.add('root');
   }
   return { command, args: positionals, options, usedOptions };
 }
@@ -159,10 +155,10 @@ function printObject(object) {
 }
 
 function copy(text) {
-  const delivery = writeClipboard(text);
-  if (delivery.state === 'sent') console.error(`CLIPBOARD SENT transport=${delivery.transport} receipt=unverified bytes=${delivery.bytes}`);
-  else console.error(`CLIPBOARD COPIED transport=${delivery.transport} bytes=${delivery.bytes}`);
-  return delivery;
+  const tool = process.platform === 'win32' ? ['clip.exe', []]
+    : process.platform === 'darwin' ? ['pbcopy', []] : ['sh', ['-c', 'command -v wl-copy >/dev/null && wl-copy || xclip -selection clipboard']];
+  const result = spawnSync(tool[0], tool[1], { input: text, encoding: 'utf8', windowsHide: true });
+  if (result.status !== 0) throw new Error('Clipboard tool is unavailable. Packet was still printed.');
 }
 
 function printEvidenceProjection(value) {
@@ -670,22 +666,105 @@ async function main() {
   }
   if (command === 'output') {
     let lastDisplayedId = null;
+    let initialized = false;
+    const seenRunIds = new Set();
+    const observedRunIds = new Set();
+    const pendingRunIds = new Set();
+    let coverageWarned = false;
+    let unreadableRunId = null;
+    let unreadablePolls = 0;
+    let warnedUnreadableRunId = null;
+    let unavailableEvidenceRunId = null;
+    // Retained command output is evidence, not trusted terminal instructions.
+    const inert = (value) => String(value)
+      .replaceAll('\r\n', '\n').replaceAll('\r', '\\r').replaceAll('\x1b', '␛')
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g,
+        (character) => '\\x' + character.charCodeAt(0).toString(16).padStart(2, '0'));
     const showLatest = () => {
-      const runs = listRuns(project, 30);
-      for (const run of runs) {
-        if (run.status === 'running' || run.status === 'pending') continue;
+      let limit = 30;
+      let runs = listRuns(project, limit, { reportUnreadable: true });
+      if (options.follow) {
+        const coversPrior = () => {
+          if (!initialized) return !runs.some((run) => run.status === 'running' || run.status === 'pending');
+          const ids = new Set(runs.map((run) => run.id));
+          // The project state's lastRunId may be pinned ahead of newer directory IDs.
+          const pinned = runs.length > 1 && runs[0].id < runs[1].id ? runs[0].id : null;
+          return runs.some((run) => observedRunIds.has(run.id) && run.id !== pinned)
+            && [...pendingRunIds].every((id) => ids.has(id));
+        };
+        while (runs.length === limit && !coversPrior() && limit < 1600) {
+          limit = Math.min(limit * 2, 1600);
+          runs = listRuns(project, limit, { reportUnreadable: true });
+        }
+        if (runs.length === limit && !coversPrior() && !coverageWarned) {
+          process.stdout.write('OUTPUT COVERAGE UNCERTAIN: retained history exceeds 1600 records; inspect hud history\n');
+          coverageWarned = true;
+        }
+        for (const run of runs) {
+          observedRunIds.add(run.id);
+          if (run.status === 'running' || run.status === 'pending' || run.status === 'unreadable') {
+            pendingRunIds.add(run.id);
+          } else pendingRunIds.delete(run.id);
+        }
+      }
+      const completed = runs.filter((run) => run.status !== 'running' && run.status !== 'pending');
+      // Initial inspection shows only the latest historical completion.
+      // Subsequent polls emit every newly completed run, oldest first.
+      let candidates = initialized
+        ? completed.filter((run) => !seenRunIds.has(run.id))
+        : completed.slice(0, 1);
+      if (initialized) {
+        // Keep an unreadable newest receipt ahead of older valid evidence.
+        if (candidates[0]?.status === 'unreadable') candidates = candidates.slice(0, 1);
+        else candidates.sort((left, right) =>
+          (Date.parse(right.endedAt || right.startedAt || '') || 0) -
+          (Date.parse(left.endedAt || left.startedAt || '') || 0) ||
+          right.id.localeCompare(left.id));
+      }
+      if (!initialized) {
+        initialized = true;
+        for (const run of completed.slice(1)) seenRunIds.add(run.id);
+      }
+      const ready = [];
+      for (const run of candidates) {
+        if (run.status === 'unreadable') {
+          unreadablePolls = unreadableRunId === run.id ? unreadablePolls + 1 : 1;
+          unreadableRunId = run.id;
+          if ((!options.follow || unreadablePolls >= 2) && warnedUnreadableRunId !== run.id) {
+            process.stdout.write('OUTPUT EVIDENCE UNAVAILABLE run:' + run.id + ' (unreadable run metadata)\n');
+            warnedUnreadableRunId = run.id;
+          }
+          break;
+        }
+        if (unreadableRunId === run.id) {
+          unreadableRunId = null;
+          unreadablePolls = 0;
+          warnedUnreadableRunId = null;
+        }
+        const integrity = classifyRunEvidenceIntegrity(project, run);
+        if (integrity === 'MISSING' || integrity === 'CORRUPT') {
+          if (unavailableEvidenceRunId !== run.id) {
+            unavailableEvidenceRunId = run.id;
+            process.stdout.write(`OUTPUT EVIDENCE UNAVAILABLE run:${run.id} (${integrity.toLowerCase()} retained stream)\n`);
+          }
+          break;
+        }
+        unavailableEvidenceRunId = null;
         const projection = projectRunEvidence(project, run.id, { mode: 'raw' });
         const content = projection.streams
           .map((stream) => stream.content || '')
           .filter((value) => value.trim().length > 0)
           .join('\n');
-        if (!content) continue;
+        const visible = content ? inert(content) : `(no output) run:${run.id} status:${run.status.toUpperCase()} integrity:${integrity}`;
+        ready.push({ run, visible });
+        seenRunIds.add(run.id);
+      }
+      for (const { run, visible } of ready.reverse()) {
         if (run.id !== lastDisplayedId) {
           lastDisplayedId = run.id;
           process.stdout.write((lastDisplayedId && options.follow ? '\n' : '') +
-            content + (content.endsWith('\n') ? '' : '\n'));
+            visible + (visible.endsWith('\n') ? '' : '\n'));
         }
-        return;
       }
     };
     showLatest();

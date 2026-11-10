@@ -1,0 +1,37 @@
+name: M0 real-core stale-reuse falsifier
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m0-real-core-reuse-falsifier.yml'
+      - 'experiments/m0-real-core-reuse-falsifier.mjs'
+      - 'experiments/m0-runtime-bound-reuse.mjs'
+      - 'experiments/m0-dirty-content-dependency.mjs'
+permissions:
+  contents: read
+jobs:
+  isolated-provenance-falsifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out canonical INDRO
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out pinned historical feature source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 1b2d3141aafdf53fdec881ef088057ac44f16c23
+          path: feature-source
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Execute real-core positive and negative controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git hash-object feature-source/packages/commandhud/evidence-reuse.mjs)"
+          test "$actual" = "8dfc0c07722037d44b67782ee2a60da44cb31e76"
+          cp feature-source/packages/commandhud/evidence-reuse.mjs packages/commandhud/evidence-reuse.mjs
+          node experiments/m0-real-core-reuse-falsifier.mjs
+          node experiments/m0-runtime-bound-reuse.mjs
+          node experiments/m0-dirty-content-dependency.mjs
