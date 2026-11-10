@@ -71,7 +71,7 @@ test("real WebSocket and ConPTY preserve shell editing and recovery", { timeout:
   };
 
   socket.send(JSON.stringify({ type: "resize", cols: 120, rows: 35 }));
-  const promptVisible = value => /(?:> |❯ )$/.test(value);
+  const promptVisible = value => /(?:> |❯ )$/.test(value.replace(/(?:\x1b\[\?1h|\x1b=|\x1b\[6n)+$/g, ""));
   await waitFor(promptVisible);
   assert.match(output, /\x1b\]777;[A-Za-z0-9+/=]+\x07/);
   const contextMatch = output.match(/\x1b\]777;([A-Za-z0-9+/=]+)\x07/);
