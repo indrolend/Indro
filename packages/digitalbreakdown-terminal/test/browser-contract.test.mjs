@@ -32,6 +32,11 @@ test("terminal uses a true monospace stack and responsive chrome", () => {
   assert.match(html, /text-overflow: ellipsis/);
 });
 
+test("persistent terminal input uses the active trace session transport", () => {
+  assert.match(client, /traceSocket\?\.readyState === WebSocket\.OPEN/);
+  assert.doesNotMatch(client, /if \(socket\.readyState === WebSocket\.OPEN/);
+});
+
 test("OSC shell metadata cannot unconditionally overwrite transport execution state", () => {
   assert.match(client, /if \(!decoded \|\| !connected\) return false;/);
   assert.match(client, /executionState = "reported ready";/);

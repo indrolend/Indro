@@ -365,7 +365,7 @@ function connectSignal(sessionId) {
 }
 
 terminal.onData(data => {
-	if (socket.readyState === WebSocket.OPEN && data.includes("\r")) {
+	if (traceSocket?.readyState === WebSocket.OPEN && data.includes("\r")) {
 		executionState = "running";
 		renderContext();
 	}
