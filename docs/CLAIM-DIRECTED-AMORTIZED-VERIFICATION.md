@@ -284,3 +284,174 @@ full-bundle validation, and test-impact/provenance baselines on multiple unseen
 workflows, including false-reuse adversaries. Do not add a database before this
 selection workload demonstrates that the existing append-only evidence scan is
 the limiting cost.
+
+### Objective-recovery cost result
+
+A November 2026 bounded-history experiment separated candidate selection from
+authority and history acquisition on DATA. Sorting three in-memory workflow
+candidates measured 0.0001 ms median over 100,000 trials. Reading and inspecting
+all 228 retained run records cost 84.89 ms median; the qualifying Godot record
+was first and the native record was tenth. Reading the newest ten records cost
+4.79 ms median, a 94.4% reduction, while selecting the same workflows.
+
+INDRO now reads 10 records first and expands to 100 and the existing 1,000-record
+bound only when the recognized workflow family remains unresolved. The fallback
+preserves historical recovery rather than silently treating a bounded miss as
+absence. CommandHUD passed 172/172 tests; focused INDRO tests passed 34/35 with
+one platform skip. The complete INDRO Node suite passed 39 tests with one
+platform skip, and all 12 Python self-tests passed after renewing the package
+manifest's changed-file hashes.
+
+This result falsifies candidate sorting as the dominant current bottleneck.
+Current repository authority acquisition measured roughly 153 ms median in the
+same investigation, and a real warm native objective spent 21.7 seconds in
+current-state/native applicability work despite reusing its 57-test receipt.
+The next experiment should decompose native snapshot, filesystem hashing,
+toolchain identity, CMake build, and receipt validation before changing the
+selector or adding an index.
+
+### Native applicability fast-path result
+
+That decomposition measured a warm `snapshotNative` at 1.16–1.23 seconds, CTest
+plan discovery at 56–60 ms, and the unconditional no-op CMake build at
+4.12–4.26 seconds. Five equivalent warm CLI objectives measured a 5.99-second
+median before intervention; `build_ms` was consistently about 4.15 seconds.
+
+Native reuse now constructs the complete current snapshot before building. It
+skips CMake only when runtime closure is declared, the snapshot is complete,
+and its source, CMake cache, test plan, executable, compiler, tool, runtime,
+verifier, Node, and environment fingerprint exactly matches the newest
+integrity-validated reusable receipt. Every mismatch retains the build-and-test
+path. Changing the verifier correctly forced one 57-test execution; five later
+equivalent objectives measured a 1.299-second median with `build_ms=0`, a 78.3%
+end-to-end reduction from the measured warm median.
+
+The remaining warm floor is snapshot/current-state acquisition, not workflow
+selection or CMake. Any further optimization must preserve detection of source,
+binary, toolchain, runtime, environment, and receipt mutations.
+
+Tool resolution then exposed five redundant child processes in that snapshot.
+Three separate `where.exe` calls cost about 266 ms even though all three tools
+can be resolved in one invocation; `cmake --version` and `ctest --version` cost
+another 75 ms while conveying less identity than the already retained exact
+binary paths and SHA-256 hashes. INDRO now resolves all tools together and no
+longer launches the duplicate version probes. Seven warm objectives measured a
+1.132-second median: 12.8% below the first fast path and 81.1% below the original
+5.994-second warm baseline. Exact tool-byte mutation remains in the adversarial
+contract.
+
+The combined Windows locator still consumed about 234 ms because `where.exe`
+searched each pattern sequentially. INDRO now applies the operating system's
+declared executable search inputs directly: current directory plus `PATH` and
+`PATHEXT` on Windows, or executable entries from `PATH` elsewhere. It still
+canonicalizes and hashes the selected files, and the search environment remains
+inside the snapshot fingerprint. Seven warm objectives then measured a
+0.921-second median, 18.7% below the preceding stage and 84.6% below the original
+baseline. A metadata-only tool cache was rejected because it would weaken
+same-size content-mutation detection.
+
+### Existing proof-planner convergence
+
+Archaeology found that `indro proof-plan` already implemented content-addressed,
+dependency-aware proof deltas, but its graph was fixed to an abstract software
+pipeline. It was not connected to the measured Godot and native claim
+fragments. The smallest intervention made the existing planner accept an
+optional bounded JSON graph through `--graph`; its built-in graph and command
+remain compatible. The planner still only plans: domain adapters retain
+authority for state acquisition, validation, and execution.
+
+A 30,000-plan in-process trial over bounded Godot, native, and repository-state
+graphs measured 0.0233 ms median and 0.0246 ms p95 for warm proof-delta
+calculation. A video-only identity change selected `continuity` and its parent
+claim while reusing behavior and frame claims. This meets the small-graph
+selection latency target, but it does not prove automatic objective-to-claim
+translation, validator execution, dependency completeness, or cross-domain
+correctness. Those connections remain the research boundary.
+
+### Third workflow: repository state
+
+The existing convergence experiment's reusable repository-HEAD command was
+promoted through the shared objective resolver as `indro/repository/state`, not
+as a new execution subsystem. The adapter first acquires live porcelain-v2 Git
+state, binds the reusable descriptor to the exact output hash and repository
+identity, and independently checks retained stdout. A temporary-repository test
+proved cold execution, unchanged reuse, and invalidation after a tracked-file
+mutation.
+
+On the current dirty INDRO worktree, two complete objective invocations produced
+one cold evidence record (`20261110025429-caea`) and then reused the same record.
+The warm adapter path measured 45.2 ms; objective selection/history acquisition
+was 166.1 ms and complete warm CLI resolution was 258.2 ms. This establishes a
+third real workflow family and safe bounded invalidation, while falsifying the
+100 ms full-CLI target on the current implementation. The next measured
+bottleneck is shared repository/project and history acquisition, not proof-delta
+calculation or repository validation.
+
+Passing the already-resolved project authority from selection into the adapter
+removed one duplicate project-resolution operation. Seven subsequent warm CLI
+trials measured 164.2 ms median selection, 107.6 ms execution wrapper, and 45.5
+ms retained-evidence validation. The measured combined median was 271.8 ms,
+still above the 100 ms stretch target. This leaves shared project authority and
+history parsing as the next justified optimization surface.
+
+### Objective-directed Godot proof fragments
+
+Godot reuse now maps explicit objective language to four existing evidence
+properties: behavior, visual capture, artifact integrity, and video continuity.
+The unqualified gameplay-replay objective preserves the previous behavior +
+visual + artifact contract. A behavior-only objective parses protocol state,
+assertions, termination, and exit status without inspecting PNG bytes. A
+property-local negative control damaged a PNG: behavior proof remained valid
+while visual proof rejected `CAPTURE_FILE_INVALID`.
+
+The first real behavior objective correctly invalidated the descriptor after
+the validator source changed, executed one replay, and retained evidence
+`20261110030023-a3ad`. The next equivalent objective reused it; selected domain
+validation measured 94.2 ms. The full objective subsequently reused the same
+evidence while running behavior, visual, manifest, and ZIP checks.
+
+A video-continuity objective found that the historical invocation lacked video.
+The resolver upgraded the recovered replay options to collect the missing proof
+instead of accepting incomplete evidence or returning no workflow. Cold
+execution retained evidence `20261110030113-e839`; the warm trial reused it and
+ran behavior plus `ffprobe` continuity validation in 146.2 ms. This demonstrates
+objective → missing property → minimum existing execution change → retained
+property-qualified reuse. It does not establish semantic visual understanding
+or dependency-complete automatic claim inference.
+
+### Objective-directed native proof fragments
+
+The native adapter now distinguishes explicit provenance and runtime-closure
+claims from behavioral test claims. Provenance uses the existing complete
+`snapshotNative` authority and does not launch CMake or CTest, create a receipt,
+or imply that tests passed. The unqualified native-test objective retains the
+established provenance + behavior + runtime-closure contract.
+
+On DATA, `Verify native provenance` validated the current 57-test snapshot in
+670.5 ms with `build_ms=0`, `test_ms=0`, and no receipt. Because the verifier
+source had changed, the next full native objective rejected the previous
+behavior receipt, rebuilt, and executed all 57 tests in 17.98 seconds. The
+following equivalent objective reused receipt
+`2026-11-10T03-06-43.006Z-d7dcb256-7726-4158-869c-af5f686bf87d.json`
+in 663.4 ms. This preserves the distinction between current provenance and
+current behavioral evidence while avoiding an unnecessary test process for the
+narrower claim.
+
+### Bounded convergence result
+
+The three exercised workflow families now share the same public objective
+funnel while preserving domain-specific authority:
+
+- Godot selects behavior, visual, artifact-integrity, and continuity fragments;
+  missing continuity upgrades the recovered invocation and is then reusable.
+- Native selects current provenance independently from behavioral CTest proof;
+  the full objective still fails closed on changed verifier inputs.
+- Repository state binds retained command evidence to a freshly acquired exact
+  Git-status fingerprint and invalidates on worktree change.
+
+Warm compact receipts contained 19 whitespace-delimited fields for Godot, 16
+for native provenance, and 15 for repository state. Evidence paths retain
+progressive access to detailed artifacts. The final audit intentionally changed
+no product source or saves; the repository-state objective observed the ongoing
+INDRO worktree change and invalidated its prior evidence, demonstrating the
+live-state boundary rather than masking it.

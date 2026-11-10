@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +31,17 @@ test('Indro proof planner produces a cold verified plan', () => {
   assert.equal(result.status, 0, result.stderr);
   const plan = JSON.parse(result.stdout);
   assert.deepEqual(plan.run, ['parse', 'lint', 'build', 'test', 'smoke', 'verified']);
+});
+
+test('Indro proof planner accepts a bounded domain claim graph', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'indro-proof-'));
+  const graph = path.join(root, 'graph.json');
+  const state = path.join(root, 'state.json');
+  writeFileSync(graph, JSON.stringify({ behavior: { inputs: ['observations'] }, frame: { inputs: ['capture'] }, playthrough: { deps: ['behavior', 'frame'] } }));
+  writeFileSync(state, JSON.stringify({ observations: 'sha256:o', capture: 'sha256:p' }));
+  const result = spawnSync(process.execPath, [cli, 'proof-plan', 'playthrough', '--state', state, '--graph', graph], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).run, ['behavior', 'frame', 'playthrough']);
 });
 
 test('canonical Indro routes work and UAI fixture commands and rejects unsupported operations', () => {

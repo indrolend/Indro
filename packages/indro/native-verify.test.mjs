@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { snapshotNative, verifyNative, changedExecutablePaths, discoverNativeVerificationWorkflow, nativeOptionsFromArgv } from './native-verify.mjs';
+import { snapshotNative, verifyNative, verifyNativeClaims, changedExecutablePaths, discoverNativeVerificationWorkflow, nativeOptionsFromArgv, nativeVerificationClaims } from './native-verify.mjs';
 
 function fixture() {
   const parent = mkdtempSync(join(tmpdir(), 'indro-native-proof-'));
@@ -29,8 +29,24 @@ test('native objective candidate recovers only a successful reusable historical 
   const candidate = discoverNativeVerificationWorkflow('Verify the current native test suite.', { projectRoot: root, records: [record] });
   assert.equal(candidate.id, 'indro/native/verify');
   assert.equal(candidate.evidenceId, record.id);
+  assert.deepEqual(candidate.claims, ['provenance', 'behavior', 'runtime_closure']);
+  assert.deepEqual(nativeVerificationClaims('Verify native provenance.'), ['provenance']);
+  assert.deepEqual(nativeVerificationClaims('Verify native runtime closure.'), ['provenance', 'runtime_closure']);
   assert.equal(discoverNativeVerificationWorkflow('Verify the current native test suite.', { projectRoot: root, records: [{ ...record, status: 'fail' }] }), null);
   assert.equal(discoverNativeVerificationWorkflow('Verify the current native test suite.', { projectRoot: root, records: [{ ...record, operation: { argv: argv.filter(value => value !== '--declare-runtime-closure') } }] }), null);
+});
+
+test('provenance-only native objective validates current snapshot without executing tests', () => {
+  const f = fixture();
+  try {
+    execFileSync('cmake', ['--build', f.build, '--config', 'Release'], { stdio: 'pipe' });
+    const result = verifyNativeClaims(f, ['provenance']);
+    assert.equal(result.outcome, 'VALIDATED');
+    assert.equal(result.receipt, null);
+    assert.equal(result.buildMs, 0);
+    assert.deepEqual(result.checkedClaims, ['provenance']);
+    assert.equal(readdirSync(f.parent).includes('evidence'), false);
+  } finally { rmSync(f.parent, { recursive: true, force: true }); }
 });
 
 test('real CTest execution and unchanged reuse', () => {
@@ -43,6 +59,7 @@ test('real CTest execution and unchanged reuse', () => {
     const changed = Object.keys(current.inputs).filter(key => JSON.stringify(recorded.inputs[key]) !== JSON.stringify(current.inputs[key]));
     assert.equal(second.outcome, recorded.fingerprint === current.fingerprint ? 'REUSED' : 'EXECUTED', JSON.stringify({ changed })); assert.equal(second.testCount, 1);
     assert.equal(second.reuseDecision, second.outcome === 'REUSED' ? 'CURRENT' : 'INPUT_CHANGED');
+    if (second.outcome === 'REUSED') assert.equal(second.buildMs, 0);
     assert.deepEqual(second.changedInputs.sort(), changed.sort());
     assert.ok(second.elapsedMs >= second.buildMs);
   } finally { rmSync(f.parent, { recursive: true, force: true }); }

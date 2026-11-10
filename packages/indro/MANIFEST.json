@@ -107,13 +107,13 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 3197,
-      "sha256": "efde5c79085ec67740865abf237017d3b69d83c70446e9cd9554e22804d2d32e"
+      "bytes": 3279,
+      "sha256": "0b0d23bebde4f9f5bce723dad8f67c4a5176639060d0f911112f1caaa83d7ca1"
     },
     {
       "path": "cli.test.mjs",
-      "bytes": 2359,
-      "sha256": "55e9dd187de8af6bc4d199f8d543df77894095b4831194b63b58e8479d048416"
+      "bytes": 3215,
+      "sha256": "32f647c8c19ad0f2fbef7df0d5be58d7ff6dafe0ce8c9d7c6a5726043fa0b864"
     },
     {
       "path": "doctor.ps1",
@@ -127,13 +127,13 @@
     },
     {
       "path": "godot-replay.mjs",
-      "bytes": 25379,
-      "sha256": "053c70ffcb4db9e65ea0a718216a736ee66d9b195e04b0972c9f655dfd05f038"
+      "bytes": 27593,
+      "sha256": "ff46ca61ae5b054d36b7bdee749faa3c43359f185f4afbb709fca493eccef65a"
     },
     {
       "path": "godot-replay.test.mjs",
-      "bytes": 6248,
-      "sha256": "d83a0c6455733a7990ae6831c1ed490c7abb13e52afc46b1e26cd50344897580"
+      "bytes": 9823,
+      "sha256": "1c32d18a1e2981182a4651b1eaa3ab3443dfdd989b82b0247ebd2df5eda87a56"
     },
     {
       "path": "examples/digital-breakdown-convergence.indro",
@@ -172,8 +172,8 @@
     },
     {
       "path": "indro_proof.py",
-      "bytes": 4277,
-      "sha256": "f563815923ea4a9463da389fc641321c78297483f1bb8e3b915576963348585a"
+      "bytes": 5389,
+      "sha256": "3472329a25017671fd4be9ccc1a2a523559b1fd3bf2c5c4ddd71dafda77778b6"
     },
     {
       "path": "Indro.psm1",
@@ -197,18 +197,18 @@
     },
     {
       "path": "native-verify.mjs",
-      "bytes": 16146,
-      "sha256": "77ea1d0f76062791514175a28d2daeec3b4ab8adad43701d715e483152910664"
+      "bytes": 19422,
+      "sha256": "4e1a07cfdcc2b7ba2d7c12f10252312b57695a4bf7a8dc6eba68720a668f9b9d"
     },
     {
       "path": "native-verify.test.mjs",
-      "bytes": 16138,
-      "sha256": "2182bc585b37a0bf9230a6e0d6d94090136ef7ebfa4c542c25f9facb26be0a9d"
+      "bytes": 17151,
+      "sha256": "5545e944d1855660babbc9803bf89d67db411e924a1fa45e9cdc1c6567fac166"
     },
     {
       "path": "objective-resolution.mjs",
-      "bytes": 2146,
-      "sha256": "43082951cf8ab8e40b2a1d68fa76430cd454d44b653a09ebe52da9d23587c4e4"
+      "bytes": 4127,
+      "sha256": "cf3532270c361ba77127569a330e40eba596bca753939ae1e0957d601c6ab0bb"
     },
     {
       "path": "package.json",
@@ -219,6 +219,16 @@
       "path": "README.md",
       "bytes": 6854,
       "sha256": "001f04c9420932d2ab529068e4d492d2de75ad0a131d0881b2bdd393f52bcd18"
+    },
+    {
+      "path": "repository-state.mjs",
+      "bytes": 4208,
+      "sha256": "eeb070603f8277430803244c2f83fb02bc49c7fd25ca2ddd48093c61ff3d3983"
+    },
+    {
+      "path": "repository-state.test.mjs",
+      "bytes": 1675,
+      "sha256": "061065d45c33e935f7b534053f32ec17f39e7ea095445c96e3afacb22eebc353"
     },
     {
       "path": "runtime/dbdev.ps1",
@@ -347,8 +357,8 @@
     },
     {
       "path": "tools/test-proof.py",
-      "bytes": 1400,
-      "sha256": "ae58624ae225be47852a8b1ec7574cd6793ae724783f2191b3b6303fc68163fb"
+      "bytes": 2051,
+      "sha256": "65f879542aa956d8a76bbaff86e40717a7d214b4164d95ccbe8c818810438d70"
     },
     {
       "path": "tools/test-safety.py",

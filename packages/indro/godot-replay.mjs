@@ -99,7 +99,7 @@ export function validateReplay({ stdout, stderr = '', exitCode, captureDir, comm
   if (requireCapture && captures.length !== observations.length) errors.push('CAPTURE_COUNT_MISMATCH');
   for (const [index, row] of observations.entries()) {
     if (requireCapture && (row.frame_capture !== '1' || !captures[index])) errors.push('CAPTURE_RECORD_INVALID');
-    if (captures[index]) {
+    if (requireCapture && captures[index]) {
       const file = path.join(captureDir, captures[index]);
       const bytes = readFileSync(file);
       if (bytes.length < 24 || bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') errors.push('CAPTURE_FILE_INVALID');
@@ -166,25 +166,54 @@ function retainedReplayResult(record) {
   return JSON.parse(line.slice(RESULT_PREFIX.length));
 }
 
-function validateReplayArtifacts(record, commandsText) {
+export function godotReplayClaims(objective) {
+  const words = new Set(String(objective || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+  const claims = ['behavior'];
+  const explicit = words.has('behavior') || words.has('visual') || words.has('appearance') || words.has('frame')
+    || words.has('screenshot') || words.has('capture') || words.has('video') || words.has('continuity')
+    || words.has('artifact') || words.has('integrity') || words.has('zip') || words.has('evidence');
+  if (!explicit || ['visual', 'appearance', 'frame', 'screenshot', 'capture'].some((word) => words.has(word))) claims.push('visual');
+  if (!explicit || ['artifact', 'integrity', 'zip', 'evidence'].some((word) => words.has(word))) claims.push('artifacts');
+  if (words.has('video') || words.has('continuity')) claims.push('continuity');
+  return claims;
+}
+
+export function validateReplayArtifacts(record, commandsText, claims = ['behavior', 'visual', 'artifacts']) {
   const reasons = [];
   let result = null;
   let validation = null;
+  const selected = new Set(claims);
+  const checked = [];
   try {
     result = retainedReplayResult(record);
     const directory = path.resolve(result.directory);
-    const zipPath = path.resolve(result.zipPath);
-    reasons.push(...verifyManifest(directory).reasons);
-    if (!existsSync(zipPath) || sha256File(zipPath) !== result.zipSha256) reasons.push('CORRUPT_EVIDENCE_ZIP');
-    const exitCode = Number(readFileSync(path.join(directory, 'exit-code.txt'), 'utf8').trim());
-    validation = validateReplay({
-      stdout: readFileSync(path.join(directory, 'stdout.log'), 'utf8'),
-      stderr: readFileSync(path.join(directory, 'stderr.log'), 'utf8'),
-      exitCode, captureDir: path.join(directory, 'captures'), commandsText, requireCapture: true,
-    });
-    if (!validation.valid) reasons.push(...validation.errors.map((reason) => `REPLAY_${reason}`));
+    if (selected.has('behavior') || selected.has('visual')) {
+      checked.push('behavior');
+      if (selected.has('visual')) checked.push('visual');
+      const exitCode = Number(readFileSync(path.join(directory, 'exit-code.txt'), 'utf8').trim());
+      validation = validateReplay({
+        stdout: readFileSync(path.join(directory, 'stdout.log'), 'utf8'),
+        stderr: readFileSync(path.join(directory, 'stderr.log'), 'utf8'),
+        exitCode, captureDir: path.join(directory, 'captures'), commandsText, requireCapture: selected.has('visual'),
+      });
+      if (!validation.valid) reasons.push(...validation.errors.map((reason) => `REPLAY_${reason}`));
+    }
+    if (selected.has('artifacts')) {
+      checked.push('artifacts');
+      const zipPath = path.resolve(result.zipPath);
+      reasons.push(...verifyManifest(directory).reasons);
+      if (!existsSync(zipPath) || sha256File(zipPath) !== result.zipSha256) reasons.push('CORRUPT_EVIDENCE_ZIP');
+    }
+    if (selected.has('continuity')) {
+      checked.push('continuity');
+      if (!result.video || !existsSync(result.video)) reasons.push('MISSING_REPLAY_VIDEO');
+      else {
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', result.video], { encoding: 'utf8', windowsHide: true });
+        if (probe.error || probe.status !== 0 || !(Number(probe.stdout.trim()) > 0)) reasons.push('INVALID_REPLAY_VIDEO_CONTINUITY');
+      }
+    }
   } catch { reasons.push('INVALID_REPLAY_ARTIFACTS'); }
-  return { valid: reasons.length === 0, reasons: [...new Set(reasons)], result, validation };
+  return { valid: reasons.length === 0, reasons: [...new Set(reasons)], result, validation, claims: [...selected], checked };
 }
 
 export function requireConfirmedClipboardResult(result) {
@@ -282,6 +311,7 @@ export async function replay(options, dependencies = {}) {
   if (!commandsText.trim()) throw new Error('Command file is empty.');
   const runtime = { path: godot, bytes: statSync(godot).size, sha256: sha256File(godot), version: command(godot, ['--version'], sourceRoot) };
   const payload = { options, dependencies: { project, godot, evidenceRoot, timeout: dependencies.timeout } };
+  const requiredClaims = dependencies.requiredClaims || ['behavior', 'visual', 'artifacts'];
   const descriptor = {
     identity: 'indro/godot/replay',
     argv: [process.execPath, fileURLToPath(import.meta.url), '--execute-replay-worker', Buffer.from(JSON.stringify(payload)).toString('base64url')],
@@ -295,12 +325,12 @@ export async function replay(options, dependencies = {}) {
   const hudProject = await resolveProject({ root: sourceRoot });
   const reusable = await executeReusableVerification(hudProject, descriptor, {
     requiredOutput: 'stdout', objective: 'Verify Godot replay', origin: 'core-api',
-    validateEvidence: async ({ record }) => validateReplayArtifacts(record, commandsText),
+    validateEvidence: async ({ record }) => validateReplayArtifacts(record, commandsText, requiredClaims),
   });
   if (!reusable.validation.valid) throw new Error(`Godot replay reusable evidence failed: ${reusable.validation.reasons.join(', ')}`);
   const retained = reusable.validation.domain?.result || retainedReplayResult(reusable.record);
-  const validation = reusable.validation.domain?.validation || validateReplayArtifacts(reusable.record, commandsText).validation;
-  return { ...retained, validation, metadata: JSON.parse(readFileSync(path.join(retained.directory, 'metadata.json'), 'utf8')), durationMs: reusable.timing.totalNs / 1e6, executed: reusable.executed, skipped: reusable.skipped, cacheDecision: reusable.executed ? (reusable.rejected ? 'rejected' : 'cold') : 'reused', cacheRejection: reusable.rejected?.reasons || [] };
+  const validation = reusable.validation.domain?.validation || validateReplayArtifacts(reusable.record, commandsText, requiredClaims).validation;
+  return { ...retained, validation, claims: requiredClaims, checkedClaims: reusable.validation.domain?.checked || requiredClaims, metadata: JSON.parse(readFileSync(path.join(retained.directory, 'metadata.json'), 'utf8')), durationMs: reusable.timing.totalNs / 1e6, executed: reusable.executed, skipped: reusable.skipped, cacheDecision: reusable.executed ? (reusable.rejected ? 'rejected' : 'cold') : 'reused', cacheRejection: reusable.rejected?.reasons || [] };
 }
 
 export function recognizesGodotReplayObjective(objective) {
@@ -345,16 +375,18 @@ export async function discoverGodotReplayWorkflow(objective, dependencies = {}) 
   const historical = records.find((record) => record?.status === 'pass' && record?.exitCode === 0 && retainedReplayOptions(record));
   if (!historical) return null;
   const options = retainedReplayOptions(historical);
+  const claims = godotReplayClaims(objective);
+  if (claims.includes('continuity') && !options.video) options.video = true;
   return {
     id: 'indro/godot/replay', evidenceId: historical.id, confidence: 100,
     expectedCostMs: Number.isFinite(historical.durationMs) ? historical.durationMs : Number.POSITIVE_INFINITY,
-    execute: () => (dependencies.replay || replay)(options, dependencies),
+    execute: () => (dependencies.replay || replay)(options, { ...dependencies, requiredClaims: claims }),
     render: printReplayResult,
   };
 }
 
 export function printReplayResult(result) {
-  console.log(`INDRO_GODOT_REPLAY PASS observations=${result.validation.observations.length} assertions=${result.validation.assertions.length} captures=${result.validation.captures.length} duration_ms=${result.durationMs} executed=${result.executed ? 1 : 0} cache=${result.cacheDecision}`);
+  console.log(`INDRO_GODOT_REPLAY PASS claims=${(result.claims || []).join(',')} observations=${result.validation.observations.length} assertions=${result.validation.assertions.length} captures=${result.validation.captures.length} duration_ms=${result.durationMs} executed=${result.executed ? 1 : 0} cache=${result.cacheDecision}`);
   if (result.cacheRejection?.length) console.log(`CACHE_REJECTION=${result.cacheRejection.join(',')}`);
   console.log(`EVIDENCE=${result.directory}`);
   console.log(`ZIP=${result.zipPath}`);

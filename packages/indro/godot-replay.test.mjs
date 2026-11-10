@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { recognizesGodotReplayObjective, requireConfirmedClipboardResult, retainedReplayOptions, runGodotReplayObjective, resolveExecutable, validateReplay } from './godot-replay.mjs';
+import { godotReplayClaims, recognizesGodotReplayObjective, requireConfirmedClipboardResult, retainedReplayOptions, runGodotReplayObjective, resolveExecutable, validateReplay, validateReplayArtifacts } from './godot-replay.mjs';
 import { resolveObjective, selectWorkflowCandidate } from './objective-resolution.mjs';
 
 const png = Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001', 'hex');
@@ -35,6 +35,25 @@ test('rejects malformed command protocol result', () => { const value = fixture(
 test('rejects absent EOF', () => { const value = fixture(); value.stdout = value.stdout.replace('AGENT_PLAYTEST_EOF frame=1', ''); assert.match(validateReplay(value).errors.join(), /MISSING_SUCCESSFUL_TERMINATION/); });
 test('rejects a missing executable explicitly', () => assert.throws(() => resolveExecutable('godot_console.exe', path.join(os.tmpdir(), 'definitely-missing-godot.exe')), /does not exist/));
 test('rejects clipboard failure without confirmation', () => assert.throws(() => requireConfirmedClipboardResult({ status: 1, stdout: '', stderr: 'clipboard unavailable' }), /Clipboard transfer failed/));
+test('selects only objective-required Godot proof claims', () => {
+  assert.deepEqual(godotReplayClaims('Verify the current Godot gameplay replay.'), ['behavior', 'visual', 'artifacts']);
+  assert.deepEqual(godotReplayClaims('Verify Godot replay behavior.'), ['behavior']);
+  assert.deepEqual(godotReplayClaims('Check Godot replay visual appearance.'), ['behavior', 'visual']);
+  assert.deepEqual(godotReplayClaims('Verify Godot replay video continuity.'), ['behavior', 'continuity']);
+});
+test('behavior-only reuse skips damaged visual evidence while visual proof rejects it', () => {
+  const value = fixture();
+  writeFileSync(path.join(value.captureDir, 'frame-001-tick-000000.png'), 'tampered');
+  writeFileSync(path.join(path.dirname(value.captureDir), 'stdout.log'), value.stdout);
+  writeFileSync(path.join(path.dirname(value.captureDir), 'stderr.log'), value.stderr);
+  writeFileSync(path.join(path.dirname(value.captureDir), 'exit-code.txt'), `${value.exitCode}\n`);
+  const resultPath = path.join(path.dirname(value.captureDir), 'retained.txt');
+  writeFileSync(resultPath, `INDRO_GODOT_REPLAY_RESULT=${JSON.stringify({ directory: path.dirname(value.captureDir), zipPath: 'unused', zipSha256: 'unused', video: null })}\n`);
+  const record = { stdoutPath: resultPath };
+  assert.equal(validateReplayArtifacts(record, commands, ['behavior']).valid, true);
+  assert.match(validateReplayArtifacts(record, commands, ['behavior', 'visual']).reasons.join(), /CAPTURE_FILE_INVALID/);
+  assert.match(validateReplayArtifacts(record, commands, ['behavior', 'continuity']).reasons.join(), /MISSING_REPLAY_VIDEO/);
+});
 
 test('resolves a Godot replay objective from retained workflow identity', async () => {
   const options = { scenario: 'smoke', commands: null, capture: true, clipboard: false, clipboardImage: false, video: false };
@@ -66,6 +85,20 @@ test('objective resolution fails closed without a retained replay workflow', asy
   await assert.rejects(() => runGodotReplayObjective('build everything', { project: process.cwd() }), /No verified workflow matches/);
 });
 
+test('video objective upgrades a retained replay workflow to collect missing continuity proof', async () => {
+  const options = { scenario: 'smoke', commands: null, capture: true, clipboard: false, clipboardImage: false, video: false };
+  const payload = Buffer.from(JSON.stringify({ options, dependencies: {} })).toString('base64url');
+  const record = { id: 'replay-without-video', status: 'pass', exitCode: 0, operation: { reusableEvidence: { descriptor: { identity: 'indro/godot/replay', argv: ['node', 'godot-replay.mjs', '--execute-replay-worker', payload] } } } };
+  let received = null;
+  const resolution = await resolveObjective('Verify Godot replay video continuity.', {
+    resolveProject: async () => ({ root: process.cwd() }), records: [record],
+    replay: async (value, dependencies) => { received = { value, claims: dependencies.requiredClaims }; return { validation: { observations: [], assertions: [], captures: [] } }; },
+  });
+  assert.equal(resolution.workflow, 'indro/godot/replay');
+  assert.equal(received.value.video, true);
+  assert.deepEqual(received.claims, ['behavior', 'continuity']);
+});
+
 test('shared objective selection rejects absent candidates and ranks eligible cost', async () => {
   const slow = { id: 'slow', evidenceId: 'a', confidence: 100, expectedCostMs: 500, execute: async () => 'slow' };
   const fast = { id: 'fast', evidenceId: 'b', confidence: 100, expectedCostMs: 50, execute: async () => 'fast' };
@@ -74,4 +107,19 @@ test('shared objective selection rejects absent candidates and ranks eligible co
   assert.equal(resolution.workflow, 'fast');
   assert.equal(resolution.result, 'fast');
   await assert.rejects(() => resolveObjective('unknown', { resolveProject: async () => ({ root: process.cwd() }), records: [], candidates: [] }), /No eligible verified workflow/);
+});
+
+test('objective history recovery starts bounded and expands only when required', async () => {
+  const calls = [];
+  const records = Array.from({ length: 20 }, (_, index) => ({ id: `run-${index}` }));
+  const selected = { id: 'bounded', evidenceId: 'run-12', confidence: 100, expectedCostMs: 1, execute: async () => 'ok' };
+  const resolution = await resolveObjective('custom objective', {
+    resolveProject: async () => ({ root: process.cwd() }),
+    listRuns: (_project, limit) => { calls.push(limit); return records.slice(0, limit); },
+    discoverGodot: async (_objective, { records: visible }) => visible.length >= 13 ? selected : null,
+    discoverNative: () => null,
+    searchLimit: 100,
+  });
+  assert.deepEqual(calls, [10, 100]);
+  assert.equal(resolution.workflow, 'bounded');
 });

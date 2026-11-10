@@ -107,17 +107,36 @@ class ProofPlanner:
         return payload
 
 
+def load_graph(path: Path) -> dict[str, ProofSpec]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not raw:
+        raise ProofError("proof graph must be a non-empty object")
+    graph: dict[str, ProofSpec] = {}
+    for name, value in raw.items():
+        if not isinstance(name, str) or not name or not isinstance(value, dict):
+            raise ProofError("proof graph entries must map names to objects")
+        deps = value.get("deps", [])
+        inputs = value.get("inputs", [])
+        if (not isinstance(deps, list) or not all(isinstance(item, str) for item in deps)
+                or not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs)):
+            raise ProofError(f"proof '{name}' deps and inputs must be string arrays")
+        graph[name] = ProofSpec(tuple(deps), tuple(inputs))
+    return graph
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="indro-proof")
     parser.add_argument("required", nargs="+", help="required proof names")
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--cache", type=Path)
+    parser.add_argument("--graph", type=Path, help="bounded proof graph JSON; defaults to the built-in software graph")
     ns = parser.parse_args()
-    state = json.loads(ns.state.read_text(encoding="utf-8"))
-    cache = json.loads(ns.cache.read_text(encoding="utf-8")) if ns.cache else {}
     try:
-        result = ProofPlanner().plan(ns.required, state, cache)
-    except ProofError as exc:
+        state = json.loads(ns.state.read_text(encoding="utf-8"))
+        cache = json.loads(ns.cache.read_text(encoding="utf-8")) if ns.cache else {}
+        graph = load_graph(ns.graph) if ns.graph else None
+        result = ProofPlanner(graph).plan(ns.required, state, cache)
+    except (ProofError, OSError, json.JSONDecodeError) as exc:
         print(f"INDRO_PROOF_ERROR {exc}")
         return 2
     print(json.dumps(result, indent=2))

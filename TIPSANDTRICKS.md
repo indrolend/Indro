@@ -53,6 +53,13 @@ This sequence avoids repeated whole-tree searches and avoids loading generated e
 
 CommandHUD history run IDs (for example timestamp-plus-suffix IDs) are not `indro work evidence` UUIDs. Do not send one namespace to the other command.
 
+Objective recovery scans recent history progressively: 10 records, then 100,
+then the existing 1,000-record bound only if the recognized workflow family is
+still missing. On a 228-run DATA history this reduced history recovery from
+84.89 ms to 4.79 ms median while finding the same Godot and native workflows.
+Do not replace this with a database until measured history retrieval again
+dominates total cost; current native applicability acquisition is much larger.
+
 ## Execution and evidence
 
 INDRO is the public operational interface. Keep repository-specific fixtures and assertions in their repository rather than adding a parallel executor.
@@ -92,6 +99,20 @@ Never generate every artifact “just in case.” Start with telemetry/assertion
 - Objective selection now shares one bounded candidate selector across Godot replay and native verification. Candidates must be successful, current-project workflow definitions before cost ranking; domain validators still own applicability and behavior.
 - Native selection requires one successful historical `indro run --objective ... -- <verify-native argv>` with `--declare-runtime-closure`. Thereafter, `indro run --objective "Verify the current native test suite."` recovers that invocation and lets the native verifier build, validate its source/compiler/CMake/CTest/runtime/verifier/Node identity, then execute or reuse its append-only receipt. Do not declare closure unless every relevant external runtime file is named with `--runtime-file`.
 - Before rerunning, search history/evidence and compare the recorded identity with current state. Reuse the conclusion only when the behavioral contract and dependencies match.
+- Native reuse validates the complete current snapshot before invoking CMake.
+  An exact match to the newest integrity-validated receipt skips the no-op build;
+  any source, cache, plan, executable, compiler, tool, runtime, verifier, Node,
+  environment, completeness, or integrity mismatch retains build and CTest.
+  DATA warm objective median fell from 5.99 seconds to 1.299 seconds; do not
+  weaken the snapshot to chase the remaining floor.
+- Snapshot tool discovery resolves CMake, CTest, and Git together and hashes
+  their exact binaries. Do not restore separate locator or `--version` probes:
+  they added process latency without strengthening identity. After removing
+  them, the measured DATA warm median was 1.132 seconds (81.1% below baseline).
+- Tool lookup itself uses the declared executable search path directly rather
+  than launching `where.exe`/`which`; the chosen files are still canonicalized
+  and SHA-256 hashed. This reduced the DATA warm median to 0.921 seconds (84.6%
+  below baseline). Do not replace exact hashes with size/timestamp caches.
 
 ## Analysis and profiling decision rules
 
@@ -138,9 +159,13 @@ Use graphs only when a recurring decision is obscure in tables/logs: first-diver
 
 Choose a verifier for each claim instead of treating one green signal as universal proof.
 
+For retained Godot evidence, name the property in the objective: `Godot replay behavior`, `visual appearance`, `artifact integrity`, or `video continuity`. Behavior-only validation deliberately does not read PNG bytes; visual validation does. A continuity objective upgrades a retained non-video replay invocation to collect video once, then uses `ffprobe` on warm reuse. The unqualified replay objective retains the established behavior + visual + artifact-integrity contract.
+
+For native work, `Verify native provenance` validates the complete current source/build/tool/runtime snapshot without launching CMake or CTest and without claiming behavior. `Verify the current native test suite` retains the full provenance + behavior + runtime-closure contract. On DATA, explicit provenance took 670.5 ms; the verifier change then correctly forced one full 57-test execution, followed by 663.4 ms warm reuse.
+
 ### Tool-specific pitfalls
 
-- `indro proof-plan` requires proof names and a state JSON file.
+- `indro proof-plan` requires proof names and a state JSON file. Use `--graph graph.json` for a bounded domain claim graph (`{"claim":{"deps":[],"inputs":[]}}`) instead of creating another planner. It computes the dependency-aware proof delta; adapters still own execution and current-state acquisition.
 - `convergence_gauntlet_node.mjs` requires four positional paths; invoke `python packages/indro/tools/convergence_gauntlet.py --self-test` instead. The November 8, 2026 self-test passed, but it is not production integration proof.
 - `indro work compare` compares file bytes or top-level directory entries only; it does not recursively establish behavior.
 - On Windows, preserve visible output when using `Set-Clipboard`; verify the transferred artifact and prefer one primary artifact over copying an evidence tree.
@@ -165,6 +190,10 @@ Choose a verifier for each claim instead of treating one green signal as univers
 4. Capture matched decision-state images and behavior/state parity.
 5. Run a post-settling soak for persistent-resource changes.
 6. Reject gains that shift unacceptable cost to worst-frame, GPU, primitives, memory, or fidelity.
+
+### Verify repository authority cheaply
+
+Use `indro run --objective "Verify current repository state."` when the claim is the current Git HEAD, branch, and dirty-state bytes. The repository adapter performs one live porcelain-v2 status acquisition, then reuses only evidence whose exact status fingerprint and retained output still match. It does not establish runtime behavior or remote freshness. Observed warm evidence validation was 45.2 ms; the full warm CLI path was 258.2 ms, dominated by project/history acquisition.
 
 ## Persistent authorities and retention
 

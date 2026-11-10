@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { basename, delimiter, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
@@ -14,14 +14,31 @@ function run(exe, args, cwd) {
   return r.stdout;
 }
 function fileHash(path) { return sha(readFileSync(path)); }
-function toolProvenance(name, cwd) {
-  const locator = process.platform === 'win32' ? 'where.exe' : 'which';
-  const found = spawnSync(locator, [name], { cwd, encoding: 'utf8', windowsHide: true });
-  if (found.error || found.status !== 0) return null;
-  const path = found.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
-  if (!path || !isAbsolute(path) || !existsSync(path)) return null;
-  try { return { path: realpathSync(path), sha256: fileHash(path) }; }
-  catch { return null; }
+function toolProvenances(names, cwd) {
+  const result = {};
+  const directories = process.platform === 'win32'
+    ? [cwd, ...(process.env.PATH || '').split(delimiter)]
+    : (process.env.PATH || '').split(delimiter);
+  const windowsExtensions = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+  for (const name of names) {
+    const suffixes = process.platform === 'win32' && !extname(name) ? windowsExtensions : [''];
+    for (const directory of directories) {
+      if (!directory) continue;
+      for (const suffix of suffixes) {
+        const candidate = resolve(directory, `${name}${suffix}`);
+        try {
+          accessSync(candidate, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
+          if (!lstatSync(candidate).isFile()) continue;
+          const path = realpathSync(candidate);
+          result[name] = { path, sha256: fileHash(path) };
+          break;
+        } catch { /* Continue through the declared executable search path. */ }
+      }
+      if (result[name]) break;
+    }
+    result[name] ||= null;
+  }
+  return result;
 }
 // Length-frame each field: source bytes can contain NULs and must not mimic the next record.
 function hashField(hash, value) {
@@ -100,7 +117,7 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     executables.set(realpathSync(exe), fileHash(exe));
   }
   const compilers = compilerHashes(cache, build);
-  const tools = Object.fromEntries(['cmake', 'ctest', 'git'].map(name => [name, toolProvenance(name, root)]));
+  const tools = toolProvenances(['cmake', 'ctest', 'git'], root);
   if (!compilers || Object.values(tools).some(value => !value)) complete = false;
   const runtime = [];
   for (const path of runtimeFiles) {
@@ -117,8 +134,6 @@ export function snapshotNative({ root, build, store, configuration = 'Release', 
     compilers, tools, runtime,
     verifier: { path: fileURLToPath(import.meta.url), sha256: fileHash(fileURLToPath(import.meta.url)) },
     node: { path: realpathSync(process.execPath), sha256: fileHash(process.execPath), version: process.version },
-    cmake: run('cmake', ['--version'], root).split('\n')[0],
-    ctest: run('ctest', ['--version'], root).split('\n')[0],
     environment: Object.fromEntries(['PATH', 'INCLUDE', 'LIB', 'CC', 'CXX', 'CMAKE_GENERATOR', 'CTEST_PARALLEL_LEVEL',
       'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'LOCALAPPDATA', 'HOME',
       'XDG_DATA_HOME'].map(k => [k, process.env[k] ?? null])),
@@ -152,30 +167,42 @@ function readReceipt(path) {
     return value;
   } catch { return null; }
 }
-/** Runs CMake's build authority before considering reuse; receipts are append-only. */
+function newestReceipt(store) {
+  if (!existsSync(store)) return { filename: null, receipt: null };
+  const filename = readdirSync(store).filter(x => x.endsWith('.json')).sort().reverse()[0] || null;
+  return { filename, receipt: filename ? readReceipt(join(store, filename)) : null };
+}
+
+/** Reuses only a complete current snapshot; otherwise runs CMake and CTest authority. Receipts are append-only. */
 export function verifyNative({ root, build, store, configuration = 'Release', runtimeFiles = [], runtimeClosureDeclared = false }) {
   const started = performance.now();
   root = realpathSync(root); build = realpathSync(build); store = resolve(store);
   if (inside(root, store) || store === root) throw new Error('Evidence store must be outside the source repository');
-  const sourceBeforeBuild = sourceFingerprint(root, build, store);
   const initialCache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
   if (realpathSync(cacheSource(initialCache)) !== root) throw new Error('CMake cache belongs to another source tree');
+  const beforeBuild = snapshotNative({ root, build, store, configuration, runtimeFiles });
+  const previous = newestReceipt(store);
+  if (runtimeClosureDeclared === true && beforeBuild.complete && previous.receipt?.status === 'PASS' &&
+      previous.receipt.reusable === true && previous.receipt.snapshot?.fingerprint === beforeBuild.fingerprint &&
+      previous.receipt.snapshot?.testCount === beforeBuild.testCount) {
+    return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [], changedExecutables: [],
+      testCount: beforeBuild.testCount, buildMs: 0, elapsedMs: performance.now() - started, receipt: previous.filename };
+  }
   const buildStarted = performance.now();
   run('cmake', ['--build', build, '--config', configuration], root);
   const buildMs = performance.now() - buildStarted;
   const before = snapshotNative({ root, build, store, configuration, runtimeFiles });
-  const sourceStableDuringBuild = sourceBeforeBuild === before.inputs.source;
+  const sourceStableDuringBuild = beforeBuild.inputs.source === before.inputs.source;
   const reusable = runtimeClosureDeclared === true && before.complete && sourceStableDuringBuild;
   let reuseDecision = !runtimeClosureDeclared ? 'RUNTIME_CLOSURE_UNDECLARED'
     : !before.complete ? 'PROVENANCE_INCOMPLETE'
       : !sourceStableDuringBuild ? 'SOURCE_CHANGED_DURING_BUILD' : 'NO_RECEIPT';
   let changedInputs = [];
   let changedExecutables = [];
-  if (reusable && existsSync(store)) {
-    const files = readdirSync(store).filter(x => x.endsWith('.json')).sort().reverse();
+  if (reusable && previous.filename) {
     // A corrupt newest receipt fails closed: do not fall back to an older success.
-    if (files.length) {
-      const receipt = readReceipt(join(store, files[0]));
+    {
+      const receipt = previous.receipt;
       if (!receipt) reuseDecision = 'RECEIPT_CORRUPT';
       else if (receipt.status !== 'PASS' || receipt.reusable !== true) reuseDecision = 'PREVIOUS_ATTEMPT_NOT_REUSABLE';
       else if (receipt.snapshot?.fingerprint !== before.fingerprint || receipt.snapshot?.testCount !== before.testCount) {
@@ -185,7 +212,7 @@ export function verifyNative({ root, build, store, configuration = 'Release', ru
         changedExecutables = changedExecutablePaths(receipt.snapshot.inputs.executables, before.inputs.executables, build);
       } else {
         return { outcome: 'REUSED', reuseDecision: 'CURRENT', changedInputs: [], changedExecutables: [],
-          testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: files[0] };
+          testCount: before.testCount, buildMs, elapsedMs: performance.now() - started, receipt: previous.filename };
       }
     }
   }
@@ -225,6 +252,33 @@ export function recognizesNativeVerificationObjective(objective) {
   return words.has('native') && (words.has('verify') || words.has('verification'));
 }
 
+export function nativeVerificationClaims(objective) {
+  const words = new Set(String(objective || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+  const explicit = words.has('provenance') || words.has('runtime') || words.has('closure') || words.has('behavior') || words.has('tests');
+  if (!explicit) return ['provenance', 'behavior', 'runtime_closure'];
+  const claims = ['provenance'];
+  if (words.has('behavior') || words.has('tests')) claims.push('behavior');
+  if (words.has('runtime') || words.has('closure') || claims.includes('behavior')) claims.push('runtime_closure');
+  return claims;
+}
+
+export function verifyNativeClaims(options, claims) {
+  if (claims.includes('behavior')) return { ...verifyNative(options), claims, checkedClaims: claims };
+  const started = performance.now();
+  const root = realpathSync(options.root), build = realpathSync(options.build), store = resolve(options.store);
+  if (inside(root, store) || store === root) throw new Error('Evidence store must be outside the source repository');
+  const initialCache = readFileSync(join(build, 'CMakeCache.txt'), 'utf8');
+  if (realpathSync(cacheSource(initialCache)) !== root) throw new Error('CMake cache belongs to another source tree');
+  const snapshot = snapshotNative({ root, build, store, configuration: options.configuration, runtimeFiles: options.runtimeFiles });
+  if (!snapshot.complete) throw new Error('Native provenance is incomplete.');
+  if (claims.includes('runtime_closure') && options.runtimeClosureDeclared !== true) throw new Error('Native runtime closure is undeclared.');
+  return {
+    outcome: 'VALIDATED', reuseDecision: 'CLAIM_VALIDATED', changedInputs: [], changedExecutables: [],
+    testCount: snapshot.testCount, buildMs: 0, elapsedMs: performance.now() - started, receipt: null,
+    claims, checkedClaims: claims, snapshotFingerprint: snapshot.fingerprint,
+  };
+}
+
 export function discoverNativeVerificationWorkflow(objective, { projectRoot, records = [] } = {}) {
   if (!recognizesNativeVerificationObjective(objective)) return null;
   const root = projectRoot ? realpathSync(projectRoot) : null;
@@ -235,13 +289,14 @@ export function discoverNativeVerificationWorkflow(objective, { projectRoot, rec
     try {
       if (root && realpathSync(options.root) !== root) continue;
     } catch { continue; }
+    const claims = nativeVerificationClaims(objective);
     return {
       id: 'indro/native/verify', evidenceId: record.id, confidence: 100,
       expectedCostMs: Number.isFinite(record.durationMs) ? record.durationMs : Number.POSITIVE_INFINITY,
-      execute: () => verifyNative(options),
+      claims, execute: () => verifyNativeClaims(options, claims),
       render(result) {
-        console.log(`INDRO_NATIVE_VERIFY PASS outcome=${result.outcome} tests=${result.testCount} build_ms=${result.buildMs.toFixed(1)} test_ms=${(result.testMs || 0).toFixed(1)} elapsed_ms=${result.elapsedMs.toFixed(1)} reuse=${result.reuseDecision}`);
-        console.log(`RECEIPT=${options.store}\\${result.receipt}`);
+        console.log(`INDRO_NATIVE_VERIFY PASS claims=${result.claims.join(',')} outcome=${result.outcome} tests=${result.testCount} build_ms=${result.buildMs.toFixed(1)} test_ms=${(result.testMs || 0).toFixed(1)} elapsed_ms=${result.elapsedMs.toFixed(1)} reuse=${result.reuseDecision}`);
+        console.log(`RECEIPT=${result.receipt ? `${options.store}\\${result.receipt}` : 'none'}`);
       },
     };
   }

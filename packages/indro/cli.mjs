@@ -10,7 +10,7 @@ const HELP = `Indro · semantic software-development language
 
 Language:
   indro compile <program.indro|program.i> [compiler options]
-  indro proof-plan <proof...> --state <state.json> [--cache <cache.json>]
+  indro proof-plan <proof...> --state <state.json> [--cache <cache.json>] [--graph <graph.json>]
   indro language-test
   indro verify-native --root PATH --build PATH --store PATH [--declare-runtime-closure]
   indro work inspect <path>
@@ -26,6 +26,7 @@ Execution and evidence (CommandHUD compatibility):
   indro run -- <command>
   indro run --objective "Verify the current Godot gameplay replay."
   indro run --objective "Verify the current native test suite."
+  indro run --objective "Verify current repository state."
   indro state --json
   indro search <query> [scope]
   indro history [count]
