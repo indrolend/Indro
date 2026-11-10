@@ -281,6 +281,11 @@
       "sha256": "5e1d0f119b724533f21285f01579fef1028d9c08c81a06106c98a344377e28ad"
     },
     {
+      "path": "tools/native-claim-coverage-experiment.mjs",
+      "bytes": 2928,
+      "sha256": "56f30674d5b75aaa03392dd8d0075ccb0ad0891280357774c1eef2f1ed046194"
+    },
+    {
       "path": "tools/ndra_repo_gauntlet.py",
       "bytes": 24038,
       "sha256": "f55642618d1f6e095aed0faa754867c82522295248e5c70b46cb0a30caf4fb92"

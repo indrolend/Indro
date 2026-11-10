@@ -226,6 +226,33 @@ prove dependency completeness, compare against full runtime replay, or establish
 novelty. Its immediate value is a reproducible separation between whole-bundle
 validation and property-specific fragment validation.
 
+### Second-domain result
+
+The native experiment used the current 57-test DATA receipt
+`2026-11-09T21-51-24.722Z-2684b557-75a1-4bfb-90b1-dcfe7f6da4cc.json`
+with 1,000 trials per validator. Its tool is
+`packages/indro/tools/native-claim-coverage-experiment.mjs`.
+
+| Native claim | Valid median |
+|---|---:|
+| receipt and snapshot provenance | 0.0514 ms |
+| recorded behavioral test success | 0.0001 ms |
+| declared runtime closure | 0.0001 ms |
+| all receipt fragments | 0.0519 ms |
+
+A corrupt integrity digest rejected provenance but not the independently read
+behavior/runtime fields. A consistently re-signed failed execution retained
+valid provenance but failed the behavior claim. A consistently re-signed
+receipt with its runtime list removed retained provenance and behavioral success
+but failed the runtime-closure claim. The full claim rejected all three mutants.
+
+This second domain supports compositional proof coverage as an implementable
+mechanism across graphical replay and native verification. It still does not
+show that receipt-only validation is applicable to current source or runtime;
+`verifyNative` remains authoritative for that decision. The result is a
+cross-domain mechanism demonstration, not a comparison against prior systems or
+a novelty result.
+
 ## Novelty threshold
 
 Do not claim a fundamental discovery unless the work produces at least one of:
@@ -239,3 +266,21 @@ Do not claim a fundamental discovery unless the work produces at least one of:
 
 Until then, describe INDRO as an experimental system exploring claim-directed,
 multimodal amortized verification.
+
+## Current assessment
+
+No never-before-seen fundamental computer-science result is established. The
+current mechanisms substantially overlap incremental computation,
+content-addressed execution, provenance, causal diagnosis, and proof-carrying
+systems. The two experiments do establish a narrower engineering result:
+heterogeneous evidence can be decomposed into independently falsifiable claim
+fragments, allowing irrelevant validators and processes to be skipped without
+accepting the controlled property-local mutants.
+
+The highest-value unresolved boundary is an applicability-aware coverage
+selector that chooses these fragments from an objective and current state. A
+credible research claim requires comparing that selector against exact caching,
+full-bundle validation, and test-impact/provenance baselines on multiple unseen
+workflows, including false-reuse adversaries. Do not add a database before this
+selection workload demonstrates that the existing append-only evidence scan is
+the limiting cost.
