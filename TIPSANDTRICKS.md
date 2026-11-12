@@ -222,3 +222,65 @@ Historical evidence: data-game/evidence/performance/GGG-PERF-004.md and GGG-PERF
 - Eliminate inactive work at its owning boundary. The fixture had nine live targets but generated geometry for 32 slots. Skip dead-slot geometry while preserving state, visibility, death, and reuse synchronization.
 - Preserve matched controls. DB_DISABLE_PACKED_ENEMIES=1 restored reconstruction. Historical dead-skip A/B: frame median 8.175 to 4.607 ms; p95 8.733 to 5.263 ms.
 - Retain rejected evidence. GGG-PERF-005 superseded the original visual acceptance in GGG-PERF-004.
+
+
+## Non-negotiable operating rules: preserve time, state, and attention
+
+These rules capture repeated, directly observed workflow preferences and failure patterns from real INDRO, DATA-GAME, Godot, Windows, and macOS sessions. Apply them before proposing commands or interventions.
+
+### Never do this again
+
+- **Never give bare terminal commands when a known clipboard workflow is expected.** On Windows PowerShell, capture the complete output, preserve visible output, copy it with `Set-Clipboard -Value $result`, and print a compact `✓ copied` confirmation. On macOS, use `pbcopy` while retaining visible output. Do not confuse copying text with copying an actual file object.
+- **Never claim autopaste when only autocopy is implemented.** Autocopy transfers text to the clipboard; autopaste additionally targets an input, pastes, and submits. Describe only the behavior actually implemented and verified.
+- **Never run project-scoped INDRO history/search from the user's home directory or another repository.** First enter the target repository. A `No Git repository` result is a wrong working context, not evidence that history or workflows are absent.
+- **Never use a broad natural-language phrase with a literal fixed-string search and interpret zero matches as absence.** Split terms, search known filenames/symbols, inspect history and evidence, and check the search implementation's matching semantics.
+- **Never ask the user to run local Git commands to retrieve public remote facts available through the connected GitHub integration.** Use the connector for remote branches, commits, file contents, and comparisons; use local commands only for facts that require the actual local worktree, installed tools, process, build, or runtime.
+- **Never assume a remembered path, branch, executable, build directory, or source SHA is still current.** Observe the current state first. In particular, do not substitute a guessed `data-game-current-main` path for the known project root.
+- **Never modify, reset, clean, rebase, merge, cherry-pick, or overwrite a dirty worktree before identifying and preserving its unrelated changes.** Separate tracked modifications, untracked source, generated evidence, and build artifacts. Preserve the exact pre-change state.
+- **Never treat a passing exit code, screenshot, build, manifest, hash, or test count as proof of a different contract.** Process completion, source provenance, artifact integrity, visual appearance, simulation behavior, and temporal continuity require distinct evidence.
+- **Never infer the active runtime from source alone.** Trace source revision and dirty identity → build target/configuration → executable or loaded library → running process → observable behavior.
+- **Never assume native desktop and Godot presentation share the same renderer or defect.** Identify the actual engine, renderer, executable, and build that produced the observed frame before tracing a rendering bug.
+- **Never rewrite or redesign a subsystem before searching for its mature historical implementation, prior known-good behavior, existing tests, and saved evidence.** Prefer recovery and minimal causal changes over re-imagining.
+- **Never let infrastructure investigation displace the user's actual goal.** For game work, get to a playable build quickly. Only investigate tooling or build infrastructure when it blocks play, verification, or a meaningful improvement.
+- **Never run a multi-configuration Visual Studio CTest build without specifying its configuration.** Use `ctest --test-dir <build> -C Release ...` for Release; otherwise tests may report “Not Run” because configuration is missing. Do not misreport that as a test failure.
+- **Never generalize a stack-reserve fix to every executable without evidence.** Identify which target owns large stack-resident objects and verify each affected target. The observed Windows desktop save-test failure was fixed by an 8 MiB reserve on `DigitalBreakdown`; other targets need their own evidence.
+- **Never present a suspected cause as confirmed.** Label observations, hypotheses, interventions, and verified causal findings separately. A source-level suspicious pattern is not proof that it caused a rendered artifact.
+- **Never create a new harness, abstraction, checklist, or evidence warehouse when an existing INDRO command, adapter, experiment, test, capture funnel, or historical artifact can answer the question.
+- **Never dump the whole repository, full `indro state --json`, or hundreds of files by default.** Scope by project, filename, symbol, run count, line range, and decision relevance.
+- **Never make the user repeat context already present in the current transcript, saved work, or repository evidence.** Recover it first.
+- **Never silently discard failed or rejected experiments.** Retain enough provenance to understand what was tested, what failed, and why a later approach superseded it.
+
+### Always do this
+
+1. **Consult this guide first**, then inspect current state. Treat it as an index to proven procedures, not a substitute for live observation.
+2. **Use the INDRO public interface as the single operational entrypoint.** Discover with `indro --help`, inspect implementation only when needed, and reuse existing adapters and evidence workflows. Keep domain-specific fixtures/assertions in their owning repository.
+3. **Use the correct project root.** DATA-GAME history and search run from `C:\Users\indro\Projects\data-game`; INDRO development history/search runs from `C:\Users\indro\Projects\Indro`. Verify the actual root rather than assuming the current directory.
+4. **Autocopy terminal results by default.** Use one compact PowerShell block, capture stdout and stderr, display the result, copy the same result with `Set-Clipboard`, then show `✓ copied`. Do not hide diagnostic output. On macOS, use the equivalent `pbcopy` pattern.
+5. **Keep command interaction minimal.** Give one next command, not a speculative sequence of commands. Stop when its output determines the next decision. The user prefers concise terminal output and minimal headings.
+6. **Recover workflows progressively.** Start with `indro history 10`; expand to 100 and then the documented 1,000 bound only if necessary. Search specific terms separately. Use the correct evidence identifier namespace.
+7. **Before an intervention, record authority:** repository root, branch, HEAD, dirty state, relevant file hashes, build configuration, executable/library identity, and runtime identity as appropriate.
+8. **For a regression, reproduce the smallest deterministic case, compare the earliest divergence, trace the owning data/control path, change one causal variable, and verify the externally meaningful contract.**
+9. **For visual defects, identify the exact engine/build/source SHA and reproduce with matched scene, camera, simulation state, and settings.** Use existing visual-ablation controls to isolate light groups, shadow casters, geometry families, materials, and environment. Capture only the images/telemetry needed to discriminate hypotheses.
+10. **Use extreme manipulations when the game interface supports them.** Isolate, disable, multiply, freeze, move, scale, deform, exaggerate, or replace components to expose causal interactions. Keep interventions controlled and record the exact configuration. Preserve authoritative simulation invariants when testing presentation-only changes.
+11. **Treat the game as an experimental system, not only as a manual play session.** Use parameter sweeps, one-factor isolation, factorial combinations, deterministic replay, controlled actor populations, temporal sampling, and matched A/B experiments when they reduce uncertainty. Do not build an automated search framework until a small experiment proves it useful.
+12. **Get to playability early.** Once a valid executable exists, launch it and let the user inspect gameplay unless a concrete blocker or high-value verification requires otherwise.
+13. **For mature-build exploration, compare distinct historical branches as separate playable candidates.** Identify their unique commits, changed gameplay/test files, dependencies, and compatible combinations before integrating. Preserve the ability to build and compare materially different versions.
+14. **For GitHub facts, use the connected GitHub integration.** Pin every remote file/commit comparison to explicit refs/SHAs. Keep remote truth, local worktree truth, and runtime truth distinct.
+15. **For reusable verification, search history/evidence before rerunning.** Reuse only when source, build graph, environment, tools, runtime closure, inputs, and behavioral contract still match. A warm reuse result is not a fresh test execution.
+16. **After an investigation, retain only the smallest verified, non-obvious, reusable causal lesson here**, with a pointer to detailed evidence. Consolidate duplicates and qualify or remove advice contradicted by newer observations.
+
+### Personal workflow defaults
+
+- The user works primarily on a Windows PC with PowerShell 7.6.9 for DATA-GAME/INDRO tasks; macOS is also used. Prefer Windows commands when the active terminal is PowerShell, and never assume the shell from an old transcript.
+- Windows terminal output should normally be automatically copied as text while remaining visible. Use `Set-Clipboard`; do not use Windows Forms clipboard APIs. A pathname copied as text is not the file itself.
+- For actual artifacts (PNG, WAV, GIF, ZIP, video, etc.), distinguish the actual file-object clipboard operation from copying its path or text. Do not claim the artifact itself was copied unless that operation was verified.
+- Prefer one short, copy-pasteable command block, filtered output, and a single next action. Avoid long progress narration and unsolicited menus.
+- The user wants to play and improve Digital Breakdown, recover mature implementations, compare radically different compatible builds, and use INDRO to make experimental development cheaper and more powerful. Tooling is valuable insofar as it advances those goals.
+- Reuse the existing game and INDRO interfaces aggressively: replay, deterministic input, evidence reuse, telemetry, visual ablation, runtime capture, and historical branch inspection. Discover exact invocation from help/history/source rather than inventing flags.
+- Preserve known-good gameplay and working behavior across builds. Small presentation or subsystem changes must not silently remove unrelated simultaneous behaviors, controls, animation, persistence, or visual features.
+- Keep evidence transparent and compact: text when sufficient; a single useful artifact or bounded evidence packet when necessary. Avoid junk output and duplicate artifacts.
+- Treat user-reported observations as evidence to investigate, not permission to jump to a diagnosis. The user explicitly values archaeology, persistence, and preventing repeated rediscovery.
+
+### Current case note: shadow staining
+
+The reported symptom is screen-wide visual staining when shadows are enabled. The source-level inspection at the reported build identified broad shadow toggles and transparent presentation geometry as candidate interactions, but did **not** establish a visually confirmed cause. Reuse the existing Godot visual-ablation experiment and isolate light groups/caster families on the exact runtime build. Do not change material appearance, lighting energy, geometry, or simulation together. Update this note only after a controlled intervention establishes the causal source.
