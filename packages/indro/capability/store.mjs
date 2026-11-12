@@ -189,6 +189,13 @@ export async function validateCapability(id, options = {}) {
     try { if (record.dependencies[name].sha256 !== fileIdentity(currentPath).sha256) issues.push(`${name.toUpperCase()}_FINGERPRINT_MISMATCH`); }
     catch { issues.push(`${name.toUpperCase()}_UNAVAILABLE`); }
   }
+  const sourceReceipt = record.evidence?.[0];
+  if (!sourceReceipt?.receipt || !sourceReceipt.sha256) issues.push('SOURCE_RECEIPT_MISSING');
+  else {
+    try {
+      if (fileIdentity(sourceReceipt.receipt).sha256 !== sourceReceipt.sha256) issues.push('SOURCE_RECEIPT_FINGERPRINT_MISMATCH');
+    } catch { issues.push('SOURCE_RECEIPT_UNAVAILABLE'); }
+  }
   if (issues.length) return { valid: false, reusable: false, issues, capability: record };
   const transport = options.transport ?? createFlTransport(options);
   const status = await requestResult(transport, 'status');
@@ -219,9 +226,12 @@ export async function invokeCapability(id, value, options = {}) {
   const validation = await validateCapability(id, options);
   if (!validation.reusable) throw new Error(`CAPABILITY_NOT_REUSABLE:${validation.issues.join(',')}`);
   const output = [];
-  const invocationOptions = options.validationSnapshot === true
-    ? { ...options, validationSnapshot: validation.validation_snapshot }
-    : options;
+  const invocationOptions = {
+    ...options,
+    expectedParameterName: validation.resolved_target.parameter_name,
+    expectedPluginName: validation.resolved_target.plugin_name,
+    ...(options.validationSnapshot === true ? { validationSnapshot: validation.validation_snapshot } : {}),
+  };
   const code = await (options.runFlCli ?? runFlCli)([
     'plugin', 'set', '--channel', String(validation.resolved_target.channel), '--param', String(validation.resolved_target.parameter),
     '--value', String(value), '--verify', '--json'
