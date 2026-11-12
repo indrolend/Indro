@@ -245,7 +245,7 @@ These rules capture repeated, directly observed workflow preferences and failure
 - **Never run a multi-configuration Visual Studio CTest build without specifying its configuration.** Use `ctest --test-dir <build> -C Release ...` for Release; otherwise tests may report “Not Run” because configuration is missing. Do not misreport that as a test failure.
 - **Never generalize a stack-reserve fix to every executable without evidence.** Identify which target owns large stack-resident objects and verify each affected target. The observed Windows desktop save-test failure was fixed by an 8 MiB reserve on `DigitalBreakdown`; other targets need their own evidence.
 - **Never present a suspected cause as confirmed.** Label observations, hypotheses, interventions, and verified causal findings separately. A source-level suspicious pattern is not proof that it caused a rendered artifact.
-- **Never create a new harness, abstraction, checklist, or evidence warehouse when an existing INDRO command, adapter, experiment, test, capture funnel, or historical artifact can answer the question.
+- **Never create a new harness, abstraction, checklist, or evidence warehouse when an existing INDRO command, adapter, experiment, test, capture funnel, or historical artifact can answer the question.**
 - **Never dump the whole repository, full `indro state --json`, or hundreds of files by default.** Scope by project, filename, symbol, run count, line range, and decision relevance.
 - **Never make the user repeat context already present in the current transcript, saved work, or repository evidence.** Recover it first.
 - **Never silently discard failed or rejected experiments.** Retain enough provenance to understand what was tested, what failed, and why a later approach superseded it.
@@ -284,3 +284,169 @@ These rules capture repeated, directly observed workflow preferences and failure
 ### Current case note: shadow staining
 
 The reported symptom is screen-wide visual staining when shadows are enabled. The source-level inspection at the reported build identified broad shadow toggles and transparent presentation geometry as candidate interactions, but did **not** establish a visually confirmed cause. Reuse the existing Godot visual-ablation experiment and isolate light groups/caster families on the exact runtime build. Do not change material appearance, lighting energy, geometry, or simulation together. Update this note only after a controlled intervention establishes the causal source.
+
+
+## Proven multistep workflows: remote control, applications, and artifact handoff
+
+The sequences below consolidate observed user sessions, retained INDRO source contracts, and successful operational transcripts. Their status is explicit: **verified** means a concrete run or readback was observed; **documented** means the remote repository defines the interface but this guide does not claim a fresh live end-to-end run; **fallback** means use only when the preferred path is unavailable.
+
+### Cross-device control and remote work
+
+**Use when:** supervising the Windows home workstation from iPhone/macOS/ChatGPT, running a bounded remote task, or retrieving its output.
+
+1. Prefer the authenticated, typed INDRO/CommandHUD connector operations for normal remote work. They address the same local authority as the private iPhone SSH route; do not create a second job or evidence authority.
+2. Identify the registered project and exact Git HEAD. Start an isolated job against that exact HEAD; retain the returned job identity.
+3. Use typed lifecycle operations to list/get/request-stop jobs. Do not pass arbitrary shell strings, filesystem paths, PIDs, credentials, or packet bodies through the remote executor.
+4. Let CommandHUD own execution, provider worker lifecycle, Git/worktree identity, cancellation, immutable evidence, and recovery.
+5. Use Brokeman only as a continuity projection: compact checkpoint, semantic state, provider outcome, handoff packet, and artifact descriptor. It must not become a second executor or evidence store.
+6. Retrieve packet bytes from the Windows workstation through the documented SFTP/native-file path. Use ntfy for attention/notification only, never as a command or artifact transport.
+7. Use Termius/Tailscale SSH as the general shell/OS escape hatch when typed operations cannot express the required task. Keep SSH transport separate from job/evidence ownership.
+8. On the home runtime, use CommandHudHomeControl.ps1 status|start|stop|restart as the operator surface. The scheduled task is transport/runtime plumbing, not the owner of jobs or Git state.
+
+**Authority and security boundary:** the documented home executor remains bound to loopback behind its authenticated tunnel. Bearer values are read from Windows Credential Manager and inherited by child processes; do not place them in command lines, configuration, logs, packets, or repository state. Remote operations should be scoped to project IDs, exact HEADs, job IDs, bounded objectives, and literal actions.
+
+**Status:** remote-control architecture and operator contract documented in docs/MOBILE-REMOTE-CONTROL.md; do not claim that a given connector operation is currently connected or available until its live status is observed.
+
+### Remote Windows terminal and GUI evidence
+
+**Use when:** an SSH/WSL task needs evidence from the logged-in Windows desktop session rather than a headless shell.
+
+1. First attempt a normal bounded command or headless capture if that satisfies the claim.
+2. Do not assume an SSH/WSL process owns an interactive desktop. A screenshot attempt from that context previously failed with "The handle is invalid".
+3. When a real interactive desktop frame is required, use the existing interactive Task Scheduler route (CommandHUD-EvidenceCapture) under the logged-in session. The verified PowerShell executable was $env:LOCALAPPDATA\Microsoft\WindowsApps\pwsh.exe.
+4. Trigger the task, then inspect its completion result and session marker. The observed successful receipt was LastTaskResult: 0 and SUCCESS SESSION=1.
+5. Only then consume the produced image. Preserve the task result and screenshot together in the evidence packet.
+
+**Status:** verified Windows session-1 screenshot capture. This is a GUI-evidence fallback, not the default command-execution mechanism. Do not report a screenshot as successful merely because the scheduled task was triggered.
+
+### Chrome hijack investigation and persistence diagnosis
+
+**Use when:** Chrome search/new-tab behavior is hijacked, including after reinstall or apparent cleanup.
+
+1. Identify the affected Windows machine and exact Chrome profile. Close every Chrome process before inspecting or modifying profile databases.
+2. Preserve a timestamped before-state snapshot of the profile's relevant Preferences, Secure Preferences, and Web Data database. Keep evidence outside the live profile.
+3. Inspect the configured default search provider and new-tab URL in both JSON preference stores. Compare the mirrored/secure values; do not assume one file is authoritative by itself.
+4. Query the keywords table in Web Data and identify active search-provider rows whose new_tab_url or related fields point to the unwanted domain. Record row IDs, names, keywords, active flags, and URL fields.
+5. Correlate the database rows with JSON preferences. Do not delete a legitimate Google provider merely because another provider has a similar name or keyword.
+6. Make the narrowest targeted repair only after the browser is closed and a backup exists. Preserve the original database and before/after evidence.
+7. Relaunch Chrome normally. Inspect both JSON stores and the SQLite rows again after launch; then close Chrome normally and inspect once more. A database that looks clean before launch can be repopulated by a still-active preference, policy, extension, or process.
+8. If the unwanted URL returns, identify the component that rewrites it before repeating the same database edit. Reinstalling Chrome alone is not a diagnosis.
+9. Record process counts and extension/policy evidence where they discriminate competing causes. Avoid dumping unrelated profile data or secrets.
+
+**Verified case:** joblikedrumscool.com/nt persisted after reinstall and was present in Chrome's JSON preferences and SQLite keyword rows. A direct SQLite cleanup made the targeted rows clean, but Chrome preferences were still hijacked after launch in one trial; a later profile trial identified a malicious google keyword row despite a separate clean goog row. The durable lesson is to verify after normal launch and normal exit, not just immediately after editing Web Data.
+
+### FL Studio bridge: inspect first, mutate with readback
+
+**Use when:** controlling mixer/plugin parameters, diagnosing the Granulizer bridge, or resuming an audio automation task.
+
+1. Run indro fl doctor --json and inspect the live bridge schema/version, session ID, process ID, heartbeat age, and connection status. A session.json file alone does not prove a live host.
+2. Discover actual targets with indro fl channels list --json and indro fl plugins list --json. Inspect the chosen channel with indro fl plugin inspect --channel N --json.
+3. Enumerate the real parameter contract using indro fl plugin params --channel N --json; read the current value with indro fl plugin get --channel N --param N --json.
+4. Before writing, confirm the channel/plugin/session identity. Do not infer a channel number from a UI label or reuse a stale process/session snapshot.
+5. Make a write only when the exact capability exists and the user has authorized it: indro fl plugin set --channel N --param N --value 0..1 --verify --json.
+6. The adapter reads the parameter before invocation and again afterward, compares the readback with the caller's expected value (tolerance 0.002 in the current FL CLI), and persists a transaction receipt.
+7. Verify with indro fl verify --latest --json. Distinguish STATE_CONFIRMED from an independently audible effect: the current FL receipt explicitly says host scripting API readback does not establish that the change was heard.
+8. If an operation is unsupported, a bridge schema differs, a heartbeat is stale, or a target identity fails validation, stop and repair/discover the contract. Do not bypass the adapter with guessed mailbox JSON or UI keystrokes.
+
+**Verified interface:** doctor, status, channel/plugin listing, inspect, params, get, set-with-readback, transport status, and latest-receipt validation are implemented in packages/indro/fl/cli.mjs. The bridge mailbox is transport; FL Studio remains the state authority. A timeout after submission is outcome-unknown, not proof that the host did nothing.
+
+### UAI transaction pattern for controlling any application
+
+**Use when:** adding or using an application control that must be safe, attributable, and verifiable.
+
+1. Identify the application instance/session and exact target (not merely its display name).
+2. Discover the capability and its adapter. Confirm it is invocable and connected to the live application, not just present in a manifest or fixture.
+3. Observe and record pre-state through the adapter.
+4. Require explicit write authorization for mutations. Keep read-only observation separate from writes.
+5. Submit one operation with a unique transaction ID.
+6. Record milestones separately: SUBMITTED, RECEIVED, ACCEPTED, EXECUTED, STATE_CONFIRMED, EFFECT_VERIFIED. Unknown stays UNKNOWN; never promote a lower milestone into a higher one.
+7. Read back state from the application's authority and compare it against the caller's expected postcondition.
+8. Independently verify external effect when the task requires it (for example, audible output or actual rendered behavior).
+9. Persist the receipt and its limitations. A checksum is integrity metadata, not authenticated provenance; transaction state confirmation is not effect verification.
+10. Treat timeout after invocation as TRANSPORT_UNKNOWN; inspect the operation/host state before retrying to avoid duplicate actions.
+
+**Status:** the UAI transaction kernel and offline fixture are implemented. The fixture only mutates in-memory test state; it does not control FL Studio or another live application. The FL adapter is a concrete live example with host readback. See packages/indro/uai/README.md and packages/indro/uai/transaction.mjs.
+
+### Audio loopback capture and troubleshooting
+
+**Use when:** recording desktop playback, diagnosing FL Studio monitoring/latency, or producing a reproducible WAV.
+
+1. Enumerate actual capture devices and endpoint names before selecting one. Do not assume WASAPI is available because Windows exposes an audio endpoint.
+2. Probe the intended FFmpeg input backend and exact device name. Record the error if the backend is unavailable; do not silently substitute a microphone input.
+3. A verified fallback on the Windows workstation used Python soundcard loopback against the actual default speaker endpoint (Speakers (2- Focusrite USB Audio)), producing a WAV on the Desktop.
+4. Confirm the capture file exists and has nonzero size; inspect duration/sample rate/channels and listen to a short segment before treating it as a successful recording.
+5. For latency/sync problems, compare the live input path, selected FL audio device, buffer settings, plugin chain, and recorded loopback. Change one variable at a time and verify the playhead/audio alignment over time.
+6. Keep source audio, loopback capture, and processed render distinct. A successful file write does not prove the intended signal was captured.
+
+**Status:** loopback capture through Python soundcard was observed working; WASAPI was unavailable in the tested FFmpeg setup. Do not assume that exact endpoint remains the default on another machine/session.
+
+### Artifact handoff and clipboard semantics
+
+**Use when:** transferring screenshots, recordings, GIFs, ZIPs, or replay evidence into ChatGPT or another application.
+
+1. Prefer one primary artifact or a compact evidence packet, not a directory dump.
+2. Verify the artifact exists, has plausible size, and matches the intended type. For evidence packets, verify manifest contents and hashes.
+3. Choose the clipboard contract deliberately:
+   - Text receipt: PowerShell Set-Clipboard / macOS pbcopy.
+   - Actual file object: Windows file-drop clipboard; a path string is not a file object.
+   - Actual image: image clipboard; a path string or PNG bytes as text is not an image clipboard.
+4. INDRO's Godot replay supports --clipboard for a verified file-drop list containing the replay ZIP and --clipboard-image for the final captured image. Its implementation reads the clipboard back and checks the transferred item before reporting confirmation.
+5. After transfer, report exactly what was copied (text, file object, or image) and the verified artifact path. Never claim file-object copy based on Set-Clipboard $path.
+6. Keep the visible terminal receipt and copy the concise result automatically. If the OS clipboard is isolated by a remote/browser automation environment, say so rather than claiming an end-to-end clipboard round trip.
+
+### PowerShell transcript and evidence packet
+
+**Use when:** a multi-step session needs a reproducible handoff to ChatGPT/Codex or another machine.
+
+1. Capture the real terminal session with PowerShell transcription when a transcript is needed. Do not reconstruct a transcript from memory and label it canonical.
+2. Keep CommandHUD's immutable run record as the execution authority: command, cwd/project, exit status, duration, stdout/stderr, before/after Git identity, and evidence references.
+3. Add reasoning annotations as a separate derived layer. Clearly distinguish observed terminal output, assistant/user interpretation, hypotheses, and proposed next actions.
+4. Build a handoff from the exact relevant source files, tests, receipts, logs, and artifact manifest. Preserve original evidence; do not replace it with a summary.
+5. Include repository root, branch, HEAD, upstream/divergence, dirty counts, test outcomes, evidence IDs, and unresolved questions. State whether each claim is verified, inferred, or untested.
+6. ZIP only the bounded packet. Verify file count, byte count, archive integrity, and SHA-256; copy the actual ZIP file object when feasible.
+7. For remote packet retrieval, return a descriptor and fetch the bytes through the approved file-transfer path. Do not embed large binary/Base64 payloads in chat or notification messages.
+
+**Status:** PowerShell transcript capture, annotated transcript generation, and a 20-file INDRO/Codex packet (324,501 bytes) were observed in prior work. The packet's SHA-256 was recorded. These are proven handoff patterns; exact automation flags should still be discovered from current CLI help.
+
+### Printer and peripheral troubleshooting
+
+**Use when:** a printer reports an error, jobs are retained, or the physical device appears idle.
+
+1. Observe device status, queue count, and each job's ID/status before restarting services or deleting jobs.
+2. Use a device-local action (such as the feed button) to test the mechanical path independently of the application/spooler.
+3. Re-read printer status and queue after the physical test. A normal device with a cleared queue narrows the fault but does not prove the business application printed successfully.
+4. Test the actual application workflow only after the device path is known good. Do not infer undocumented semantics from a checkbox such as Test mode; consult the application's own documentation or support.
+5. Preserve the job ID/status and exact application outcome when escalating.
+
+**Verified case:** DYMO LabelWriter 450 on USB003 recovered to PrinterStatus=Normal, JobCount=0 after a feed-button test advanced multiple labels. PostalMate Quick Postage/postmark behavior remained unverified; the Test mode checkbox was not interpreted as proof of a real postmark.
+
+### Historical game variants and compatible-build recovery
+
+**Use when:** recovering a mature implementation or comparing dramatically different playable versions.
+
+1. Start from remote main and its exact local correspondence; record commit, branch, ancestry/divergence, and the current dirty worktree separately.
+2. Search remote branches/commits by gameplay subsystem and inspect commit messages plus changed gameplay/test files. Rank candidates by distinct playable behavior and proof coverage, not raw commit count.
+3. Identify branch-unique commits and shared ancestry. Group candidates by coherent gameplay phenotype (for example physical enemy locomotion, zombie pursuit, herd support, articulated motor, or presentation experiments).
+4. Check compatibility at file and API boundaries before combining changes. Overlap in CMakeLists.txt, desktop/main.cpp, shared simulation state, or renderer files requires explicit reconciliation.
+5. Build each candidate in an isolated worktree/build directory. Never overwrite the active dirty integration worktree to test a historical branch.
+6. Verify its own focused tests and launch it. Capture matched gameplay evidence using the same scenario/camera/seed where possible.
+7. Preserve distinct working builds as comparison candidates until a measured, playable convergence decision is made. Do not prematurely merge the most different versions into one branch.
+
+**Observed candidate families:** convergence/zombie-v1, codex/extreme-enemy-lab, codex/specification-convergence-pass3, prototype/physical-enemies, integration/mature-enemy-motor, experiment/endorphin-enemy-physics, and experiment/visual-ablation-control. Their historical branch names and commit counts are discovery leads, not proof that each branch still builds against the current toolchain.
+
+### INDRO capability expansion by dogfooding
+
+**Use when:** deciding whether a repeated manual workflow deserves a reusable INDRO capability.
+
+1. Find at least two real executions/transcripts of the same operational pattern. Extract input, target identity, state observations, mutation, postcondition, failure modes, and evidence.
+2. Separate stable invariants from application-specific details. Do not generalize from one accidental sequence.
+3. Inspect the current public CLI, adapters, manifests, tests, and live application interface before designing anything.
+4. Prototype the smallest adapter against a fixture, then a disposable real target where safe. Keep the fixture's scope explicit; it cannot prove live connectivity.
+5. Make target discovery and read-only observation work before enabling writes.
+6. Require per-operation authorization, explicit expected postconditions, readback, bounded timeouts, and honest unknown outcomes.
+7. Record a receipt that distinguishes submitted/received/accepted/executed/state-confirmed/effect-verified.
+8. Add a regression test for the exact failure or ambiguity that motivated the capability.
+9. Measure interaction count, latency, failure rate, and recovery cost against the original manual workflow. Keep the capability only if it saves future effort without weakening authority or evidence.
+10. Add the compact verified procedure here and keep detailed transcripts/evidence with their owning project.
+
+**Generalization rule:** INDRO should learn the recurring control contract (discover → observe → authorize → invoke → read back → verify effect → retain), not accumulate a warehouse of one-off application scripts.
