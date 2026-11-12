@@ -450,3 +450,47 @@ The sequences below consolidate observed user sessions, retained INDRO source co
 10. Add the compact verified procedure here and keep detailed transcripts/evidence with their owning project.
 
 **Generalization rule:** INDRO should learn the recurring control contract (discover → observe → authorize → invoke → read back → verify effect → retain), not accumulate a warehouse of one-off application scripts.
+
+
+### Persistent CommandHUD terminal: everyday command-and-context loop
+
+**Use when:** performing repeated repository work where command results need to return to ChatGPT/Codex without manual selection.
+
+1. From the intended repository, launch hud shell (plain line-oriented interface) or hud tui (fixed terminal interface). Both use the same CommandHUD execution/evidence core; the visual client is not a separate authority.
+2. Paste ordinary PowerShell/shell commands directly. The shell retains repository-contained cwd changes between commands, executes against the real repository, records immutable evidence, shows a condensed result, and automatically copies the same ChatGPT-ready context while retaining full stdout/stderr.
+3. Use slash commands to inspect the retained run without rerunning it: /history [n], /head [run] [count], /tail [run] [count], /find [run] pattern, /around [run] pattern [lines], /raw [run], and /diff run run.
+4. Use /copy for the current compact projection, /context for context, /cwd to inspect working directory, /shell to inspect/select shell, and /exit to leave. Use /undo only after reviewing its preview; undo is evidence-backed and preview-first.
+5. Prefer bounded /head, /tail, /find, /around, and /diff over copying the full raw transcript. Request /raw only when the complete stream is genuinely needed.
+6. Use hud proof <repository-command> or /proof <repository-command> to look up a retained successful proof against current repository bytes. Proof lookup does not execute the command and does not itself authorize skipping work.
+7. Use Copy handoff / hud packet --copy when moving the result into a normal chat-to-terminal loop. The bounded handoff contains repository/branch/cwd, explicit shell, exact command, truthful status/exit code, changed paths, bounded output tails, and the immutable raw-run reference.
+
+**Important:** the ordinary shell is the simplest default. Use the TUI only when its fixed layout/focus controls materially help. The standalone browser renderer is a secondary client and cannot claim repository state without its live local runtime.
+
+**Status:** implemented and documented in packages/commandhud/README.md. The live browser copy-dock test verified selection, copy status, and paste behavior, but OS clipboard byte-for-byte round-trip from the isolated browser automation was explicitly unverified. The shell's own clipboard path and immutable evidence contract are distinct from that browser test.
+
+### Tailscale + SSH + WSL + tmux: remote development fallback
+
+**Use when:** controlling the home Windows machine from another trusted device and continuing a long-lived Linux development shell.
+
+1. Check the current Tailscale peer state and resolve the intended machine before connecting. Use the currently reported Tailscale IP/DNS name; do not assume an old IP or peer is still online.
+2. SSH to the Windows OpenSSH service using the Windows account and verified peer address.
+3. From the Windows session, enter the intended WSL distribution (the observed environment was Ubuntu-24.04).
+4. Attach to the existing tmux session (observed name: development) rather than starting a duplicate process/session.
+5. To recover bounded terminal context, use tmux capture-pane -p -S -1000. Prefer the last relevant lines over a full scrollback dump.
+6. Before running commands, verify machine, repository root, branch, HEAD, and dirty state inside the actual WSL/Windows execution environment. Do not infer Linux repository state from the Windows checkout or vice versa.
+7. When finished, leave the authoritative tmux session and its processes in their intended lifecycle. A prior nohup sleep 600 workaround only kept WSL alive temporarily; persistent WSL lifecycle management was not established by that experiment.
+
+**Status:** Tailscale → SSH → Windows → WSL2 Ubuntu-24.04 → tmux was exercised. SSH/WSL is a transport and shell path, not a substitute for CommandHUD's job/evidence authority. Use the typed remote-control architecture above when it supports the operation.
+
+### FL bridge incident: distinguish unsupported operation from bad target
+
+**Observed failure:** the live bridge v2 did not implement mix.inspect. A fallback attempted to read arguments.channel when the operation supplied no such field, producing INVALID_CHANNEL. The requested mixer channels 5 and 6 were valid; no routing mutation occurred.
+
+**Reusable diagnosis:**
+1. Check bridge schema/version and enumerate supported operations in the deployed bridge source.
+2. Confirm the exact request envelope and whether the channel is carried in target or arguments for that operation.
+3. Separate UNSUPPORTED_OPERATION / malformed request from INVALID_CHANNEL / invalid target. Do not repair mixer routing when the failure is in capability dispatch.
+4. Verify channel/plugin identity read-only before any write.
+5. Add the missing operation only through the bridge contract and test it with a fixture plus live readback; do not silently invent fallback argument semantics.
+
+This is a concrete reason to inspect capability contract and request schema before interpreting an application error string.
