@@ -23,6 +23,7 @@ Language:
   indro capability retain-paint --artifact PATH --width N --height N --app-version VERSION --json
   indro capability validate <id> --json
   indro capability invoke <id> --value 0..1 --verify --authorize-write --json
+  indro development validate --receipt <receipt.json> --json
   indro paint verify --file PATH --width N --height N --json
   indro fl doctor --json
   indro fl plugin set --channel N --param N --value 0..1 --verify --json
@@ -82,6 +83,9 @@ if (command === 'help' || command === '--help' || command === '-h') {
 } else if (command === 'capability') {
   const { runCapabilityCli } = await import('./capability/cli.mjs');
   process.exitCode = await runCapabilityCli(args);
+} else if (command === 'development') {
+  const { runDevelopmentCli } = await import('./development/cli.mjs');
+  process.exitCode = await runDevelopmentCli(args);
 } else if (command === 'verify-native') {
   const { runNativeCli } = await import('./native-verify.mjs');
   process.exitCode = runNativeCli(args);
