@@ -153,3 +153,20 @@ Validated in the build environment:
 PowerShell 7.6.6 static parsing and isolated module import have been validated
 for v0.5.1. Installation and live workspace execution remain intentionally
 unperformed by this repair build.
+
+## Development transaction receipts
+
+Repository-specific tools can emit `indro.development-transaction/v1` after a
+bounded software-development experiment. The contract records the objective,
+exact source and runtime identities, declared and consumed budgets,
+baseline/final observations, bounded actions, checks, and relative hash-covered
+evidence. INDRO validates it without duplicating product-domain logic:
+
+```text
+indro development validate --receipt <development-transaction.json> --json
+```
+
+A passing receipt is rejected if evidence changes, a path escapes the bundle, a
+budget is exceeded, identity is absent, or a declared check did not pass.
+Validation establishes integrity and contract satisfaction; it does not turn a
+narrow experiment into a broader capability claim.

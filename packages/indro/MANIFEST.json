@@ -36,16 +36,6 @@
   },
   "files": [
     {
-      "path": "calibration-gauntlet.mjs",
-      "bytes": 14767,
-      "sha256": "14076b40bad8110984f9e3fc8d571ed34521778273c00e3b3a8fb4b70ef3b3b1"
-    },
-    {
-      "path": "calibration-gauntlet.test.mjs",
-      "bytes": 447,
-      "sha256": "38b0c9917aa668c8c99bc17764614676deb80fdd1be32e0e31cc591a77810c3f"
-    },
-    {
       "path": "benchmark-native.mjs",
       "bytes": 7916,
       "sha256": "87d398333567c5d4004c9b8fd1749b12b7af3270efa08179dfe801a98a8ecfd3"
@@ -116,6 +106,16 @@
       "sha256": "3c957a7f8cf15aeb8db35f9f085cff119e251bcf9704430c9a8c4cc56d54f6ee"
     },
     {
+      "path": "calibration-gauntlet.mjs",
+      "bytes": 14767,
+      "sha256": "14076b40bad8110984f9e3fc8d571ed34521778273c00e3b3a8fb4b70ef3b3b1"
+    },
+    {
+      "path": "calibration-gauntlet.test.mjs",
+      "bytes": 447,
+      "sha256": "38b0c9917aa668c8c99bc17764614676deb80fdd1be32e0e31cc591a77810c3f"
+    },
+    {
       "path": "capability/cli.mjs",
       "bytes": 2793,
       "sha256": "382ea3f8a713fb13b818b7eccdfc98a2281ebc0c1d191d57af667de833af3d68"
@@ -132,13 +132,28 @@
     },
     {
       "path": "cli.mjs",
-      "bytes": 4885,
-      "sha256": "407305a4a5b17ee95c094338a7e6f8bac8c5edb61e03ddae39ea14c67b88eb3a"
+      "bytes": 5109,
+      "sha256": "2d867a9cc53e2d00fe0299b27244b8be6a1cc52bedb81b556745f4a7b997b143"
     },
     {
       "path": "cli.test.mjs",
       "bytes": 6918,
       "sha256": "79a9967c7ae9d95fe39f52f0dbc7c39d19611416ded7236183278437ae8990a7"
+    },
+    {
+      "path": "development/cli.mjs",
+      "bytes": 539,
+      "sha256": "af4e4410b6b0d0ad6ed201e37159170ad8431872f779934550d750c099951433"
+    },
+    {
+      "path": "development/receipt.mjs",
+      "bytes": 3535,
+      "sha256": "c85afb4ba63d7f8c2cd7a750091754169e8433f8d7bc92a600d9415b6e2af158"
+    },
+    {
+      "path": "development/receipt.test.mjs",
+      "bytes": 2688,
+      "sha256": "796c78801a6f232c0d322d317b7ab88e4bc339d5caa1c97f4fb0fb1a2e3e9b69"
     },
     {
       "path": "doctor.ps1",
@@ -181,6 +196,11 @@
       "sha256": "0da7cba84fd1f29f393445b6fe69ef0b246cb0539ad92bb0b1b5273fa07776d0"
     },
     {
+      "path": "external-command-assay.test.mjs",
+      "bytes": 1862,
+      "sha256": "0d16d9c348e2748a2447256dc19261780eb0ab9006178cd18ac7fd6b8b55de46"
+    },
+    {
       "path": "fl/adapter.mjs",
       "bytes": 8938,
       "sha256": "434bb2ceaae249b12b8ab08ecb549a5d7f2075edf197e893cc9b0fe31759c3d4"
@@ -209,11 +229,6 @@
       "path": "fl/send-trigger.ps1",
       "bytes": 2182,
       "sha256": "28c576b9f3c96f60f01d4f393d39f6ab723f3bb693874fadf51c6feaaa3c8484"
-    },
-    {
-      "path": "external-command-assay.test.mjs",
-      "bytes": 1862,
-      "sha256": "0d16d9c348e2748a2447256dc19261780eb0ab9006178cd18ac7fd6b8b55de46"
     },
     {
       "path": "godot-replay.mjs",
@@ -272,8 +287,8 @@
     },
     {
       "path": "package.json",
-      "bytes": 601,
-      "sha256": "c40bc3e707a1c36c09d4ebca68850fc73e3db7ff24f72f1e09378f408dfded56"
+      "bytes": 632,
+      "sha256": "be6838005a0a913ae416743a5ea9f5d42d43a6a2a9d4ebaccc00e93ab597abe1"
     },
     {
       "path": "paint/artifact.mjs",
@@ -297,8 +312,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 6854,
-      "sha256": "001f04c9420932d2ab529068e4d492d2de75ad0a131d0881b2bdd393f52bcd18"
+      "bytes": 7639,
+      "sha256": "b9c5892bca8c9c05e18d8139e808522d12d6945a9495022922b3ee5ed7f0e6a6"
     },
     {
       "path": "repository-state.mjs",
@@ -351,14 +366,14 @@
       "sha256": "369e28714e709b492f6b534e3a9cf576719cd26733f4f73b8fa2eedc25e1ff5d"
     },
     {
-      "path": "tools/convergence_gauntlet.py",
-      "bytes": 21107,
-      "sha256": "9dd096ed12e965f17e00b7aba847f261b3efff8ef714b810d2f74c66d7f7f628"
-    },
-    {
       "path": "tools/convergence_gauntlet_node.mjs",
       "bytes": 5882,
       "sha256": "48470c142cd2a973c951e54ef0f9460b783fd039ef49708f5e472402ffb58689"
+    },
+    {
+      "path": "tools/convergence_gauntlet.py",
+      "bytes": 21107,
+      "sha256": "9dd096ed12e965f17e00b7aba847f261b3efff8ef714b810d2f74c66d7f7f628"
     },
     {
       "path": "tools/crosscheck-hud.py",
@@ -406,14 +421,14 @@
       "sha256": "317b6ff59069d3cf8cee1d7e2d7c0f5e7df93574086b92bd52c9e76f20fc2013"
     },
     {
-      "path": "tools/test-convergence-gauntlet.py",
-      "bytes": 590,
-      "sha256": "6fd850e2b2882624ee7d777bb5ba954c4bafc0b5426e89120db043b7218a8100"
-    },
-    {
       "path": "tools/test-compiler.py",
       "bytes": 2741,
       "sha256": "3c7bd569781c34af8ab56cf1f8bf6edf98ecf4e16f582dc80cf7464afca7f7d1"
+    },
+    {
+      "path": "tools/test-convergence-gauntlet.py",
+      "bytes": 590,
+      "sha256": "6fd850e2b2882624ee7d777bb5ba954c4bafc0b5426e89120db043b7218a8100"
     },
     {
       "path": "tools/test-determinism.py",
