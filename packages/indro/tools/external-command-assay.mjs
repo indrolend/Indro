@@ -50,9 +50,9 @@ function execute(command, root, env) {
 }
 
 export async function runAssay(options) {
-  const root = realpathSync(resolve(options.root)), output = resolve(options.output);
-  const repositoryRoot = realpathSync(resolve(git(root, 'rev-parse', '--show-toplevel')));
-  if (repositoryRoot !== root) throw new Error(`Assay root is not the Git root: ${root}`);
+  const requestedRoot = realpathSync(resolve(options.root)), output = resolve(options.output);
+  if (git(requestedRoot, 'rev-parse', '--show-prefix') !== '') throw new Error(`Assay root is not the Git root: ${requestedRoot}`);
+  const root = realpathSync(resolve(git(requestedRoot, 'rev-parse', '--show-toplevel')));
   if (!relative(root, output).startsWith('..')) throw new Error('Assay output must remain outside the tested repository');
   const head = git(root, 'rev-parse', 'HEAD');
   const statusBefore = git(root, 'status', '--porcelain=v2', '--branch');
