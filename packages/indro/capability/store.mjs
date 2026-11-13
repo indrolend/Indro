@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stateRoot } from '../../commandhud/core.mjs';
 import { createFlTransport, defaultMailbox, discoverSession, latestFlReceipt, validateFlReceipt } from '../fl/adapter.mjs';
@@ -15,6 +15,56 @@ const fileIdentity = path => {
   const bytes = readFileSync(path);
   return { path: resolve(path), bytes: bytes.length, sha256: sha256(bytes) };
 };
+
+function containedPath(root, value) {
+  if (typeof value !== 'string' || !value || isAbsolute(value)) throw new Error('EVIDENCE_PATH_INVALID');
+  const destination = resolve(root, value);
+  const within = relative(root, destination);
+  if (!within || within.startsWith('..') || isAbsolute(within)) throw new Error('EVIDENCE_PATH_ESCAPES_BUNDLE');
+  return destination;
+}
+
+export function verifyCapabilityLedger(ledgerPath) {
+  const path = resolve(ledgerPath || '');
+  if (!existsSync(path)) return { valid: false, issues: ['LEDGER_MISSING'] };
+  let ledger;
+  try { ledger = JSON.parse(readFileSync(path, 'utf8')); }
+  catch { return { valid: false, issues: ['LEDGER_INVALID_JSON'] }; }
+  const issues = [];
+  if (ledger.schema !== 'capability.ledger/v1') issues.push('LEDGER_SCHEMA_INCOMPATIBLE');
+  if (!ledger.experiment || !Array.isArray(ledger.records) || ledger.records.length === 0) issues.push('LEDGER_RECORDS_MISSING');
+  for (const [index, record] of (ledger.records ?? []).entries()) {
+    if (record.schema !== 'capability.observation/v1') issues.push(`RECORD_${index}_SCHEMA_INCOMPATIBLE`);
+    if (!record.id || typeof record.requested !== 'string' || typeof record.effective !== 'string' || typeof record.observed !== 'boolean') issues.push(`RECORD_${index}_CONTRACT_INVALID`);
+    if (!['SUPPORTED', 'REJECTED', 'UNAVAILABLE'].includes(record.verdict)) issues.push(`RECORD_${index}_VERDICT_INVALID`);
+    if (!record.cost || !Number.isFinite(record.cost.average) || !Number.isFinite(record.cost.maximum) || record.cost.unit !== 'ms' || !record.cost.measurement_class) issues.push(`RECORD_${index}_COST_INVALID`);
+  }
+  const root = dirname(path);
+  let manifestPath;
+  try { manifestPath = containedPath(root, ledger.evidence_manifest); }
+  catch (error) { issues.push(error.message); }
+  let entries = [];
+  if (manifestPath) {
+    try { entries = JSON.parse(readFileSync(manifestPath, 'utf8')); }
+    catch { issues.push('EVIDENCE_MANIFEST_INVALID'); }
+  }
+  if (!Array.isArray(entries) || entries.length === 0) issues.push('EVIDENCE_MANIFEST_EMPTY');
+  let ledgerCovered = false;
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    let evidencePath;
+    try { evidencePath = containedPath(root, entry.path); }
+    catch (error) { issues.push(error.message); continue; }
+    if (resolve(evidencePath) === path) ledgerCovered = true;
+    try {
+      const identity = fileIdentity(evidencePath);
+      if (identity.bytes !== entry.bytes) issues.push(`EVIDENCE_BYTES_MISMATCH:${entry.path}`);
+      if (identity.sha256 !== entry.sha256) issues.push(`EVIDENCE_DIGEST_MISMATCH:${entry.path}`);
+    } catch { issues.push(`EVIDENCE_MISSING:${entry.path}`); }
+  }
+  if (!ledgerCovered) issues.push('LEDGER_NOT_COVERED_BY_MANIFEST');
+  return { valid: issues.length === 0, issues, ledger, ledger_path: path, ledger_identity: fileIdentity(path),
+    manifest_identity: manifestPath && existsSync(manifestPath) ? fileIdentity(manifestPath) : null, evidence_files: entries.length };
+}
 
 export function capabilityRoot(options = {}) {
   return resolve(options.capabilityRoot ?? join(stateRoot(options.env), 'continuum', 'capabilities'));
@@ -64,6 +114,51 @@ export function listCapabilities(options = {}) {
       return [{ id: record.id, goal: record.goal, target: record.target, retained_at: record.retained_at }];
     } catch { return []; }
   }).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export function retainEvidenceCapability({ ledgerPath, ...options } = {}) {
+  const check = verifyCapabilityLedger(ledgerPath);
+  if (!check.valid) throw new Error(`SOURCE_LEDGER_INVALID:${check.issues.join(',')}`);
+  const ledger = check.ledger;
+  const capabilityIds = [...new Set(ledger.records.map(record => record.id))];
+  if (capabilityIds.length !== 1) throw new Error('LEDGER_CAPABILITY_ID_AMBIGUOUS');
+  const id = `evidence.${capabilityIds[0]}`;
+  const payload = {
+    schema: CAPABILITY_SCHEMA,
+    schema_version: 1,
+    id,
+    goal: `Reuse verified ${capabilityIds[0]} observations from ${ledger.experiment}`,
+    parameters: { variant: { type: 'enum', values: ledger.records.map(record => record.variant) } },
+    target: { application: 'evidence-ledger', experiment: ledger.experiment, capability_id: capabilityIds[0],
+      identity_validation: 'exact ledger bytes plus complete SHA-256 evidence manifest' },
+    invocation: { adapter: 'retained-evidence', autonomous_cli: false },
+    authorization: { required: 'read-only' },
+    preconditions: ['ledger schema valid', 'every retained artifact present', 'every retained artifact digest unchanged'],
+    postcondition: { observation: 'requested, effective, observed, verdict, properties, and cost retained per variant' },
+    verification: { required: 'complete-evidence-manifest-readback', external_effect: 'recorded-by-product-experiment' },
+    dependencies: { ledger: check.ledger_identity, evidence_manifest: check.manifest_identity },
+    observations: ledger.records,
+    evidence: [{ ledger: check.ledger_path, sha256: check.ledger_identity.sha256, files: check.evidence_files }],
+    invalidation: ['ledger bytes changed', 'evidence manifest changed', 'any retained artifact missing or changed', 'schema incompatible'],
+    limitations: ledger.limitations ?? [],
+    reuse_eligibility: 'validate-complete-evidence-before-each-claim',
+    retained_at: new Date().toISOString(),
+  };
+  const directory = join(capabilityRoot(options), id);
+  mkdirSync(directory, { recursive: true });
+  const destination = join(directory, `${payload.retained_at.replace(/[:.]/g, '-')}-${randomUUID()}.json`);
+  writeFileSync(destination, `${JSON.stringify(envelope(payload), null, 2)}\n`, { flag: 'wx' });
+  return { capability: payload, path: destination, sha256: fileIdentity(destination).sha256 };
+}
+
+function validateEvidenceCapability(record) {
+  const ledgerPath = record.evidence?.[0]?.ledger;
+  const check = verifyCapabilityLedger(ledgerPath);
+  const issues = [...check.issues];
+  if (check.valid && check.ledger_identity.sha256 !== record.dependencies?.ledger?.sha256) issues.push('LEDGER_FINGERPRINT_MISMATCH');
+  if (check.valid && check.manifest_identity?.sha256 !== record.dependencies?.evidence_manifest?.sha256) issues.push('EVIDENCE_MANIFEST_FINGERPRINT_MISMATCH');
+  return { valid: issues.length === 0, reusable: issues.length === 0, issues, capability: record,
+    claims: record.observations, evidence_files: check.evidence_files ?? 0 };
 }
 
 export function retainFlParameterCapability({ receiptPath, mailbox = defaultMailbox(), ...options } = {}) {
@@ -178,6 +273,7 @@ async function requestResult(transport, operation, args = {}, target = {}) {
 
 export async function validateCapability(id, options = {}) {
   const record = loadCapability(id, options);
+  if (record.target.application === 'evidence-ledger') return validateEvidenceCapability(record);
   if (record.target.application === 'microsoft-paint') return validatePaintCapability(record, options);
   const issues = [];
   let session;
