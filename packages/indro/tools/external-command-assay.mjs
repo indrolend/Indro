@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { classifyRunEvidenceIntegrity, listRuns, resolveProject } from '../../commandhud/core.mjs';
@@ -50,8 +50,8 @@ function execute(command, root, env) {
 }
 
 export async function runAssay(options) {
-  const root = resolve(options.root), output = resolve(options.output);
-  const repositoryRoot = resolve(git(root, 'rev-parse', '--show-toplevel'));
+  const root = realpathSync(resolve(options.root)), output = resolve(options.output);
+  const repositoryRoot = realpathSync(resolve(git(root, 'rev-parse', '--show-toplevel')));
   if (repositoryRoot !== root) throw new Error(`Assay root is not the Git root: ${root}`);
   if (!relative(root, output).startsWith('..')) throw new Error('Assay output must remain outside the tested repository');
   const head = git(root, 'rev-parse', 'HEAD');

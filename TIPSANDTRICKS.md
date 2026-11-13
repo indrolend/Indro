@@ -205,6 +205,17 @@ For third-party behavioral dogfooding, use the repository's own smallest stable 
 
 ## Persistent authorities and retention
 
+### Retain a product capability ledger
+
+When a product experiment emits `capability.ledger/v1`, retain it through the existing capability authority:
+
+```powershell
+indro capability retain-ledger --ledger <capability-ledger.json> --json
+indro capability validate evidence.<capability-id> --json
+```
+
+The ledger must contain `capability.observation/v1` records that separate requested, effective, observed, verdict, and cost. Its complete evidence bundle must be covered by a SHA-256 manifest, including the ledger itself. Validation rejects schema mismatch, path escape, missing evidence, changed bytes, or changed digests. This makes the compact claims reusable only while their underlying evidence remains intact; it does not upgrade renderer activation into a visual-quality judgment.
+
 - `AGENTS.md`: permanent safety, ownership, and required workflow.
 - `TIPSANDTRICKS.md`: compact verified shortcuts, causal rules, and decision paths.
 - Git: source/change history; current worktree remains authoritative.

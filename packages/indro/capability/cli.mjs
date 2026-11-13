@@ -1,8 +1,9 @@
-import { invokeCapability, listCapabilities, loadCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
+import { invokeCapability, listCapabilities, loadCapability, retainEvidenceCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
 
 const USAGE = `indro capability list --json
 indro capability retain-fl --latest --json
 indro capability retain-paint --artifact PATH --width N --height N --app-version VERSION --json
+indro capability retain-ledger --ledger PATH --json
 indro capability inspect <id> --json
 indro capability validate <id> --json
 indro capability invoke <id> --value 0..1 --verify --authorize-write [--validation-snapshot] --json`;
@@ -18,6 +19,10 @@ export async function runCapabilityCli(argv, out = console.log, err = console.er
     if (words[0] === 'retain-paint') {
       const retained = retainPaintResizeCapability({ ...dependencies, artifactPath: option('--artifact'),
         width: Number(option('--width')), height: Number(option('--height')), appVersion: option('--app-version') });
+      out(JSON.stringify(retained, null, 2)); return 0;
+    }
+    if (words[0] === 'retain-ledger') {
+      const retained = retainEvidenceCapability({ ...dependencies, ledgerPath: option('--ledger') });
       out(JSON.stringify(retained, null, 2)); return 0;
     }
     const id = words[1];

@@ -117,23 +117,23 @@
     },
     {
       "path": "capability/cli.mjs",
-      "bytes": 2511,
-      "sha256": "ef9750df65f6fc4f376fc222769975cc5216706d0917bbae290277662d7848f1"
+      "bytes": 2793,
+      "sha256": "382ea3f8a713fb13b818b7eccdfc98a2281ebc0c1d191d57af667de833af3d68"
     },
     {
       "path": "capability/store.mjs",
-      "bytes": 13563,
-      "sha256": "f0ff2d90672e6042a525b7993b86f6d47c65af218d78c7943e85e4a481f8cad8"
+      "bytes": 19713,
+      "sha256": "033012b33bffe62846a2f4e85323f89decd1485802265e9a85fe3bf9ab3a914b"
     },
     {
       "path": "capability/store.test.mjs",
-      "bytes": 8529,
-      "sha256": "369e8a76aaa85ca85654c8e07e852786718b23c9047d2b8bb8896eaaed5a7df1"
+      "bytes": 11064,
+      "sha256": "bb19b44e54b9b2ae76a5ee215c797b0c4c1d5f2b7914ea9a1d851a1605de5765"
     },
     {
       "path": "cli.mjs",
-      "bytes": 4811,
-      "sha256": "9b6571c55eb11f0f39afb9334f7b4ddb7adcdee58ecbaf59ed8f657f8b888f07"
+      "bytes": 4885,
+      "sha256": "407305a4a5b17ee95c094338a7e6f8bac8c5edb61e03ddae39ea14c67b88eb3a"
     },
     {
       "path": "cli.test.mjs",
@@ -367,8 +367,8 @@
     },
     {
       "path": "tools/external-command-assay.mjs",
-      "bytes": 8689,
-      "sha256": "52351720d30e5886017d629f80b31af8b7b169427f9c9b84b4f2390ff4362258"
+      "bytes": 8731,
+      "sha256": "3206ade37ad5a6c870f967cc2e90fcda751b43a0dbd74c9cdf5282cfe2e30577"
     },
     {
       "path": "tools/mine-hud.py",

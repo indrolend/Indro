@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { persistFlReceipt } from '../fl/adapter.mjs';
 import { png } from '../paint/png-fixture.test-helper.mjs';
-import { invokeCapability, listCapabilities, loadCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
+import { createHash } from 'node:crypto';
+import { invokeCapability, listCapabilities, loadCapability, retainEvidenceCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability, verifyCapabilityLedger } from './store.mjs';
 
 
 function fixture({ channel = 5, parameter = 2, plugin = 'Fruity granulizer', parameterName = 'Grain spacing' } = {}) {
@@ -40,6 +41,45 @@ function transport(f, overrides = {}) {
 }
 
 const validationOptions = (f, extra = {}) => ({ ...f.options, discoverSession: () => f.session, transport: transport(f), ...extra });
+
+function ledgerFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'indro-capability-ledger-'));
+  const artifact = join(root, 'timeline.ndjson');
+  writeFileSync(artifact, '{"frame":0}\n');
+  const ledger = join(root, 'capability-ledger.json');
+  writeFileSync(ledger, JSON.stringify({ schema: 'capability.ledger/v1', producer: 'fixture', experiment: 'shadow-stability',
+    records: [{ schema: 'capability.observation/v1', id: 'render.shadow.camera-stability', variant: 'normal',
+      requested: 'mapped-normal', effective: 'mapped-normal', observed: true, verdict: 'SUPPORTED',
+      cost: { average: 4.2, maximum: 8.1, unit: 'ms', measurement_class: 'gpu-synchronized-render' } }],
+    evidence_manifest: 'sha256-manifest.json' }));
+  const identity = path => { const bytes = readFileSync(path); return { path: basename(path), bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }; };
+  writeFileSync(join(root, 'sha256-manifest.json'), JSON.stringify([identity(ledger), identity(artifact)]));
+  return { root, ledger, artifact, options: { capabilityRoot: join(root, 'capabilities') } };
+}
+
+test('retains a product evidence ledger as independently revalidated capability claims', async () => {
+  const f = ledgerFixture();
+  assert.equal(verifyCapabilityLedger(f.ledger).valid, true);
+  const retained = retainEvidenceCapability({ ...f.options, ledgerPath: f.ledger });
+  assert.equal(retained.capability.id, 'evidence.render.shadow.camera-stability');
+  assert.equal(retained.capability.observations[0].requested, 'mapped-normal');
+  const valid = await validateCapability(retained.capability.id, f.options);
+  assert.equal(valid.valid, true); assert.equal(valid.evidence_files, 2);
+  writeFileSync(f.artifact, 'tampered');
+  const invalid = await validateCapability(retained.capability.id, f.options);
+  assert.equal(invalid.valid, false);
+  assert.match(invalid.issues.join(','), /EVIDENCE_(BYTES|DIGEST)_MISMATCH/);
+});
+
+test('evidence ledger rejects path escape and unsupported observation contracts', () => {
+  const f = ledgerFixture();
+  const value = JSON.parse(readFileSync(f.ledger, 'utf8'));
+  value.records[0].verdict = 'MAYBE'; value.evidence_manifest = '../outside.json';
+  writeFileSync(f.ledger, JSON.stringify(value));
+  const check = verifyCapabilityLedger(f.ledger);
+  assert.equal(check.valid, false);
+  assert.match(check.issues.join(','), /VERDICT_INVALID|PATH_ESCAPES/);
+});
 
 test('retains an immutable FL capability and fresh process can list and load it', () => {
   const f = fixture();
