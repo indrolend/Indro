@@ -1,6 +1,7 @@
-import { invokeCapability, listCapabilities, loadCapability, retainEvidenceCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
+import { findCapabilities, invokeCapability, listCapabilities, loadCapability, retainEvidenceCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability } from './store.mjs';
 
 const USAGE = `indro capability list --json
+indro capability find [--application APP] [--goal TEXT] [--precondition TEXT] --json
 indro capability retain-fl --latest --json
 indro capability retain-paint --artifact PATH --width N --height N --app-version VERSION --json
 indro capability retain-ledger --ledger PATH --json
@@ -15,6 +16,10 @@ export async function runCapabilityCli(argv, out = console.log, err = console.er
   try {
     if (!has('--json')) throw new Error('JSON_REQUIRED');
     if (words[0] === 'list' && words.length === 1) { out(JSON.stringify({ capabilities: listCapabilities(dependencies) }, null, 2)); return 0; }
+    if (words[0] === 'find') {
+      const capabilities = findCapabilities({ application: option('--application'), goal: option('--goal'), precondition: option('--precondition') }, dependencies);
+      out(JSON.stringify({ applicability: 'candidate-requires-revalidation', capabilities }, null, 2)); return 0;
+    }
     if (words[0] === 'retain-fl' && has('--latest')) { out(JSON.stringify(retainFlParameterCapability(dependencies), null, 2)); return 0; }
     if (words[0] === 'retain-paint') {
       const retained = retainPaintResizeCapability({ ...dependencies, artifactPath: option('--artifact'),

@@ -116,6 +116,33 @@ export function listCapabilities(options = {}) {
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+export function findCapabilities({ application, goal, precondition } = {}, options = {}) {
+  if (![application, goal, precondition].some(value => typeof value === 'string' && value.trim())) {
+    throw new Error('CAPABILITY_QUERY_REQUIRED');
+  }
+  const normalize = value => String(value ?? '').trim().toLowerCase();
+  const requested = { application: normalize(application), goal: normalize(goal), precondition: normalize(precondition) };
+  return listCapabilities(options).flatMap(({ id }) => {
+    const record = loadCapability(id, options);
+    if (requested.application && normalize(record.target?.application) !== requested.application) return [];
+    if (requested.goal && !normalize(record.goal).includes(requested.goal)) return [];
+    if (requested.precondition && !(record.preconditions ?? []).some(value => normalize(value).includes(requested.precondition))) return [];
+    return [{
+      id: record.id,
+      goal: record.goal,
+      target: record.target,
+      procedure: record.invocation,
+      preconditions: record.preconditions ?? [],
+      evidence: record.evidence ?? [],
+      limitations: record.limitations ?? [],
+      invalidation: record.invalidation ?? [],
+      reuse_eligibility: record.reuse_eligibility ?? null,
+      applicability: 'candidate-requires-revalidation',
+      revalidation: { command: `indro capability validate ${record.id} --json` },
+    }];
+  });
+}
+
 export function retainEvidenceCapability({ ledgerPath, ...options } = {}) {
   const check = verifyCapabilityLedger(ledgerPath);
   if (!check.valid) throw new Error(`SOURCE_LEDGER_INVALID:${check.issues.join(',')}`);
