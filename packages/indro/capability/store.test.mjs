@@ -6,7 +6,8 @@ import { basename, dirname, join } from 'node:path';
 import { persistFlReceipt } from '../fl/adapter.mjs';
 import { png } from '../paint/png-fixture.test-helper.mjs';
 import { createHash } from 'node:crypto';
-import { invokeCapability, listCapabilities, loadCapability, retainEvidenceCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability, verifyCapabilityLedger } from './store.mjs';
+import { findCapabilities, invokeCapability, listCapabilities, loadCapability, retainEvidenceCapability, retainFlParameterCapability, retainPaintResizeCapability, validateCapability, verifyCapabilityLedger } from './store.mjs';
+import { runCapabilityCli } from './cli.mjs';
 
 
 function fixture({ channel = 5, parameter = 2, plugin = 'Fruity granulizer', parameterName = 'Grain spacing' } = {}) {
@@ -86,6 +87,23 @@ test('retains an immutable FL capability and fresh process can list and load it'
   assert.equal(listCapabilities(f.options)[0].id, f.id);
   assert.equal(loadCapability(f.id, f.options).target.parameter_name, 'Grain spacing');
   assert.match(readFileSync(f.retained.path, 'utf8'), /checksum integrity is not authenticated provenance/);
+});
+
+test('finds capability candidates by observable preconditions without claiming applicability', async () => {
+  const f = fixture();
+  assert.throws(() => findCapabilities({}, f.options), /CAPABILITY_QUERY_REQUIRED/);
+  assert.deepEqual(findCapabilities({ application: 'other' }, f.options), []);
+  const [candidate] = findCapabilities({ application: 'FL-STUDIO', precondition: 'unique plugin' }, f.options);
+  assert.equal(candidate.id, f.id);
+  assert.equal(candidate.applicability, 'candidate-requires-revalidation');
+  assert.deepEqual(candidate.procedure, f.retained.capability.invocation);
+  assert.deepEqual(candidate.evidence, f.retained.capability.evidence);
+  assert.match(candidate.revalidation.command, new RegExp(`validate ${f.id}`));
+
+  const output = [];
+  assert.equal(await runCapabilityCli(['find', '--application', 'fl-studio', '--precondition', 'unique plugin', '--json'], value => output.push(JSON.parse(value)), console.error, f.options), 0);
+  assert.equal(output[0].capabilities[0].id, f.id);
+  assert.equal(output[0].applicability, 'candidate-requires-revalidation');
 });
 
 test('correct capability resolves current target and changed mapping by names', async () => {

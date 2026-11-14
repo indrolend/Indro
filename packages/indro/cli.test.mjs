@@ -73,6 +73,7 @@ test('canonical INDRO routes retained capabilities and rejects unverified operat
   const help = invoke('help');
   assert.equal(help.status, 0, help.stderr);
   assert.match(help.stdout, /indro capability list/);
+  assert.match(help.stdout, /indro capability find/);
   assert.match(help.stdout, /indro paint verify/);
   assert.match(help.stdout, /indro fl plugin set/);
   const fl = invoke('fl', 'help');
