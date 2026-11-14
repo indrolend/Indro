@@ -147,13 +147,13 @@
     },
     {
       "path": "development/receipt.mjs",
-      "bytes": 3535,
-      "sha256": "c85afb4ba63d7f8c2cd7a750091754169e8433f8d7bc92a600d9415b6e2af158"
+      "bytes": 5396,
+      "sha256": "360124cc9208895842d4567031ec944592895c6f567281342843c45198d64690"
     },
     {
       "path": "development/receipt.test.mjs",
-      "bytes": 2688,
-      "sha256": "796c78801a6f232c0d322d317b7ab88e4bc339d5caa1c97f4fb0fb1a2e3e9b69"
+      "bytes": 4751,
+      "sha256": "f5793369bd9dc2fadc086efec38a4710e4b3f2a1e42f2a26badf61492f773f76"
     },
     {
       "path": "doctor.ps1",
